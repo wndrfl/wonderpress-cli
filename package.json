@@ -1,0 +1,25 @@
+{
+  "name": "@wndrfl/wonderpress-cli",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "bin": {
+    "@wndrfl/create-project": "./bin/create-project.js",
+    "create-project": "./bin/create-project.js"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "arg": "^4.1.2",
+    "esm": "^3.2.25",
+    "inquirer": "^7.0.3",
+    "shelljs": "^0.8.3"
+  }
+}
