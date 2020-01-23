@@ -6,9 +6,9 @@ A commandline interface for bootstrapping and working with the WonderPress WordP
 ## Installation & Usage
 
 ```
-npm init @wndrfl/wonderpress
+npm init @wndrfl/wonderpress-cli
 # or
-npm install -g @wndrfl/wonderpress
+npm install -g @wndrfl/wonderpress-cli
 wonderpress
 ```
 
