@@ -4,8 +4,8 @@
   "description": "",
   "main": "index.js",
   "bin": {
-    "@wndrfl/create-project": "./bin/create-project.js",
-    "create-project": "./bin/create-project.js"
+    "@wndrfl/wonderpress": "./bin/wonderpress.js",
+    "wonderpress": "./bin/wonderpress.js"
   },
   "publishConfig": {
     "access": "public"

@@ -1,26 +1,26 @@
 import arg from 'arg';
 import inquirer from 'inquirer';
-import { setup } from './main';
+import { installBebopTheme, lintTheme, setup, upgradeWonderPress } from './main';
 
 function parseArgumentsIntoOptions(rawArgs) {
  const args = arg(
    {
-     '--git': Boolean,
-     '--yes': Boolean,
-     '--install': Boolean,
-     '-g': '--git',
-     '-y': '--yes',
-     '-i': '--install',
+     // '--git': Boolean,
+     // '--yes': Boolean,
+     // '--install': Boolean,
+     // '-g': '--git',
+     // '-y': '--yes',
+     // '-i': '--install',
    },
    {
      argv: rawArgs.slice(2),
    }
  );
  return {
-   skipPrompts: args['--yes'] || false,
-   git: args['--git'] || false,
-   fn: args._[0],
-   runInstall: args['--install'] || false,
+   // skipPrompts: args['--yes'] || false,
+   // git: args['--git'] || false,
+   // fn: args._[0],
+   // runInstall: args['--install'] || false,
  };
 }
 
@@ -41,13 +41,21 @@ async function promptForMissingOptions(options) {
      message: 'What would you like to do?',
      choices: [
 	     {
-	     	'name': 'Setup WordPress',
+	     	'name': 'Setup WonderPress',
 	     	'value': 'setup'
 	     },
 	     {
-	     	'name': 'Something else',
-	     	'value': 'something'
-	     }
+	     	'name': 'Install Bebop',
+	     	'value': 'install_bebop'
+	     },
+       {
+         'name': 'Lint a theme',
+         'value': 'lint'
+       },
+       {
+         'name': 'Upgrade WonderPress',
+         'value': 'upgrade_wonderpress'
+       }
      ],
      default: defaultFn,
    });
@@ -71,12 +79,23 @@ async function promptForMissingOptions(options) {
 }
 
 export async function cli(args) {
- let options = parseArgumentsIntoOptions(args);
- options = await promptForMissingOptions(options);
- console.log(options);
- switch(options.fn) {
- 	case 'setup':
-		await setup(options);
- 		break;
- }
+	
+  let options = parseArgumentsIntoOptions(args);
+  options = await promptForMissingOptions(options);
+
+  switch(options.fn) {
+    case 'setup':
+      await setup();
+      break;
+    case 'install_bebop':
+      await installBebopTheme();
+      break;
+    case 'lint':
+      await lintTheme();
+      break;
+    case 'upgrade_wonderpress':
+      await upgradeWonderPress();
+      break;
+  }
+
 }
