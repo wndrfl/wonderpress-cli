@@ -1,10 +1,35 @@
 import inquirer from 'inquirer';
 
+var colors = require('colors');
 const fs = require("fs");
 const mysql2 = require('mysql2/promise');
 const pathToThemesDir = './wp-content/themes';
 const shelljs = require('shelljs');
 const sqlString = require('sqlstring');
+
+// Stylize console output
+colors.setTheme({
+	info: ['bold','white'],
+	warn: 'yellow',
+	success: ['bold','green'],
+	error: ['bold','red']
+});
+
+function _error(msg) {
+	console.log('☠️ ' + msg.error);
+}
+
+function _info(msg) {
+	console.log(msg.info);
+}
+
+function _success(msg) {
+	console.log('👍 ' + msg.success);
+}
+
+function _warn(msg) {
+	console.log('🚨 ' + msg.warn);
+}
 
 export async function configureWordPress() {
 
@@ -43,7 +68,7 @@ export async function configureWordPress() {
 			password : configAnswers.dbPassword
 		})
 		.catch(() => {
-			console.log('The hostname / username / password combination you entered wasn\'t correct. Try again?');
+			_error('The hostname / username / password combination you entered wasn\'t correct. Try again?');
 			connection = false;
 		});
 
@@ -82,7 +107,7 @@ export async function configureWordPress() {
 					if(createAnswer.confirm) {
 						await connection.execute("CREATE DATABASE " + sqlString.escapeId(databaseAnswers.dbName))
 								.then(() => {
-									console.log('The database `' + databaseAnswers.dbName + '` was created!');
+									_success('The database `' + databaseAnswers.dbName + '` was created!');
 									validDatabase = true;
 								})
 								.catch((err) => {
@@ -129,7 +154,7 @@ export async function installBebopTheme(opts) {
 
 export async function installComposer() {
 	if (await !fs.existsSync('./vendor')) {
-		console.log('Installing Composer packages...');
+		_info('Installing Composer packages...');
 		shelljs.exec('composer install');
 	}
 
@@ -227,7 +252,7 @@ export async function installWordPress() {
 export async function installWPCLI() {
 	// Install `wp-cli` latest release
 	if (!shelljs.which('wp')) {
-		console.log('Downloading and installing WP CLI');
+		_info('Downloading and installing WP CLI');
 		shelljs.exec('curl -O https://raw.githubusercontent.com/wp-cli/builds/gh-pages/phar/wp-cli.phar');
 		shelljs.exec('mv wp-cli.phar wp-cli');
 	}
@@ -289,7 +314,7 @@ export async function lintTheme(name) {
 
 export async function setup() {
 
-	console.log('✨ Setting up WonderPress...');
+	_info('✨ Setting up WonderPress...');
 
 	await installWPCLI();
 	await downloadWordPress();
@@ -312,7 +337,7 @@ export async function setup() {
 		});
 	}
 
-	console.log('👍 All done.');
+	_success('All done.');
 
 	return true;
 }
