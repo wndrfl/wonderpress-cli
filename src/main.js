@@ -8,46 +8,115 @@ Array.prototype.asyncForEach = async function(callback, thisArg) {
 }
 
 const fs = require("fs");
+const mysql = require('mysql2/promise');
 const pathToThemesDir = './wp-content/themes';
 const shelljs = require('shelljs');
+const sqlString = require('sqlstring');
+
 
 export async function configureWordPress() {
 
-	// Ask questions about database connection
-	let configAnswers = await inquirer.prompt([
-		{
-			type: 'input',
-			name: 'dbHost',
-			message: 'What is the database hostname?',
-			default: 'localhost',
-		},
-		{
-			type: 'input',
-			name: 'dbName',
-			message: 'What is the database name?',
-			default: 'wonderpress'
-		},
-		{
-			type: 'input',
-			name: 'dbUser',
-			message: 'What is the database username?',
-			validate: function(input) {
-				return input !== '';
-			}
-		},
-		{
-			type: 'input',
-			name: 'dbPassword',
-			message: 'What is the database password?',
-			default: ''
-		},
-	]);
+	// Set up the mysql connection
+	let connection = false;
+	while(!connection) {
 
+		var questions = [
+			{
+				type: 'input',
+				name: 'dbHost',
+				message: 'What is the database hostname?',
+				default: 'localhost',
+			},
+			{
+				type: 'input',
+				name: 'dbUser',
+				message: 'What is the database username?',
+				validate: function(input) {
+					return input !== '';
+				}
+			},
+			{
+				type: 'input',
+				name: 'dbPassword',
+				message: 'What is the database password?',
+				default: ''
+			},
+		];
+		var configAnswers = await inquirer.prompt(questions);
+
+		connection = await mysql.createConnection({
+			host     : configAnswers.dbHost,
+			user     : configAnswers.dbUser,
+			password : configAnswers.dbPassword
+		})
+		.catch(() => {
+			console.log('The hostname / username / password combination you entered wasn\'t correct. Try again?');
+			connection = false;
+		});
+
+	}
+
+	// Configure the database
+	let validDatabase = false;
+	while(!validDatabase) {
+
+		var questions = [
+			{
+				type: 'input',
+				name: 'dbName',
+				message: 'What is the database name?',
+				default: 'wonderpress'
+			}
+		];
+		var databaseAnswers = await inquirer.prompt(questions);
+
+		await connection.execute("SELECT SCHEMA_NAME FROM INFORMATION_SCHEMA.SCHEMATA WHERE SCHEMA_NAME = ?", [databaseAnswers.dbName])
+				.then( async ([rows,fields]) => {
+
+					if(rows.length) {
+						validDatabase = true;
+						return true;
+					}
+
+					let createAnswer = await inquirer.prompt([
+						{
+							type: 'confirm',
+							name: 'confirm',
+							message: 'The database `' + databaseAnswers.dbName + '` doesn\'t exist, would you like to create it?.',
+							default: true
+						}
+					]);
+					if(createAnswer.confirm) {
+						await connection.execute("CREATE DATABASE " + sqlString.escapeId(databaseAnswers.dbName))
+								.then(() => {
+									console.log('The database `' + databaseAnswers.dbName + '` was created!');
+									validDatabase = true;
+								})
+								.catch((err) => {
+									console.warn(err);
+									validDatabase = false;
+								});
+					}
+					
+				})
+				.catch((err) => {
+					console.warn(err);
+					validDatabase = false;
+				});
+	}
+
+	// Close the connection
+	await connection.end()
+			.catch((err) => {
+				console.warn(err)
+			});
+	
+	// Use WP CLI to create the wp-config.php file
 	let wpConfigCreateCmd 	= 'wp config create';
 	wpConfigCreateCmd 		+= ' --dbhost=' + configAnswers.dbHost;
-	wpConfigCreateCmd 		+= ' --dbname=' + configAnswers.dbName;
 	wpConfigCreateCmd 		+= ' --dbuser=' + configAnswers.dbUser;
 	wpConfigCreateCmd 		+= ' --dbpass=' + configAnswers.dbPassword;
+	wpConfigCreateCmd 		+= ' --dbname=' + databaseAnswers.dbName;
 	wpConfigCreateCmd 		+= ' --force';
 	shelljs.exec(wpConfigCreateCmd);
 

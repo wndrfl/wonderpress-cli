@@ -1,6 +1,6 @@
 import arg from 'arg';
 import inquirer from 'inquirer';
-import { installBebopTheme, lintTheme, setup, upgradeWonderPress } from './main';
+import { configureWordPress, installBebopTheme, lintTheme, setup, upgradeWonderPress } from './main';
 
 function parseArgumentsIntoOptions(rawArgs) {
  const args = arg(
@@ -40,10 +40,14 @@ async function promptForMissingOptions(options) {
      name: 'fn',
      message: 'What would you like to do?',
      choices: [
-	     {
-	     	'name': 'Setup WonderPress',
-	     	'value': 'setup'
-	     },
+       {
+         'name': 'Setup WonderPress',
+         'value': 'setup'
+       },
+       {
+         'name': 'Configure WordPress',
+         'value': 'configure_wordpress'
+       },
 	     {
 	     	'name': 'Install Bebop',
 	     	'value': 'install_bebop'
@@ -86,6 +90,9 @@ export async function cli(args) {
   switch(options.fn) {
     case 'setup':
       await setup();
+      break;
+    case 'configure_wordpress':
+      await configureWordPress();
       break;
     case 'install_bebop':
       await installBebopTheme();
