@@ -8,7 +8,7 @@ Array.prototype.asyncForEach = async function(callback, thisArg) {
 }
 
 const fs = require("fs");
-const mysql = require('mysql2/promise');
+const mysql2 = require('mysql2/promise');
 const pathToThemesDir = './wp-content/themes';
 const shelljs = require('shelljs');
 const sqlString = require('sqlstring');
@@ -16,7 +16,7 @@ const sqlString = require('sqlstring');
 
 export async function configureWordPress() {
 
-	// Set up the mysql connection
+	// Set up the mysql2 connection
 	let connection = false;
 	while(!connection) {
 
@@ -31,6 +31,7 @@ export async function configureWordPress() {
 				type: 'input',
 				name: 'dbUser',
 				message: 'What is the database username?',
+				default: 'root',
 				validate: function(input) {
 					return input !== '';
 				}
@@ -44,7 +45,7 @@ export async function configureWordPress() {
 		];
 		var configAnswers = await inquirer.prompt(questions);
 
-		connection = await mysql.createConnection({
+		connection = await mysql2.createConnection({
 			host     : configAnswers.dbHost,
 			user     : configAnswers.dbUser,
 			password : configAnswers.dbPassword
@@ -104,6 +105,8 @@ export async function configureWordPress() {
 					validDatabase = false;
 				});
 	}
+
+	connection.end();
 	
 	// Use WP CLI to create the wp-config.php file
 	let wpConfigCreateCmd 	= 'wp config create';
@@ -111,7 +114,6 @@ export async function configureWordPress() {
 	wpConfigCreateCmd 		+= ' --dbuser=' + configAnswers.dbUser;
 	wpConfigCreateCmd 		+= ' --dbpass=' + configAnswers.dbPassword;
 	wpConfigCreateCmd 		+= ' --dbname=' + databaseAnswers.dbName;
-	wpConfigCreateCmd 		+= ' --force';
 	shelljs.exec(wpConfigCreateCmd);
 
 	return true;
@@ -201,13 +203,12 @@ export async function installTheme(repo, localName) {
 	let cmd = 'git clone';
 	cmd		+= ' ' + repo;
 	cmd		+= ' ' + path;
+	cmd		+= ' --progress --verbose';
 	shelljs.exec(cmd);
-
-	return true;
 }
 
 export async function installWonderPress() {
-	let cmd = 'git clone https://github.com/wndrfl/wonderpress.git .tmp';
+	let cmd = 'git clone https://github.com/wndrfl/wonderpress.git .tmp --progress --verbose';
 	shelljs.exec(cmd);
 	shelljs.exec('rm -rf .tmp/.git && cp -rp .tmp/ . && rm -rf .tmp');
 }
@@ -220,6 +221,7 @@ export async function installWordPress() {
 			type: 'input',
 			name: 'url',
 			message: 'What is the url you would like to use for development?',
+			default: 'wonderpress.localhost',
 			validate: function(input) {
 				return input !== '';
 			}
@@ -228,6 +230,7 @@ export async function installWordPress() {
 			type: 'input',
 			name: 'title',
 			message: 'What is the title of the site?',
+			default: 'wonderpress',
 			validate: function(input) {
 				return input !== '';
 			}
@@ -343,12 +346,14 @@ export async function setup() {
 			type: 'confirm',
 			name: 'confirm',
 			message: 'Would you like to install the Bebop WordPress Theme?',
-			default: false
+			default: true
 		}
 	]);
 	if(installBebopAnswer.confirm) {
 		await installBebopTheme();
 	}
+
+	return true;
 }
 
 export async function upgradeWonderPress() {

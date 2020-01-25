@@ -2,10 +2,12 @@ import arg from 'arg';
 import inquirer from 'inquirer';
 import { configureWordPress, installBebopTheme, lintTheme, setup, upgradeWonderPress } from './main';
 
+const shelljs = require('shelljs');
+
 function parseArgumentsIntoOptions(rawArgs) {
  const args = arg(
    {
-     // '--git': Boolean,
+     '--clean-slate': Boolean,
      // '--yes': Boolean,
      // '--install': Boolean,
      // '-g': '--git',
@@ -17,7 +19,7 @@ function parseArgumentsIntoOptions(rawArgs) {
    }
  );
  return {
-   // skipPrompts: args['--yes'] || false,
+   cleanSlate: args['--clean-slate'] || false,
    // git: args['--git'] || false,
    // fn: args._[0],
    // runInstall: args['--install'] || false,
@@ -85,6 +87,13 @@ async function promptForMissingOptions(options) {
 export async function cli(args) {
 	
   let options = parseArgumentsIntoOptions(args);
+
+  // Clear the entire directory?
+  if(options.cleanSlate) {
+    console.log('🚨 Clearing the entire directory (clean slate!)');
+    shelljs.exec('rm -rf ./*');
+  }
+
   options = await promptForMissingOptions(options);
 
   switch(options.fn) {
@@ -104,5 +113,4 @@ export async function cli(args) {
       await upgradeWonderPress();
       break;
   }
-
 }
