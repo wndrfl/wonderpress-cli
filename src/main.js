@@ -1,18 +1,10 @@
 import inquirer from 'inquirer';
 
-Array.prototype.asyncForEach = async function(callback, thisArg) {
-  thisArg = thisArg || this
-  for (let i = 0, l = this.length; i !== l; ++i) {
-    await callback.call(thisArg, this[i], i, this)
-  }
-}
-
 const fs = require("fs");
 const mysql2 = require('mysql2/promise');
 const pathToThemesDir = './wp-content/themes';
 const shelljs = require('shelljs');
 const sqlString = require('sqlstring');
-
 
 export async function configureWordPress() {
 
@@ -129,11 +121,9 @@ export async function downloadWordPress() {
 	return true;
 }
 
-export async function installBebopTheme(localName) {
-	localName = localName || 'bebop';
-
-	let repo = 'https://github.com/wndrfl/bebop.git';
-	await installTheme(repo, localName);
+export async function installBebopTheme(opts) {
+	let url = 'https://github.com/wndrfl/bebop/archive/master.zip';
+	await installTheme(url, opts);
 	return true;
 }
 
@@ -146,64 +136,31 @@ export async function installComposer() {
 	return true;
 }
 
-export async function installTheme(repo, localName) {
+export async function installTheme(url, opts) {
 
-	await createThemesDirectory();
-
-	// What should we name the theme?
-	if(!localName) {
-		let answer = await inquirer.prompt([
-			{
-				type: 'input',
-				name: 'localName',
-				message: 'What would you like to name this theme?',
-				filter: function(input) {
-
-					const a = 'àáâäæãåāăąçćčđďèéêëēėęěğǵḧîïíīįìłḿñńǹňôöòóœøōõőṕŕřßśšşșťțûüùúūǘůűųẃẍÿýžźż·/_,:;'
-					const b = 'aaaaaaaaaacccddeeeeeeeegghiiiiiilmnnnnoooooooooprrsssssttuuuuuuuuuwxyyzzz------'
-					const p = new RegExp(a.split('').join('|'), 'g')
-
-					return string.toString().toLowerCase()
-						.replace(/\s+/g, '-') // Replace spaces with -
-						.replace(p, c => b.charAt(a.indexOf(c))) // Replace special characters
-						.replace(/&/g, '-and-') // Replace & with 'and'
-						.replace(/[^\w\-]+/g, '') // Remove all non-word characters
-						.replace(/\-\-+/g, '-') // Replace multiple - with single -
-						.replace(/^-+/, '') // Trim - from start of text
-						.replace(/-+$/, '') // Trim - from end of text
-				},
-				validate: function(input) {
-					return input !== '';
-				}
-			}
-		]);
-
-		localName = answer.localName;
-	}
-
-	// Make path to themes dir
-	let path = pathToThemesDir + '/' + localName;
-	if (fs.existsSync(path)) {
-		let overwriteThemeAnswer = await inquirer.prompt([
+	let cmd = 'wp theme install';
+	cmd 	+= ' ' + url;
+	cmd 	+= ' --color';
+	
+	// Should we activate this theme?
+	let activate = opts.activate;
+	if(!opts.hasOwnProperty('activate')) {
+		let activateAnswer = await inquirer.prompt([
 			{
 				type: 'confirm',
 				name: 'confirm',
-				message: 'This theme already exists. Do you want to overwrite it?',
-				default: false
+				message: 'Would you like to activate this theme as well?',
+				default: true
 			}
 		]);
-		if(!overwriteThemeAnswer.confirm) {
-			return false;
-		}else{
-			shelljs.exec('rm -rf ' + path);
+		if(activateAnswer.confirm) {
+			activate = true;
 		}
 	}
+	if(activate) {
+		cmd += ' --activate';
+	}
 
-	// Clone repo into themes directory
-	let cmd = 'git clone';
-	cmd		+= ' ' + repo;
-	cmd		+= ' ' + path;
-	cmd		+= ' --progress --verbose';
 	shelljs.exec(cmd);
 }
 
@@ -332,7 +289,7 @@ export async function lintTheme(name) {
 
 export async function setup() {
 
-	console.log('Setting up WonderPress...');
+	console.log('✨ Setting up WonderPress...');
 
 	await installWPCLI();
 	await downloadWordPress();
@@ -350,8 +307,12 @@ export async function setup() {
 		}
 	]);
 	if(installBebopAnswer.confirm) {
-		await installBebopTheme();
+		await installBebopTheme({
+			activate: true
+		});
 	}
+
+	console.log('👍 All done.');
 
 	return true;
 }
