@@ -104,12 +104,6 @@ export async function configureWordPress() {
 					validDatabase = false;
 				});
 	}
-
-	// Close the connection
-	await connection.end()
-			.catch((err) => {
-				console.warn(err)
-			});
 	
 	// Use WP CLI to create the wp-config.php file
 	let wpConfigCreateCmd 	= 'wp config create';
@@ -215,7 +209,7 @@ export async function installTheme(repo, localName) {
 export async function installWonderPress() {
 	let cmd = 'git clone https://github.com/wndrfl/wonderpress.git .tmp';
 	shelljs.exec(cmd);
-	shelljs.exec('rm -rf .tmp/.git && cp -rpv .tmp/ . && rm -rf .tmp');
+	shelljs.exec('rm -rf .tmp/.git && cp -rp .tmp/ . && rm -rf .tmp');
 }
 
 export async function installWordPress() {
