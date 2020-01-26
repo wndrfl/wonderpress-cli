@@ -341,7 +341,3 @@ export async function setup() {
 
 	return true;
 }
-
-export async function upgradeWonderPress() {
-	await installWonderPress();
-}

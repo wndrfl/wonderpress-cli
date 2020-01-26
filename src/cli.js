@@ -1,8 +1,10 @@
 import arg from 'arg';
 import inquirer from 'inquirer';
-import { configureWordPress, installBebopTheme, lintTheme, setup, upgradeWonderPress } from './main';
+import { configureWordPress, installBebopTheme, lintTheme, setup } from './main';
 
 const shelljs = require('shelljs');
+
+const defaultFn = 'setup';
 
 function parseArgumentsIntoOptions(rawArgs) {
  const args = arg(
@@ -21,7 +23,7 @@ function parseArgumentsIntoOptions(rawArgs) {
  return {
    cleanSlate: args['--clean-slate'] || false,
    // git: args['--git'] || false,
-   // fn: args._[0],
+   fn: args._[0],
    // runInstall: args['--install'] || false,
  };
 }
@@ -30,11 +32,10 @@ async function promptForMissingOptions(options) {
  if (options.skipPrompts) {
    return {
      ...options,
-     // fn: options.fn || defaultFn,
+     fn: options.fn || defaultFn,
    };
  }
 
- const defaultFn = 'setup';
  const questions = [];
  if (!options.fn) {
    questions.push({
@@ -57,10 +58,6 @@ async function promptForMissingOptions(options) {
        {
          'name': 'Lint a theme',
          'value': 'lint'
-       },
-       {
-         'name': 'Upgrade WonderPress',
-         'value': 'upgrade_wonderpress'
        }
      ],
      default: defaultFn,
@@ -108,9 +105,6 @@ export async function cli(args) {
       break;
     case 'lint':
       await lintTheme();
-      break;
-    case 'upgrade_wonderpress':
-      await upgradeWonderPress();
       break;
   }
 }
