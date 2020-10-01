@@ -1,6 +1,6 @@
 import arg from 'arg';
 import inquirer from 'inquirer';
-import { configureWordPress, installBebopTheme, lintTheme, setup } from './main';
+import { configureWordPress, installBrassTacksTheme, lintTheme, setup } from './main';
 
 const shelljs = require('shelljs');
 
@@ -53,7 +53,7 @@ async function promptForMissingOptions(options) {
        },
 	     {
 	     	'name': 'Install Bebop',
-	     	'value': 'install_bebop'
+	     	'value': 'install_brass_tacks'
 	     },
        {
          'name': 'Lint a theme',
@@ -100,8 +100,8 @@ export async function cli(args) {
     case 'configure_wordpress':
       await configureWordPress();
       break;
-    case 'install_bebop':
-      await installBebopTheme();
+    case 'install_brass_tacks':
+      await installBrassTacksTheme();
       break;
     case 'lint':
       await lintTheme();

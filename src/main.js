@@ -146,8 +146,8 @@ export async function downloadWordPress() {
 	return true;
 }
 
-export async function installBebopTheme(opts) {
-	let url = 'https://github.com/wndrfl/bebop/archive/master.zip';
+export async function installBrassTacksTheme(opts) {
+	let url = 'https://github.com/wndrfl/brass-tacks/archive/master.zip';
 	await installTheme(url, opts);
 	return true;
 }
@@ -323,16 +323,16 @@ export async function setup() {
 	await installWordPress();
 	await installComposer();
 
-	let installBebopAnswer = await inquirer.prompt([
+	let installBrassTacksAnswer = await inquirer.prompt([
 		{
 			type: 'confirm',
 			name: 'confirm',
-			message: 'Would you like to install the Bebop WordPress Theme?',
+			message: 'Would you like to install the Brass Tacks WordPress Theme?',
 			default: true
 		}
 	]);
-	if(installBebopAnswer.confirm) {
-		await installBebopTheme({
+	if(installBrassTacksAnswer.confirm) {
+		await installBrassTacksTheme({
 			activate: true
 		});
 	}
