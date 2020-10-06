@@ -290,7 +290,7 @@ export async function lintTheme(name) {
 
 	let cmd = './vendor/bin/phpcs';
 	cmd		+= ' ' + path;
-	cmd		+= ' -p -v --colors --standard=WordPress-Core --ignore=*/node_modules/*,*/css/*,*/js/*';
+	cmd		+= ' -p -v --colors';
 	shelljs.exec(cmd);
 
 	let fixAnswer = await inquirer.prompt([
@@ -304,7 +304,7 @@ export async function lintTheme(name) {
 	if(fixAnswer.confirm) {
 		let fixCmd = './vendor/bin/phpcbf';
 		fixCmd 		+= ' ' + path;
-		fixCmd		+= ' -p -v --colors --standard=WordPress-Core --ignore=*/node_modules/*,*/css/*,*/js/*';
+		fixCmd		+= ' -p -v --colors';
 		shelljs.exec(fixCmd);
 	}
 
