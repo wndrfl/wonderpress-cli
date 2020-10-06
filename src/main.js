@@ -149,6 +149,7 @@ export async function downloadWordPress() {
 export async function installBrassTacksTheme(opts) {
 	let url = 'https://github.com/wndrfl/brass-tacks/archive/master.zip';
 	await installTheme(url, opts);
+	shelljs.exec('npm install --prefix ' + pathToThemesDir + '/brass-tacks');
 	return true;
 }
 
@@ -189,8 +190,8 @@ export async function installTheme(url, opts) {
 	shelljs.exec(cmd);
 }
 
-export async function installWonderPress() {
-	let cmd = 'git clone https://github.com/wndrfl/wonderpress.git .tmp --progress --verbose';
+export async function installWonderPressDevelopmentEnvironment() {
+	let cmd = 'git clone https://github.com/wndrfl/wonderpress-development-environment.git .tmp --progress --verbose';
 	shelljs.exec(cmd);
 	shelljs.exec('rm -rf .tmp/.git && cp -rp .tmp/ . && rm -rf .tmp');
 }
@@ -318,7 +319,7 @@ export async function setup() {
 
 	await installWPCLI();
 	await downloadWordPress();
-	await installWonderPress();
+	await installWonderPressDevelopmentEnvironment();
 	await configureWordPress();
 	await installWordPress();
 	await installComposer();
