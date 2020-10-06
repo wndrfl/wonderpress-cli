@@ -1,6 +1,6 @@
 import arg from 'arg';
 import inquirer from 'inquirer';
-import { configureWordPress, installBrassTacksTheme, lintTheme, setup } from './main';
+import { configureWordPress, installWonderpressTheme, lintTheme, setup } from './main';
 
 const shelljs = require('shelljs');
 
@@ -44,7 +44,7 @@ async function promptForMissingOptions(options) {
      message: 'What would you like to do?',
      choices: [
        {
-         'name': 'Setup WonderPress',
+         'name': 'Setup Wonderpress Development Environment',
          'value': 'setup'
        },
        {
@@ -52,8 +52,8 @@ async function promptForMissingOptions(options) {
          'value': 'configure_wordpress'
        },
 	     {
-	     	'name': 'Install Bebop',
-	     	'value': 'install_brass_tacks'
+	     	'name': 'Install Wonderpress Theme',
+	     	'value': 'install_wonderpress_theme'
 	     },
        {
          'name': 'Lint a theme',
@@ -100,8 +100,8 @@ export async function cli(args) {
     case 'configure_wordpress':
       await configureWordPress();
       break;
-    case 'install_brass_tacks':
-      await installBrassTacksTheme();
+    case 'install_wonderpress_theme':
+      await installWonderpressTheme();
       break;
     case 'lint':
       await lintTheme();

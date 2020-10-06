@@ -146,10 +146,10 @@ export async function downloadWordPress() {
 	return true;
 }
 
-export async function installBrassTacksTheme(opts) {
-	let url = 'https://github.com/wndrfl/brass-tacks/archive/master.zip';
+export async function installWonderpressTheme(opts) {
+	let url = 'https://github.com/wndrfl/wonderpress-theme/archive/master.zip';
 	await installTheme(url, opts);
-	shelljs.exec('npm install --prefix ' + pathToThemesDir + '/brass-tacks');
+	shelljs.exec('mv ' + pathToThemesDir + '/wonderpress-theme ' + pathToThemesDir + '/wonderpress && npm install --prefix ' + pathToThemesDir + '/wonderpress');
 	return true;
 }
 
@@ -190,7 +190,7 @@ export async function installTheme(url, opts) {
 	shelljs.exec(cmd);
 }
 
-export async function installWonderPressDevelopmentEnvironment() {
+export async function installWonderpressDevelopmentEnvironment() {
 	let cmd = 'git clone https://github.com/wndrfl/wonderpress-development-environment.git .tmp --progress --verbose';
 	shelljs.exec(cmd);
 	shelljs.exec('rm -rf .tmp/.git && cp -rp .tmp/ . && rm -rf .tmp');
@@ -315,25 +315,25 @@ export async function lintTheme(name) {
 
 export async function setup() {
 
-	_info('✨ Setting up WonderPress...');
+	_info('✨ Setting up Wonderpress...');
 
 	await installWPCLI();
 	await downloadWordPress();
-	await installWonderPressDevelopmentEnvironment();
+	await installWonderpressDevelopmentEnvironment();
 	await configureWordPress();
 	await installWordPress();
 	await installComposer();
 
-	let installBrassTacksAnswer = await inquirer.prompt([
+	let installWonderpressThemeAnswer = await inquirer.prompt([
 		{
 			type: 'confirm',
 			name: 'confirm',
-			message: 'Would you like to install the Brass Tacks WordPress Theme?',
+			message: 'Would you like to install the Wonderpress WordPress Theme?',
 			default: true
 		}
 	]);
-	if(installBrassTacksAnswer.confirm) {
-		await installBrassTacksTheme({
+	if(installWonderpressThemeAnswer.confirm) {
+		await installWonderpressTheme({
 			activate: true
 		});
 	}
