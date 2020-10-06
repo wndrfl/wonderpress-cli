@@ -149,7 +149,7 @@ export async function downloadWordPress() {
 export async function installWonderpressTheme(opts) {
 	let url = 'https://github.com/wndrfl/wonderpress-theme/archive/master.zip';
 	await installTheme(url, opts);
-	shelljs.exec('mv ' + pathToThemesDir + '/wonderpress-theme ' + pathToThemesDir + '/wonderpress && npm install --prefix ' + pathToThemesDir + '/wonderpress');
+	shelljs.exec('npm install --prefix ' + pathToThemesDir + '/wonderpress');
 	return true;
 }
 
