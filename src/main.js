@@ -1,10 +1,11 @@
 import inquirer from 'inquirer';
 
 var colors = require('colors');
-const fs = require("fs");
+const fs = require('fs');
 const mysql2 = require('mysql2/promise');
+const open = require('open');
 const pathToThemesDir = './wp-content/themes';
-const shelljs = require('shelljs');
+const sh = require('shelljs');
 const sqlString = require('sqlstring');
 
 // Stylize console output
@@ -131,32 +132,52 @@ export async function configureWordPress() {
 	wpConfigCreateCmd 		+= ' --dbuser=' + configAnswers.dbUser;
 	wpConfigCreateCmd 		+= ' --dbpass=' + configAnswers.dbPassword;
 	wpConfigCreateCmd 		+= ' --dbname=' + databaseAnswers.dbName;
-	shelljs.exec(wpConfigCreateCmd);
+	sh.exec(wpConfigCreateCmd);
 
 	return true;
 }
 
 export async function createThemesDirectory() {
-	shelljs.mkdir('-p', pathToThemesDir);
+	sh.mkdir('-p', pathToThemesDir);
 	return true;
 }
 
 export async function downloadWordPress() {
-	shelljs.exec('wp core download --skip-content --force');
+	sh.exec('wp core download --skip-content --force');
 	return true;
+}
+
+export async function getActiveTheme() {
+
+	_info('Grabbing the currently active theme...');
+
+	let themes = JSON.parse(sh.exec('wp theme list --status=active --format=json', { silent: true }));
+
+	if(!themes.length) {
+		_error('There are no active themes.');
+		return false;
+	}
+
+	if(themes.length > 1) {
+		_error('Somehow there is more than 1 active theme. Beats me.');
+		return false;
+	}
+
+	_info('Current active theme: ' + themes[0].name);
+	return themes[0];
 }
 
 export async function installWonderpressTheme(opts) {
 	let url = 'https://github.com/wndrfl/wonderpress-theme/archive/master.zip';
 	await installTheme(url, opts);
-	shelljs.exec('npm install --prefix ' + pathToThemesDir + '/wonderpress-theme');
+	sh.exec('npm install --prefix ' + pathToThemesDir + '/wonderpress-theme');
 	return true;
 }
 
 export async function installComposer() {
 	if (await !fs.existsSync('./vendor')) {
 		_info('Installing Composer packages...');
-		shelljs.exec('composer install');
+		sh.exec('composer install');
 	}
 
 	return true;
@@ -187,13 +208,13 @@ export async function installTheme(url, opts) {
 		cmd += ' --activate';
 	}
 
-	shelljs.exec(cmd);
+	sh.exec(cmd);
 }
 
 export async function installWonderpressDevelopmentEnvironment() {
 	let cmd = 'git clone https://github.com/wndrfl/wonderpress-development-environment.git .tmp --progress --verbose';
-	shelljs.exec(cmd);
-	shelljs.exec('rm -rf .tmp/.git && cp -rp .tmp/ . && rm -rf .tmp');
+	sh.exec(cmd);
+	sh.exec('rm -rf .tmp/.git && cp -rp .tmp/ . && rm -rf .tmp');
 }
 
 export async function installWordPress() {
@@ -244,7 +265,7 @@ export async function installWordPress() {
 	wpInstallCmd 		+= ' --admin_user=' + installAnswers.adminUser;
 	wpInstallCmd 		+= ' --admin_password=' + installAnswers.adminPassword;
 	wpInstallCmd 		+= ' --admin_email=' + installAnswers.adminEmail;
-	shelljs.exec(wpInstallCmd);
+	sh.exec(wpInstallCmd);
 
 	return true;
 }
@@ -252,10 +273,10 @@ export async function installWordPress() {
 
 export async function installWPCLI() {
 	// Install `wp-cli` latest release
-	if (!shelljs.which('wp')) {
+	if (!sh.which('wp')) {
 		_info('Downloading and installing WP CLI');
-		shelljs.exec('curl -O https://raw.githubusercontent.com/wp-cli/builds/gh-pages/phar/wp-cli.phar');
-		shelljs.exec('mv wp-cli.phar wp-cli');
+		sh.exec('curl -O https://raw.githubusercontent.com/wp-cli/builds/gh-pages/phar/wp-cli.phar');
+		sh.exec('mv wp-cli.phar wp-cli');
 	}
 
 	return true;
@@ -267,24 +288,9 @@ export async function lintTheme(name) {
 
 	await createThemesDirectory();
 
-	let dirs = await fs.readdirSync(pathToThemesDir, { withFileTypes: true })
-	    .filter(dirent => dirent.isDirectory())
-	    .map(dirent => dirent.name);
-
 	if(!name) {
-		let answer = await inquirer.prompt([
-			{
-				type: 'list',
-				name: 'name',
-				message: 'Which theme would you like to lint?',
-				choices: dirs,
-				validate: function(input) {
-					return input !== '';
-				}
-			}
-		]);
-
-		name = answer.name;
+		let theme = await getActiveTheme();
+		name = theme.name;
 	}
 
 	let path = pathToThemesDir + '/' + name;
@@ -292,7 +298,7 @@ export async function lintTheme(name) {
 	let cmd = './vendor/bin/phpcs';
 	cmd		+= ' ' + path;
 	cmd		+= ' -p -v --colors';
-	shelljs.exec(cmd);
+	sh.exec(cmd);
 
 	let fixAnswer = await inquirer.prompt([
 		{
@@ -306,7 +312,7 @@ export async function lintTheme(name) {
 		let fixCmd = './vendor/bin/phpcbf';
 		fixCmd 		+= ' ' + path;
 		fixCmd		+= ' -p -v --colors';
-		shelljs.exec(fixCmd);
+		sh.exec(fixCmd);
 	}
 
 	return true;
@@ -341,4 +347,11 @@ export async function setup() {
 	_success('All done.');
 
 	return true;
+}
+
+export async function startServer() {
+	getActiveTheme();
+	_info('Starting development server...');
+	// open('http://localhost:8080');
+	sh.exec('wp server');
 }
