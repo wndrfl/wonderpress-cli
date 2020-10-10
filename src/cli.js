@@ -1,6 +1,6 @@
 import arg from 'arg';
 import inquirer from 'inquirer';
-import { configureWordPress, installWonderpressTheme, lintTheme, setup, startServer } from './main';
+import { configureWordPress, createReadme, installWonderpressTheme, lintTheme, setup, startServer } from './main';
 
 const shelljs = require('shelljs');
 
@@ -100,6 +100,9 @@ export async function cli(args) {
       break;
     case 'install_wonderpress_theme':
       await installWonderpressTheme();
+      break;
+    case 'readme':
+      await createReadme();
       break;
   }
 }
