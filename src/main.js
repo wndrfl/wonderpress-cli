@@ -1,37 +1,15 @@
 import inquirer from 'inquirer';
 
-var colors = require('colors');
+const log = require('./log');
+
 const fs = require('fs');
 const mysql2 = require('mysql2/promise');
 const open = require('open');
 const pathToThemesDir = './wp-content/themes';
 const sh = require('shelljs');
 const sqlString = require('sqlstring');
-const mustache = require('mustache');
 
-// Stylize console output
-colors.setTheme({
-	info: ['bold','white'],
-	warn: 'yellow',
-	success: ['bold','green'],
-	error: ['bold','red']
-});
 
-function _error(msg) {
-	console.log('☠️ ' + msg.error);
-}
-
-function _info(msg) {
-	console.log(msg.info);
-}
-
-function _success(msg) {
-	console.log('👍 ' + msg.success);
-}
-
-function _warn(msg) {
-	console.log('🚨 ' + msg.warn);
-}
 
 export async function configureWordPress() {
 
@@ -70,7 +48,7 @@ export async function configureWordPress() {
 			password : configAnswers.dbPassword
 		})
 		.catch(() => {
-			_error('The hostname / username / password combination you entered wasn\'t correct. Try again?');
+			log.error('The hostname / username / password combination you entered wasn\'t correct. Try again?');
 			connection = false;
 		});
 
@@ -109,7 +87,7 @@ export async function configureWordPress() {
 					if(createAnswer.confirm) {
 						await connection.execute("CREATE DATABASE " + sqlString.escapeId(databaseAnswers.dbName))
 								.then(() => {
-									_success('The database `' + databaseAnswers.dbName + '` was created!');
+									log.success('The database `' + databaseAnswers.dbName + '` was created!');
 									validDatabase = true;
 								})
 								.catch((err) => {
@@ -138,74 +116,6 @@ export async function configureWordPress() {
 	return true;
 }
 
-export async function createReadme() {
-
-	_info('Creating README.md...');
-
-	let path = require.resolve('./readme.md');
-	let data = fs.readFileSync(path, 'utf8');
-
-	try {
-
-		let readmeAnswers = await inquirer.prompt([
-			{
-				type: 'input',
-				name: 'project_name',
-				message: 'What is the human-friendly name of this project?',
-				default: 'Wonderpress'
-			},
-			{
-				type: 'input',
-				name: 'project_description',
-				message: 'Write a brief description of this project.',
-				default: function(answers) {
-					return 'The official WordPress environment for ' + answers.project_name;
-				}
-			},
-			{
-				type: 'confirm',
-				name: 'has_github',
-				message: 'Is there a Github repository for this project?',
-				default: false
-			},
-			{
-				type: 'input',
-				name: 'github_url',
-				message: 'What is the Github URL for this project?',
-				when: function(answers) {
-					return answers.has_github;
-				}
-			},
-			{
-				type: 'input',
-				name: 'production_url',
-				message: 'What will the Production URL of this project be?',
-				default: 'TBD'
-			},
-			{
-				type: 'input',
-				name: 'stage_url',
-				message: 'What will the Stage URL of this project be?',
-				default: 'TBD'
-			},
-			{
-				type: 'input',
-				name: 'dev_url',
-				message: 'What will the Dev URL of this project be?',
-				default: 'TBD'
-			}
-		]);
-		var output = mustache.render(data, readmeAnswers);
-
-		await sh.exec(`cat > README.md <<EOF
-${output}`);
-
-	} catch(err) {
-		_error(err);
-	}
-
-}
-
 export async function createThemesDirectory() {
 	sh.mkdir('-p', pathToThemesDir);
 	return true;
@@ -218,21 +128,21 @@ export async function downloadWordPress() {
 
 export async function getActiveTheme() {
 
-	_info('Grabbing the currently active theme...');
+	log.info('Grabbing the currently active theme...');
 
 	let themes = JSON.parse(sh.exec('wp theme list --status=active --format=json', { silent: true }));
 
 	if(!themes.length) {
-		_error('There are no active themes.');
+		log.error('There are no active themes.');
 		return false;
 	}
 
 	if(themes.length > 1) {
-		_error('Somehow there is more than 1 active theme. Beats me.');
+		log.error('Somehow there is more than 1 active theme. Beats me.');
 		return false;
 	}
 
-	_info('Current active theme: ' + themes[0].name);
+	log.info('Current active theme: ' + themes[0].name);
 	return themes[0];
 }
 
@@ -245,7 +155,7 @@ export async function installWonderpressTheme(opts) {
 
 export async function installComposer() {
 	if (await !fs.existsSync('./vendor')) {
-		_info('Installing Composer packages...');
+		log.info('Installing Composer packages...');
 		sh.exec('composer install');
 	}
 
@@ -343,7 +253,7 @@ export async function installWordPress() {
 export async function installWPCLI() {
 	// Install `wp-cli` latest release
 	if (!sh.which('wp')) {
-		_info('Downloading and installing WP CLI');
+		log.info('Downloading and installing WP CLI');
 		sh.exec('curl -O https://raw.githubusercontent.com/wp-cli/builds/gh-pages/phar/wp-cli.phar');
 		sh.exec('mv wp-cli.phar wp-cli');
 	}
@@ -390,7 +300,7 @@ export async function lintTheme(name) {
 
 export async function setup() {
 
-	_info('✨ Setting up Wonderpress...');
+	log.info('✨ Setting up Wonderpress...');
 
 	await installWPCLI();
 	await downloadWordPress();
@@ -413,14 +323,14 @@ export async function setup() {
 		});
 	}
 
-	_success('All done.');
+	log.success('All done.');
 
 	return true;
 }
 
 export async function startServer() {
 	getActiveTheme();
-	_info('Starting development server...');
+	log.info('Starting development server...');
 	// open('http://localhost:8080');
 	sh.exec('wp server');
 }

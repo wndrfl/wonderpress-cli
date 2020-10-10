@@ -1,6 +1,7 @@
 import arg from 'arg';
 import inquirer from 'inquirer';
-import { configureWordPress, createReadme, installWonderpressTheme, lintTheme, setup, startServer } from './main';
+import { configureWordPress, installWonderpressTheme, lintTheme, setup, startServer } from './main';
+import { createReadme } from './readme';
 
 const shelljs = require('shelljs');
 
