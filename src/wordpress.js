@@ -1,15 +1,11 @@
 import inquirer from 'inquirer';
 
 const log = require('./log');
-
-const fs = require('fs');
 const mysql2 = require('mysql2/promise');
-const open = require('open');
-const pathToThemesDir = './wp-content/themes';
 const sh = require('shelljs');
-const sqlString = require('sqlstring');
 
-
+const pathToThemesDir = './wp-content/themes';
+exports.pathToThemesDir = pathToThemesDir;
 
 export async function configureWordPress() {
 
@@ -146,56 +142,6 @@ export async function getActiveTheme() {
 	return themes[0];
 }
 
-export async function installWonderpressTheme(opts) {
-	let url = 'https://github.com/wndrfl/wonderpress-theme/archive/master.zip';
-	await installTheme(url, opts);
-	sh.exec('npm install --prefix ' + pathToThemesDir + '/wonderpress-theme');
-	return true;
-}
-
-export async function installComposer() {
-	if (await !fs.existsSync('./vendor')) {
-		log.info('Installing Composer packages...');
-		sh.exec('composer install');
-	}
-
-	return true;
-}
-
-export async function installTheme(url, opts) {
-
-	let cmd = 'wp theme install';
-	cmd 	+= ' ' + url;
-	cmd 	+= ' --color';
-	
-	// Should we activate this theme?
-	let activate = opts.activate;
-	if(!opts.hasOwnProperty('activate')) {
-		let activateAnswer = await inquirer.prompt([
-			{
-				type: 'confirm',
-				name: 'confirm',
-				message: 'Would you like to activate this theme as well?',
-				default: true
-			}
-		]);
-		if(activateAnswer.confirm) {
-			activate = true;
-		}
-	}
-	if(activate) {
-		cmd += ' --activate';
-	}
-
-	sh.exec(cmd);
-}
-
-export async function installWonderpressDevelopmentEnvironment() {
-	let cmd = 'git clone https://github.com/wndrfl/wonderpress-development-environment.git .tmp --progress --verbose';
-	sh.exec(cmd);
-	sh.exec('rm -rf .tmp/.git && cp -rp .tmp/ . && rm -rf .tmp');
-}
-
 export async function installWordPress() {
 
 	// Ask questions about installation parameters
@@ -249,88 +195,30 @@ export async function installWordPress() {
 	return true;
 }
 
+export async function installTheme(url, opts) {
 
-export async function installWPCLI() {
-	// Install `wp-cli` latest release
-	if (!sh.which('wp')) {
-		log.info('Downloading and installing WP CLI');
-		sh.exec('curl -O https://raw.githubusercontent.com/wp-cli/builds/gh-pages/phar/wp-cli.phar');
-		sh.exec('mv wp-cli.phar wp-cli');
+	let cmd = 'wp theme install';
+	cmd 	+= ' ' + url;
+	cmd 	+= ' --color';
+	
+	// Should we activate this theme?
+	let activate = opts.activate;
+	if(!opts.hasOwnProperty('activate')) {
+		let activateAnswer = await inquirer.prompt([
+			{
+				type: 'confirm',
+				name: 'confirm',
+				message: 'Would you like to activate this theme as well?',
+				default: true
+			}
+		]);
+		if(activateAnswer.confirm) {
+			activate = true;
+		}
+	}
+	if(activate) {
+		cmd += ' --activate';
 	}
 
-	return true;
-}
-
-export async function lintTheme(name) {
-
-	await installComposer();
-
-	await createThemesDirectory();
-
-	if(!name) {
-		let theme = await getActiveTheme();
-		name = theme.name;
-	}
-
-	let path = pathToThemesDir + '/' + name;
-
-	let cmd = './vendor/bin/phpcs';
-	cmd		+= ' ' + path;
-	cmd		+= ' -p -v --colors';
 	sh.exec(cmd);
-
-	let fixAnswer = await inquirer.prompt([
-		{
-			type: 'confirm',
-			name: 'confirm',
-			message: 'Would you like to automatically fix as many of these as possible?',
-			default: false
-		}
-	]);
-	if(fixAnswer.confirm) {
-		let fixCmd = './vendor/bin/phpcbf';
-		fixCmd 		+= ' ' + path;
-		fixCmd		+= ' -p -v --colors';
-		sh.exec(fixCmd);
-	}
-
-	return true;
-}
-
-
-export async function setup() {
-
-	log.info('✨ Setting up Wonderpress...');
-
-	await installWPCLI();
-	await downloadWordPress();
-	await installWonderpressDevelopmentEnvironment();
-	await configureWordPress();
-	await installWordPress();
-	await installComposer();
-
-	let installWonderpressThemeAnswer = await inquirer.prompt([
-		{
-			type: 'confirm',
-			name: 'confirm',
-			message: 'Would you like to install the Wonderpress WordPress Theme?',
-			default: true
-		}
-	]);
-	if(installWonderpressThemeAnswer.confirm) {
-		await installWonderpressTheme({
-			activate: true
-		});
-	}
-
-	log.success('All done.');
-
-	return true;
-}
-
-export async function startServer() {
-	getActiveTheme();
-	log.info('Starting development server...');
-	// open('http://localhost:8080');
-	sh.exec('wp server');
 }
