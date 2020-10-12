@@ -1,36 +1,11 @@
 import inquirer from 'inquirer';
 
-var colors = require('colors');
-const fs = require('fs');
+const log = require('./log');
 const mysql2 = require('mysql2/promise');
-const open = require('open');
-const pathToThemesDir = './wp-content/themes';
 const sh = require('shelljs');
-const sqlString = require('sqlstring');
 
-// Stylize console output
-colors.setTheme({
-	info: ['bold','white'],
-	warn: 'yellow',
-	success: ['bold','green'],
-	error: ['bold','red']
-});
-
-function _error(msg) {
-	console.log('☠️ ' + msg.error);
-}
-
-function _info(msg) {
-	console.log(msg.info);
-}
-
-function _success(msg) {
-	console.log('👍 ' + msg.success);
-}
-
-function _warn(msg) {
-	console.log('🚨 ' + msg.warn);
-}
+const pathToThemesDir = './wp-content/themes';
+exports.pathToThemesDir = pathToThemesDir;
 
 export async function configureWordPress() {
 
@@ -69,7 +44,7 @@ export async function configureWordPress() {
 			password : configAnswers.dbPassword
 		})
 		.catch(() => {
-			_error('The hostname / username / password combination you entered wasn\'t correct. Try again?');
+			log.error('The hostname / username / password combination you entered wasn\'t correct. Try again?');
 			connection = false;
 		});
 
@@ -108,7 +83,7 @@ export async function configureWordPress() {
 					if(createAnswer.confirm) {
 						await connection.execute("CREATE DATABASE " + sqlString.escapeId(databaseAnswers.dbName))
 								.then(() => {
-									_success('The database `' + databaseAnswers.dbName + '` was created!');
+									log.success('The database `' + databaseAnswers.dbName + '` was created!');
 									validDatabase = true;
 								})
 								.catch((err) => {
@@ -149,72 +124,22 @@ export async function downloadWordPress() {
 
 export async function getActiveTheme() {
 
-	_info('Grabbing the currently active theme...');
+	log.info('Grabbing the currently active theme...');
 
 	let themes = JSON.parse(sh.exec('wp theme list --status=active --format=json', { silent: true }));
 
 	if(!themes.length) {
-		_error('There are no active themes.');
+		log.error('There are no active themes.');
 		return false;
 	}
 
 	if(themes.length > 1) {
-		_error('Somehow there is more than 1 active theme. Beats me.');
+		log.error('Somehow there is more than 1 active theme. Beats me.');
 		return false;
 	}
 
-	_info('Current active theme: ' + themes[0].name);
+	log.info('Current active theme: ' + themes[0].name);
 	return themes[0];
-}
-
-export async function installWonderpressTheme(opts) {
-	let url = 'https://github.com/wndrfl/wonderpress-theme/archive/master.zip';
-	await installTheme(url, opts);
-	sh.exec('npm install --prefix ' + pathToThemesDir + '/wonderpress-theme');
-	return true;
-}
-
-export async function installComposer() {
-	if (await !fs.existsSync('./vendor')) {
-		_info('Installing Composer packages...');
-		sh.exec('composer install');
-	}
-
-	return true;
-}
-
-export async function installTheme(url, opts) {
-
-	let cmd = 'wp theme install';
-	cmd 	+= ' ' + url;
-	cmd 	+= ' --color';
-	
-	// Should we activate this theme?
-	let activate = opts.activate;
-	if(!opts.hasOwnProperty('activate')) {
-		let activateAnswer = await inquirer.prompt([
-			{
-				type: 'confirm',
-				name: 'confirm',
-				message: 'Would you like to activate this theme as well?',
-				default: true
-			}
-		]);
-		if(activateAnswer.confirm) {
-			activate = true;
-		}
-	}
-	if(activate) {
-		cmd += ' --activate';
-	}
-
-	sh.exec(cmd);
-}
-
-export async function installWonderpressDevelopmentEnvironment() {
-	let cmd = 'git clone https://github.com/wndrfl/wonderpress-development-environment.git .tmp --progress --verbose';
-	sh.exec(cmd);
-	sh.exec('rm -rf .tmp/.git && cp -rp .tmp/ . && rm -rf .tmp');
 }
 
 export async function installWordPress() {
@@ -270,88 +195,30 @@ export async function installWordPress() {
 	return true;
 }
 
+export async function installTheme(url, opts) {
 
-export async function installWPCLI() {
-	// Install `wp-cli` latest release
-	if (!sh.which('wp')) {
-		_info('Downloading and installing WP CLI');
-		sh.exec('curl -O https://raw.githubusercontent.com/wp-cli/builds/gh-pages/phar/wp-cli.phar');
-		sh.exec('mv wp-cli.phar wp-cli');
+	let cmd = 'wp theme install';
+	cmd 	+= ' ' + url;
+	cmd 	+= ' --color';
+	
+	// Should we activate this theme?
+	let activate = opts.activate;
+	if(!opts.hasOwnProperty('activate')) {
+		let activateAnswer = await inquirer.prompt([
+			{
+				type: 'confirm',
+				name: 'confirm',
+				message: 'Would you like to activate this theme as well?',
+				default: true
+			}
+		]);
+		if(activateAnswer.confirm) {
+			activate = true;
+		}
+	}
+	if(activate) {
+		cmd += ' --activate';
 	}
 
-	return true;
-}
-
-export async function lintTheme(name) {
-
-	await installComposer();
-
-	await createThemesDirectory();
-
-	if(!name) {
-		let theme = await getActiveTheme();
-		name = theme.name;
-	}
-
-	let path = pathToThemesDir + '/' + name;
-
-	let cmd = './vendor/bin/phpcs';
-	cmd		+= ' ' + path;
-	cmd		+= ' -p -v --colors';
 	sh.exec(cmd);
-
-	let fixAnswer = await inquirer.prompt([
-		{
-			type: 'confirm',
-			name: 'confirm',
-			message: 'Would you like to automatically fix as many of these as possible?',
-			default: false
-		}
-	]);
-	if(fixAnswer.confirm) {
-		let fixCmd = './vendor/bin/phpcbf';
-		fixCmd 		+= ' ' + path;
-		fixCmd		+= ' -p -v --colors';
-		sh.exec(fixCmd);
-	}
-
-	return true;
-}
-
-
-export async function setup() {
-
-	_info('✨ Setting up Wonderpress...');
-
-	await installWPCLI();
-	await downloadWordPress();
-	await installWonderpressDevelopmentEnvironment();
-	await configureWordPress();
-	await installWordPress();
-	await installComposer();
-
-	let installWonderpressThemeAnswer = await inquirer.prompt([
-		{
-			type: 'confirm',
-			name: 'confirm',
-			message: 'Would you like to install the Wonderpress WordPress Theme?',
-			default: true
-		}
-	]);
-	if(installWonderpressThemeAnswer.confirm) {
-		await installWonderpressTheme({
-			activate: true
-		});
-	}
-
-	_success('All done.');
-
-	return true;
-}
-
-export async function startServer() {
-	getActiveTheme();
-	_info('Starting development server...');
-	// open('http://localhost:8080');
-	sh.exec('wp server');
 }

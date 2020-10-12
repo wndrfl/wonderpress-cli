@@ -1,6 +1,9 @@
 import arg from 'arg';
 import inquirer from 'inquirer';
-import { configureWordPress, installWonderpressTheme, lintTheme, setup, startServer } from './main';
+
+const core = require('./core');
+const lint = require('./lint');
+const readme = require('./readme');
 
 const shelljs = require('shelljs');
 
@@ -27,16 +30,8 @@ function parseArgumentsIntoOptions(rawArgs) {
 
 async function promptForMissingOptions(options) {
 
-  if (options.skipPrompts) {
-    return {
-      ...options,
-      fn: options.fn || defaultFn,
-    };
-  }
-
-  const questions = [];
-  if (!options.fn) {
-    questions.push({
+  const answers = await inquirer.prompt([
+    {
       type: 'list',
       name: 'fn',
       message: 'What would you like to do?',
@@ -50,27 +45,27 @@ async function promptForMissingOptions(options) {
           'value': 'server'
         },
         {
-          'name': 'Configure WordPress',
-          'value': 'configure_wordpress'
-        },
-        {
           'name': 'Install Wonderpress Theme',
           'value': 'install_wonderpress_theme'
         },
         {
           'name': 'Lint a theme',
           'value': 'lint'
+        },
+        {
+          'name': 'Create a README',
+          'value': 'readme'
         }
       ],
       default: defaultFn,
-    });
-  }
+    }
+  ]);
 
-  const answers = await inquirer.prompt(questions);
   return {
     ...options,
     fn: options.fn || answers.fn,
   };
+
 }
 
 export async function cli(args) {
@@ -87,19 +82,19 @@ export async function cli(args) {
 
   switch(options.fn) {
     case 'setup':
-      await setup();
+      await core.setup();
       break;
     case 'server':
-      await startServer();
+      await core.startServer();
       break;
     case 'lint':
-      await lintTheme();
-      break;
-    case 'configure_wordpress':
-      await configureWordPress();
+      await lint.lintTheme();
       break;
     case 'install_wonderpress_theme':
-      await installWonderpressTheme();
+      await core.installWonderpressTheme();
+      break;
+    case 'readme':
+      await readme.createReadme();
       break;
   }
 }
