@@ -51,6 +51,10 @@ async function promptForMissingOptions(options) {
         {
           'name': 'Lint a theme',
           'value': 'lint'
+        },
+        {
+          'name': 'Create a README',
+          'value': 'readme'
         }
       ],
       default: defaultFn,
@@ -61,7 +65,7 @@ async function promptForMissingOptions(options) {
     ...options,
     fn: options.fn || answers.fn,
   };
-  
+
 }
 
 export async function cli(args) {

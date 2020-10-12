@@ -14,6 +14,23 @@
 | Staging     | staging | {{ stage_url }}  				|
 | Development | develop | {{ dev_url }}      			|
 
+## Wonderpress
+
+This environment is compatible with the [Wonderpress CLI](https://www.npmjs.com/package/@wndrfl/wonderpress-cli), which provides a suite of tools to make development within this environment a breeze.
+
+To install the Wonderpress CLI:
+
+\`$ npm -i @wndrfl/wonderpress-cli -g\`
+
+For quick access to many Wonderpress features:
+
+\`\`\`
+$ cd /path/to/project
+$ wonderpress
+\`\`\`
+
+To learn more about the features of the Wonderpress CLI, check out [the documentation](https://www.npmjs.com/package/@wndrfl/wonderpress-cli).
+
 ## Development Workflow
 
 ### Default Branch
@@ -29,6 +46,6 @@
 
 This environment is automatically codesniffed against the [WordPress Coding Standards](https://developer.wordpress.org/coding-standards/wordpress-coding-standards/php/) when pushed to Github.
 
-To run codesniffing locally:
+To run codesniffing locally, you may use the Wonderpress \`lint\` command:
 
 \`$ wonderpress lint\`
