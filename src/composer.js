@@ -8,7 +8,7 @@ export async function installComposer() {
 
 	if (await !fs.existsSync('./vendor')) {
 		log.info('Installing Composer packages...');
-		sh.exec('composer install');
+		sh.exec('composer update');
 	}
 
 	log.info('Composer is installed!');

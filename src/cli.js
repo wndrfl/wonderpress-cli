@@ -14,8 +14,10 @@ function parseArgumentsIntoOptions(rawArgs) {
   const args = arg(
     {
       '--clean-slate' : Boolean,
+      '--fix'         : Boolean,
 
       '-c'            : '--clean-slate',
+      '-f'            : '--fix',
     },
     {
       argv: rawArgs.slice(2),
@@ -24,6 +26,7 @@ function parseArgumentsIntoOptions(rawArgs) {
 
   return {
     cleanSlate: args['--clean-slate'] || false,
+    fix: args['--fix'] || null,
     fn: args._[0],
   };
 }
@@ -90,7 +93,7 @@ export async function cli(args) {
       await core.startServer();
       break;
     case 'lint':
-      await lint.lintTheme();
+      await lint.lintTheme(null,options.fix);
       break;
     case 'install_wonderpress_theme':
       await core.installWonderpressTheme();
