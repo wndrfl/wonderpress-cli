@@ -113,6 +113,14 @@ export async function configureWordPress() {
 }
 
 export async function createThemesDirectory() {
+
+	log.info('Attempting to create themes directory...');
+
+	if(! await this.isInstalled()) {
+		log.error('WordPress is not installed. Please install WordPress, first.');
+		return false;
+	}
+
 	sh.mkdir('-p', pathToThemesDir);
 	return true;
 }
@@ -126,6 +134,11 @@ export async function getActiveTheme() {
 
 	log.info('Grabbing the currently active theme...');
 
+	if(! await this.isInstalled()) {
+		log.error('WordPress is not installed. Please install WordPress, first.');
+		return false;
+	}
+	
 	let themes = JSON.parse(sh.exec('wp theme list --status=active --format=json', { silent: true }));
 
 	if(!themes.length) {
@@ -197,6 +210,8 @@ export async function installWordPress() {
 
 export async function installTheme(url, opts) {
 
+	opts = opts ? opts : {};
+
 	let cmd = 'wp theme install';
 	cmd 	+= ' ' + url;
 	cmd 	+= ' --color';
@@ -221,4 +236,9 @@ export async function installTheme(url, opts) {
 	}
 
 	sh.exec(cmd);
+}
+
+export async function isInstalled() {
+	let isInstalled = await sh.exec('wp core is-installed').code;
+	return (isInstalled === 0);
 }

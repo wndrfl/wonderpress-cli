@@ -7,12 +7,31 @@ const wordpress = require('./wordpress');
 
 export async function lintTheme(name) {
 
-	await composer.installComposer();
+	log.info('Attempting to lint the active theme...');
 
-	await wordpress.createThemesDirectory();
+	if(! await wordpress.isInstalled()) {
+		log.error('WordPress is not installed. Please install WordPress first.');
+		return false;
+	}
+
+	if(! await composer.installComposer()) {
+		return;
+	}
+
+	if(! await wordpress.createThemesDirectory()) {
+		return;
+	}
 
 	if(!name) {
 		let theme = await wordpress.getActiveTheme();
+
+		// If there is no active theme, we need to stop.
+		// The linter will only lint an active theme.
+		if(!theme) {
+			log.error('There is no active theme. Please fully install WordPress and activate a theme before trying again.');
+			return false;
+		}
+
 		name = theme.name;
 	}
 
@@ -31,6 +50,7 @@ export async function lintTheme(name) {
 			default: false
 		}
 	]);
+	
 	if(fixAnswer.confirm) {
 		let fixCmd = './vendor/bin/phpcbf';
 		fixCmd 		+= ' ' + path;

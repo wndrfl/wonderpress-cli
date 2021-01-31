@@ -8,6 +8,13 @@ const open = require('open');
 const sh = require('shelljs');
 
 export async function installWonderpressTheme(opts) {
+	log.info('Installing Wonderpress Theme...');
+
+	if(!await wordpress.isInstalled()) {
+		log.error('WordPress is not installed. Please setup your Wonderpress Development Environment first.');
+		return false;
+	}
+
 	let url = 'https://github.com/wndrfl/wonderpress-theme/archive/master.zip';
 	await wordpress.installTheme(url, opts);
 	sh.exec('npm install --prefix ' + wordpress.pathToThemesDir + '/wonderpress-theme');
@@ -15,6 +22,7 @@ export async function installWonderpressTheme(opts) {
 }
 
 export async function installWonderpressDevelopmentEnvironment() {
+	log.info('Installing Wonderpress Development Environment...');
 	let cmd = 'git clone https://github.com/wndrfl/wonderpress-development-environment.git .tmp --progress --verbose';
 	sh.exec(cmd);
 	sh.exec('rm -rf .tmp/.git && cp -rp .tmp/ . && rm -rf .tmp');
@@ -53,6 +61,5 @@ export async function setup() {
 
 export async function startServer() {
 	log.info('Starting development server...');
-	// open('http://localhost:8080');
 	sh.exec('wp server');
 }

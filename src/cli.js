@@ -13,7 +13,9 @@ function parseArgumentsIntoOptions(rawArgs) {
 
   const args = arg(
     {
-      '--clean-slate': Boolean,
+      '--clean-slate' : Boolean,
+
+      '-c'            : '--clean-slate',
     },
     {
       argv: rawArgs.slice(2),
@@ -23,8 +25,6 @@ function parseArgumentsIntoOptions(rawArgs) {
   return {
     cleanSlate: args['--clean-slate'] || false,
     fn: args._[0],
-    server: args['--clean-slate'] || false,
-    // runInstall: args['--install'] || false,
   };
 }
 
@@ -78,7 +78,9 @@ export async function cli(args) {
     shelljs.exec('rm -rf ./*');
   }
 
-  options = await promptForMissingOptions(options);
+  if(!options.fn) {
+    options = await promptForMissingOptions(options);
+  }
 
   switch(options.fn) {
     case 'setup':
