@@ -2,6 +2,7 @@ import inquirer from 'inquirer';
 
 const composer = require('./composer');
 const log = require('./log');
+const readme = require('./readme');
 const wordpress = require('./wordpress');
 
 const open = require('open');
@@ -53,6 +54,8 @@ export async function setup() {
 	await installWonderpressTheme({
 		activate: true
 	});
+
+	await readme.createReadme();
 
 	log.success('All done.');
 

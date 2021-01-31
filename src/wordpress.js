@@ -3,6 +3,7 @@ import inquirer from 'inquirer';
 const log = require('./log');
 const mysql2 = require('mysql2/promise');
 const sh = require('shelljs');
+const sqlString = require('sqlstring');
 
 const pathToThemesDir = './wp-content/themes';
 exports.pathToThemesDir = pathToThemesDir;
@@ -138,7 +139,7 @@ export async function getActiveTheme() {
 		log.error('WordPress is not installed. Please install WordPress, first.');
 		return false;
 	}
-	
+
 	let themes = JSON.parse(sh.exec('wp theme list --status=active --format=json', { silent: true }));
 
 	if(!themes.length) {
