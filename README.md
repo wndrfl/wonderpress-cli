@@ -15,10 +15,11 @@ The most basic invocation of the Wonderpress CLI operates as a wizard-style prog
 ```
 $ wonderpress
 ? What would you like to do? (Use arrow keys)
-❯ Setup Wonderpress Development Environment
-  Configure WordPress
-  Install Wonderpress Theme
-  Lint a theme
+❯ Setup the Wonderpress Development Environment
+  Start a development server
+  Install the Wonderpress Theme
+  Lint the active theme
+  Create a README
 ```
 
 ## Commands

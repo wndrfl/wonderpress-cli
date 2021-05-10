@@ -40,19 +40,19 @@ async function promptForMissingOptions(options) {
       message: 'What would you like to do?',
       choices: [
         {
-          'name': 'Setup Wonderpress Development Environment',
+          'name': 'Setup the Wonderpress Development Environment',
           'value': 'setup'
         },
         {
-          'name': 'Start server',
+          'name': 'Start a development server',
           'value': 'server'
         },
         {
-          'name': 'Install Wonderpress Theme',
+          'name': 'Install the Wonderpress Theme',
           'value': 'install_wonderpress_theme'
         },
         {
-          'name': 'Lint a theme',
+          'name': 'Lint the active theme',
           'value': 'lint'
         },
         {
