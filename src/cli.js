@@ -78,7 +78,7 @@ export async function cli(args) {
   // Clear the entire directory?
   if(options.cleanSlate) {
     console.log('🚨 Clearing the entire directory (clean slate!)');
-    shelljs.exec('rm -rf ./*');
+    shelljs.exec('rm -rf ./* && rm -rf .*');
   }
 
   if(!options.fn) {

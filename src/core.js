@@ -24,9 +24,9 @@ export async function installWonderpressTheme(opts) {
 
 export async function installWonderpressDevelopmentEnvironment() {
 	log.info('Installing Wonderpress Development Environment...');
-	let cmd = 'git clone https://github.com/wndrfl/wonderpress-development-environment.git .tmp --progress --verbose';
+	let cmd = 'git clone https://github.com/wndrfl/wonderpress-development-environment.git . --progress --verbose';
 	sh.exec(cmd);
-	sh.exec('rm -rf .tmp/.git && cp -rp .tmp/ . && rm -rf .tmp');
+	// sh.exec('rm -rf .tmp/.git && cp -rp .tmp/ . && rm -rf .tmp');
 }
 
 export async function installWPCLI() {
@@ -45,8 +45,8 @@ export async function setup() {
 	log.info('✨ Setting up Wonderpress...');
 
 	await installWPCLI();
-	await wordpress.downloadWordPress();
 	await installWonderpressDevelopmentEnvironment();
+	await wordpress.downloadWordPress();
 	await wordpress.configureWordPress();
 	await wordpress.installWordPress();
 	await composer.installComposer();
