@@ -8,7 +8,27 @@ const sqlString = require('sqlstring');
 const pathToThemesDir = './wp-content/themes';
 exports.pathToThemesDir = pathToThemesDir;
 
+export async function activateTheme(theme) {
+	log.info('Attempting to activate theme: ' + theme);
+	sh.exec('wp theme activate ' + theme);
+}
+
 export async function configureWordPress() {
+
+	if( await this.hasConfig() ) {
+		let recreateAnswer = await inquirer.prompt([
+			{
+				type: 'confirm',
+				name: 'confirm',
+				message: 'A wp-config.php file already exists. Would you like to replace it?',
+				default: false
+			}
+		]);
+		if(!recreateAnswer.confirm) {
+			log.info('Skipping wp-config.php creation...');
+			return;
+		}
+	}
 
 	// Set up the mysql2 connection
 	let connection = false;
@@ -156,7 +176,22 @@ export async function getActiveTheme() {
 	return themes[0];
 }
 
+export async function getAllThemes() {
+	let themes = JSON.parse(sh.exec('wp theme list --format=json', { silent: true }));
+	return themes;
+}
+
+export async function hasConfig() {
+	const path = sh.exec('wp config path');
+	return path.length > 0 ? true : false;
+}
+
 export async function installWordPress() {
+
+	if( await this.isInstalled() ) {
+		log.info('WordPress is already installed...');
+		return;
+	}
 
 	// Ask questions about installation parameters
 	let installAnswers = await inquirer.prompt([

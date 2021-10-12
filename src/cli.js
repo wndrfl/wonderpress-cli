@@ -77,8 +77,22 @@ export async function cli(args) {
 
   // Clear the entire directory?
   if(options.cleanSlate) {
-    console.log('🚨 Clearing the entire directory (clean slate!)');
-    shelljs.exec('rm -rf ./* && rm -rf .*');
+    const cleanSlateConfirmationAnswer = await inquirer.prompt([
+      {
+        type: 'confirm',
+        name: 'confirm',
+        message: 'Hey, this is serious. Please note your current directory. Are you sure you want to delete *everything* in your current directory?',
+        default: false,
+      }
+    ]);
+
+    if(cleanSlateConfirmationAnswer.confirm === true) {
+      console.log('🚨 Clearing the entire directory (clean slate!)');
+      shelljs.exec('rm -rf ./* && rm -rf .*');
+    } else {
+      console.log('You are safe. Cancelling the installation. Please try again without requesting a clean slate installation.');
+      return;
+    }
   }
 
   if(!options.fn) {

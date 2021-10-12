@@ -1,3 +1,4 @@
+import fs from 'fs';
 import inquirer from 'inquirer';
 
 const composer = require('./composer');
@@ -24,9 +25,31 @@ export async function installWonderpressTheme(opts) {
 
 export async function installWonderpressDevelopmentEnvironment() {
 	log.info('Installing Wonderpress Development Environment...');
-	let cmd = 'git clone https://github.com/wndrfl/wonderpress-development-environment.git . --progress --verbose';
+
+	if(fs.existsSync('wonderpress.json')) {
+		// Overwrite?
+	    const installWonderpressAnswer = await inquirer.prompt([
+	      {
+	        type: 'confirm',
+	        name: 'confirm',
+	        message: 'Existing Wonderpress Development Environment detected. Would you like to overwrite it?',
+	        default: false,
+	      }
+	    ]);
+	    if(installWonderpressAnswer.confirm !== true) {
+	    	log.info('Skipping Wonderpress Development Environment installation...');
+			return;
+	    }
+	}
+
+	const tmpDir = '.wonderpress-tmp';
+	sh.exec('rm -rf ' + tmpDir);
+	let cmd = 'git clone https://github.com/wndrfl/wonderpress-development-environment.git ' + tmpDir + ' --progress --verbose';
 	sh.exec(cmd);
-	// sh.exec('rm -rf .tmp/.git && cp -rp .tmp/ . && rm -rf .tmp');
+	sh.exec('rm -rf ' + tmpDir + '/.git');
+	sh.exec('rm -rf ' + tmpDir + '/.github');
+	sh.exec('cp -R ' + tmpDir + '/. .');
+	sh.exec('rm -rf ' + tmpDir);
 }
 
 export async function installWPCLI() {
@@ -51,11 +74,68 @@ export async function setup() {
 	await wordpress.installWordPress();
 	await composer.installComposer();
 
-	await installWonderpressTheme({
-		activate: true
-	});
 
-	await readme.createReadme();
+    // Check for other themes
+    log.info('Checking for existing themes...');
+    const themes = await wordpress.getAllThemes();
+    if(themes.length > 0) {
+    	log.info('Existing themes have been detected...');
+
+    	const choices = [];
+    	themes.forEach((theme) => {
+    		choices.push({
+    			'name' : theme.name,
+    			'value' : theme.name
+    		});
+    	});
+
+		// Which theme to activate?
+	    const themeToActivateAnswer = await inquirer.prompt([
+	      {
+	        type: 'list',
+	        name: 'themeToActivate',
+	        message: 'Which theme would you like to activate?',
+	        choices: choices,
+	      }
+	    ]);
+	    if(themeToActivateAnswer.themeToActivate) {
+	    	wordpress.activateTheme(themeToActivateAnswer.themeToActivate);
+	    }
+
+	// No other themes... try Wonderpress Theme
+    } else {
+
+	    log.info('No existing themes detected...');
+
+		// Install Wonderpress Theme?
+	    const installWonderpressAnswer = await inquirer.prompt([
+	      {
+	        type: 'confirm',
+	        name: 'confirm',
+	        message: 'Would you like to install the default Wonderpress Theme?',
+	        default: true,
+	      }
+	    ]);
+	    if(installWonderpressAnswer.confirm === true) {
+			await installWonderpressTheme({
+				activate: true
+			});
+	    }
+    }
+
+    // Create a Readme?
+    const createReadmeAnswer = await inquirer.prompt([
+      {
+        type: 'confirm',
+        name: 'confirm',
+        message: 'Would you like to create a readme?',
+        default: true,
+      }
+    ]);
+    if(createReadmeAnswer.confirm === true) {
+		await readme.createReadme();
+    }
+
 
 	log.success('All done.');
 
