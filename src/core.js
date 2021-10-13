@@ -12,19 +12,23 @@ const sh = require('shelljs');
 
 export async function bootstrapThemes() {
 
-	log.info('Attempting to bootstrap any existing themes...');
+	log.info('Searching for existing themes for bootstrapping...');
 
-	const config = await getWonderpressConfig();
+	const themePaths = [];
 
-	if(!config || !config.bootstrapThemes || config.bootstrapThemes.length < 1) {
-		log.info('No themes were configured for bootstrapping. Skipping...');
+	await fs.readdirSync(wordpress.pathToThemesDir).filter(function (path) {
+		const themePath = wordpress.pathToThemesDir+'/'+path;
+    if(fs.statSync(themePath).isDirectory()) {
+    	themePaths.push(themePath);
+    }
+  })
+
+	if(themePaths.length < 1) {
+		log.info('No themes were found for bootstrapping. Skipping...');
 		return;
 	}
 
-	const themes = config.bootstrapThemes;
-
-	themes.forEach((theme) => {
-		const themePath = wordpress.pathToThemesDir + '/' + theme;
+	themePaths.forEach((themePath) => {
 		log.info('Bootstrapping theme: ' + themePath);
 		sh.exec('npm install --prefix ' + themePath);
 		sh.exec('composer install --working-dir=' + themePath);
