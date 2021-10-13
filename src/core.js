@@ -21,9 +21,10 @@ export async function bootstrapThemes() {
 		return;
 	}
 
-	const themePaths = config.bootstrapThemes;
+	const themes = config.bootstrapThemes;
 
-	themePaths.forEach((themePath) => {
+	themes.forEach((theme) => {
+		const themePath = wordpress.pathToThemesDir + '/' + theme;
 		log.info('Bootstrapping theme: ' + themePath);
 		sh.exec('npm install --prefix ' + themePath);
 		sh.exec('composer install --working-dir=' + themePath);
