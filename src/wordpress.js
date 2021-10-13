@@ -177,8 +177,12 @@ export async function getActiveTheme() {
 }
 
 export async function getAllThemes() {
-	let themes = JSON.parse(sh.exec('wp theme list --format=json', { silent: true }));
-	return themes;
+	try {
+		let themes = JSON.parse(sh.exec('wp theme list --format=json', { silent: true }));
+		return themes;
+	} catch(e) {
+		return [];
+	}
 }
 
 export async function hasConfig() {

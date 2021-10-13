@@ -28,6 +28,7 @@ function parseArgumentsIntoOptions(rawArgs) {
     cleanSlate: args['--clean-slate'] || false,
     fix: args['--fix'] || null,
     fn: args._[0],
+    version: args['--version'] || null,
   };
 }
 

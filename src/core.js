@@ -4,10 +4,44 @@ import inquirer from 'inquirer';
 const composer = require('./composer');
 const log = require('./log');
 const readme = require('./readme');
+const wonderpressConfigPath = './wonderpress.json';
 const wordpress = require('./wordpress');
 
 const open = require('open');
 const sh = require('shelljs');
+
+export async function bootstrapThemes() {
+
+	log.info('Attempting to bootstrap any existing themes...');
+
+	const config = await getWonderpressConfig();
+
+	if(!config || !config.bootstrapThemes || config.bootstrapThemes.length < 1) {
+		log.info('No themes were configured for bootstrapping. Skipping...');
+		return;
+	}
+
+	const themePaths = config.bootstrapThemes;
+
+	themePaths.forEach((themePath) => {
+		log.info('Bootstrapping theme: ' + themePath);
+		sh.exec('npm install --prefix ' + themePath);
+		sh.exec('composer install --working-dir=' + themePath);
+		log.info('...complete');
+	});
+}
+
+export async function getWonderpressConfig() {
+	if(await fs.existsSync(wonderpressConfigPath)) {
+		const configRaw = fs.readFileSync(wonderpressConfigPath);
+		const configJson = JSON.parse(configRaw);
+		return configJson;
+	}
+
+	log.info('No configuration file found at: ' + wonderpressConfigPath);
+
+	return false;
+}
 
 export async function installWonderpressTheme(opts) {
 	log.info('Installing Wonderpress Theme...');
@@ -26,20 +60,21 @@ export async function installWonderpressTheme(opts) {
 export async function installWonderpressDevelopmentEnvironment() {
 	log.info('Installing Wonderpress Development Environment...');
 
-	if(fs.existsSync('wonderpress.json')) {
+	if(await getWonderpressConfig()) {
 		// Overwrite?
-	    const installWonderpressAnswer = await inquirer.prompt([
-	      {
-	        type: 'confirm',
-	        name: 'confirm',
-	        message: 'Existing Wonderpress Development Environment detected. Would you like to overwrite it?',
-	        default: false,
-	      }
-	    ]);
-	    if(installWonderpressAnswer.confirm !== true) {
-	    	log.info('Skipping Wonderpress Development Environment installation...');
+    const installWonderpressAnswer = await inquirer.prompt([
+      {
+        type: 'confirm',
+        name: 'confirm',
+        message: 'Existing Wonderpress Development Environment detected. Would you like to overwrite it?',
+        default: false,
+      }
+    ]);
+
+    if(installWonderpressAnswer.confirm !== true) {
+    	log.info('Skipping Wonderpress Development Environment installation...');
 			return;
-	    }
+    }
 	}
 
 	const tmpDir = '.wonderpress-tmp';
@@ -74,67 +109,73 @@ export async function setup() {
 	await wordpress.installWordPress();
 	await composer.installComposer();
 
+	// Initialize any existing themes found in wonderpress.json
+	await bootstrapThemes();
 
-    // Check for other themes
-    log.info('Checking for existing themes...');
-    const themes = await wordpress.getAllThemes();
-    if(themes.length > 0) {
-    	log.info('Existing themes have been detected...');
+  // Attempt to activate an existing theme, or install Wonderpress Theme
+  log.info('Checking for themes that can be activated...');
 
-    	const choices = [];
-    	themes.forEach((theme) => {
-    		choices.push({
-    			'name' : theme.name,
-    			'value' : theme.name
-    		});
-    	});
+  const themes = await wordpress.getAllThemes();
+
+  if(themes.length > 0) {
+
+  	const choices = [];
+  	themes.forEach((theme) => {
+  		choices.push({
+  			'name' : theme.name,
+  			'value' : theme.name
+  		});
+  	});
 
 		// Which theme to activate?
-	    const themeToActivateAnswer = await inquirer.prompt([
-	      {
-	        type: 'list',
-	        name: 'themeToActivate',
-	        message: 'Which theme would you like to activate?',
-	        choices: choices,
-	      }
-	    ]);
-	    if(themeToActivateAnswer.themeToActivate) {
-	    	wordpress.activateTheme(themeToActivateAnswer.themeToActivate);
-	    }
+    const themeToActivateAnswer = await inquirer.prompt([
+      {
+        type: 'list',
+        name: 'themeToActivate',
+        message: 'Which theme would you like to activate?',
+        choices: choices,
+      }
+    ]);
 
-	// No other themes... try Wonderpress Theme
-    } else {
-
-	    log.info('No existing themes detected...');
-
-		// Install Wonderpress Theme?
-	    const installWonderpressAnswer = await inquirer.prompt([
-	      {
-	        type: 'confirm',
-	        name: 'confirm',
-	        message: 'Would you like to install the default Wonderpress Theme?',
-	        default: true,
-	      }
-	    ]);
-	    if(installWonderpressAnswer.confirm === true) {
-			await installWonderpressTheme({
-				activate: true
-			});
-	    }
+    if(themeToActivateAnswer.themeToActivate) {
+    	wordpress.activateTheme(themeToActivateAnswer.themeToActivate);
     }
 
-    // Create a Readme?
-    const createReadmeAnswer = await inquirer.prompt([
+	// No other themes... try Wonderpress Theme
+  } else {
+
+    log.info('No existing themes for activation detected...');
+
+		// Install Wonderpress Theme?
+    const installWonderpressAnswer = await inquirer.prompt([
       {
         type: 'confirm',
         name: 'confirm',
-        message: 'Would you like to create a readme?',
+        message: 'Would you like to install the default Wonderpress Theme?',
         default: true,
       }
     ]);
-    if(createReadmeAnswer.confirm === true) {
-		await readme.createReadme();
+
+    if(installWonderpressAnswer.confirm === true) {
+			await installWonderpressTheme({
+				activate: true
+			});
     }
+  }
+
+  // Create a Readme?
+  const createReadmeAnswer = await inquirer.prompt([
+    {
+      type: 'confirm',
+      name: 'confirm',
+      message: 'Would you like to create a readme?',
+      default: true,
+    }
+  ]);
+
+  if(createReadmeAnswer.confirm === true) {
+		await readme.createReadme();
+  }
 
 
 	log.success('All done.');
