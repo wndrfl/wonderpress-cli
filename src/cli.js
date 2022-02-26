@@ -3,6 +3,7 @@ import inquirer from 'inquirer';
 
 const core = require('./core');
 const lint = require('./lint');
+const partial = require('./partial');
 const readme = require('./readme');
 
 const shelljs = require('shelljs');
@@ -47,6 +48,10 @@ async function promptForMissingOptions(options) {
         {
           'name': 'Start a development server',
           'value': 'server'
+        },
+        {
+          'name': 'Create a partial',
+          'value': 'partial'
         },
         {
           'name': 'Install the Wonderpress Theme',
@@ -101,6 +106,9 @@ export async function cli(args) {
   }
 
   switch(options.fn) {
+    case 'partial':
+      await partial.create();
+      break;
     case 'setup':
       await core.setup();
       break;
