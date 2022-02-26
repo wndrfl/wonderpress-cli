@@ -9,7 +9,7 @@ export async function createReadme() {
 
 	log.info('Creating README.md...');
 
-	let path = require.resolve('./readme.template.md');
+	let path = require.resolve('./templates/readme.template.md');
 	let data = fs.readFileSync(path, 'utf8');
 
 

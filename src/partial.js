@@ -8,11 +8,21 @@ const wordpress = require('./wordpress');
 
 export async function create() {
 
-	log.info('Creating partial...');
+	log.info('Starting partial creation wizard...');
 
-	let path = require.resolve('./partial.template.txt');
-	let data = fs.readFileSync(path, 'utf8');
+	const theme = await wordpress.getActiveTheme();
+	const themeDir = await wordpress.pathToThemesDir + '/' + theme.name;
 
+	log.instructions('In Wonderpress, a "partial" is a PHP class that helps render a reusable view. Here we will create the PHP class (and optionally the PHP template for the view). Please answer the following questions:');
+
+	const partialClassPath = require.resolve('./templates/partial-class.template.txt');
+	const partialClassTemplate = fs.readFileSync(partialClassPath, 'utf8');
+	const partialClassFilePath = `${themeDir}/src/partials`;
+
+	const partialTemplatePath = require.resolve('./templates/partial-template.template.txt');
+	const partialTemplateTemplate = fs.readFileSync(partialTemplatePath, 'utf8');
+	const partialTemplateRelativeThemePath = './partials';
+	const partialTemplateFilePath = `${themeDir}/partials`;
 
 	let params = {
 		class_name : '',
@@ -22,100 +32,161 @@ export async function create() {
 		properties : [],
 	};
 
-	let question = 1;
-	while(question !== false) {
-		if(question == 1) {
+	let step = 1;
+	while(step !== false) {
+		if(step == 1) {
+
 			let answers = await inquirer.prompt([
 				{
 					type: 'input',
 					name: 'class_name',
-					message: 'What is the class name?',
+					message: 'What should we name this class?',
+					suffix: '\nAccording to WordPress standards, the class name must be in snake-case format:',
+					validate: function(answer) {
+						const valid = /^([A-Z][a-z]*)(_[A-Z][a-z]+)*$/.test(answer);
+						if(!valid) {
+							log.info('');
+							log.error('The class name must be in snake-case format.');
+							log.info('Here\'s an example of a properly formatted class name in WordPress: Example_Class');
+						}
+						return valid;
+					}
 				},
 				{
 					type: 'confirm',
 					name: 'is_acf_compatible',
-					message: 'Is this partial ACF compatible?.',
+					message: 'Should this partial be configured as ACF compatible?',
+					suffix: '\nIf you don\'t know, type "N":',
 					default: false,
-					// default: function(answers) {
-					// 	return 'The official WordPress environment for ' + answers.project_name;
-					// }
 				},
 				{
 					type: 'confirm',
 					name: 'has_partial_template',
-					message: 'Does this partial have a template?',
-					default: false
+					message: 'Should we create a view template for this partial?',
+					suffix: `\nThis file will be created in ${partialTemplateFilePath}`,
+					default: true
 				},
 				{
 					type: 'input',
-					name: 'partial_template_path',
-					message: 'What is the relative path to the template?',
+					name: 'partial_template_name',
+					message: 'What should we name the view template?',
+					default: function(answers) {
+						let name = answers.class_name.toLowerCase().replace('_','-') + '.php';
+						return name;
+					},
 					when: function(answers) {
 						return answers.has_partial_template;
+					},
+					validate: function(input, answers) {
+						const valid = /^[a-z\-]*\.php$/.test(input);
+						if(!valid) {
+							log.info('');
+							log.error('Please only use lowercase characters and dashes, and make sure the name ends with .php');
+							log.info('Here\'s an example: my-template-name.php');
+						}
+						return valid;
 					}
 				}
 			]);
+
 			params.class_name = answers.class_name;
 			params.is_acf_compatible = answers.is_acf_compatible;
 			params.has_partial_template = answers.has_partial_template;
-			params.partial_template_path = answers.partial_template_path;
-			question = 2;	
+			params.partial_template_name = answers.partial_template_name;
+			params.partial_template_path = partialTemplateRelativeThemePath + '/' + answers.partial_template_name;
+			
+			step = 2;	
 
-		} else if(question == 2) {
+		} else if(step == 2) {
 
+			if(!params.properties.length) {
+				log.instructions('Time to confgure for the properties for this partial. Properties are values that may be passed into the partial class during instantiation, and these values will be validated and passed to the view template for display.');
+			}
+
+			const addMessage = params.properties.length ? 'Would you like to define another property for this partial?' : 'Would you like to define a property for this partial?';
+			
 			let answers = await inquirer.prompt([
+				{
+					type: 'confirm',
+					name: 'add_another',
+					message: addMessage
+				},
 				{
 					type: 'input',
 					name: 'name',
-					message: 'Whats the name of this property?'
+					message: 'Whats the name of this property?',
+					suffix: '\nThis should be all lowercase letters or underscores (no dashes, spaces, or numbers):',
+					when: function(answers) {
+						return answers.add_another;
+					}
 				},
 				{
 					type: 'list',
 					name: 'type',
 					message: 'What type of property is this?',
+					suffix: '\nWonderpress will validate this property accordingly when rendering:',
 					choices: [
 						'array',
 						'boolean',
 						'object',
 						'string'
 					],
-					default: 'string'
+					default: 'string',
+					when: function(answers) {
+						return answers.add_another;
+					}
 				},
 				{
 					type: 'input',
 					name: 'description',
-					message: 'Briefly describe the property'
+					message: 'Briefly describe the property',
+					suffix: '\nThis will help developers understand its purpose:',
+					when: function(answers) {
+						return answers.add_another;
+					}
 				},
 				{
 					type: 'confirm',
 					name: 'required',
-					message: 'Is this property required?'
-				},
-				{
-					type: 'confirm',
-					name: 'add_another',
-					message: 'Would you like to add another?'
+					message: 'Should this property be validated as required?',
+					suffix: '\nIf "yes", then Wonderpress will enforce a value upon instantiation:',
+					when: function(answers) {
+						return answers.add_another;
+					}
 				}
 			]);
 
-			params.properties.push(answers);
-
 			if(!answers.add_another) {
-				question = false;
+				log.info('Property configuration is complete. Moving on...');
+				step = false;
+			} else {
+				params.properties.push(answers);
 			}
 		}
 	}
 	
-	var output = mustache.render(data, params);
 
-	const theme = await wordpress.getActiveTheme();
-
-	const themeDir = await wordpress.pathToThemesDir + '/' + theme.name;
-	const fileName = 'class-' + params.class_name.toLowerCase().replace('_','-');
-	const filePath = themeDir + '/src/partials/' + fileName + '.php';
-
+	// Create the class
+	const partialClassOutput = mustache.render(partialClassTemplate, params);
+	const fileName = `class-${params.class_name.toLowerCase().replace('_','-')}`;
+	const filePath = `${partialClassFilePath}/${fileName}.php`;
 	await sh.exec(`cat > ${filePath} <<EOF
-${output}`);
+${partialClassOutput}`);
+	log.success(`Partial class created at: ${filePath}`);
+
+	// Create the template (optional)
+	if(params.has_partial_template && params.partial_template_name) {
+		const partialTemplateOutput = mustache.render(partialTemplateTemplate, {
+			template_class_name : params.partial_template_name.replace('.php',''),
+			template_name: params.partial_template_name.replace('.php','')
+		});
+		const templateFilePath = `${partialTemplateFilePath}/${params.partial_template_name}`;	
+		await sh.exec(`cat > ${templateFilePath} <<EOF
+${partialTemplateOutput}`);
+		log.success(`View template created at: ${templateFilePath}`);
+	}
+
+
 
 
 }
