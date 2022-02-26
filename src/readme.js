@@ -66,5 +66,7 @@ export async function createReadme() {
 	await sh.exec(`cat > README.md <<EOF
 ${output}`);
 
+	log.success('README created!');
+
 
 }
