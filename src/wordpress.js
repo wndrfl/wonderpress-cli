@@ -1,5 +1,7 @@
 import inquirer from 'inquirer';
 
+const core = require('./core');
+const fs = require('fs');
 const log = require('./log');
 const mysql2 = require('mysql2/promise');
 const sh = require('shelljs');
@@ -135,12 +137,20 @@ export async function configureWordPress() {
 
 export async function createThemesDirectory() {
 
-	log.info('Attempting to create themes directory...');
+	if(! await core.setCwdToEnvironmentRoot()) {
+		return false;
+	}
 
 	if(! await this.isInstalled()) {
 		log.error('WordPress is not installed. Please install WordPress, first.');
 		return false;
 	}
+
+	if(await fs.existsSync(pathToThemesDir)) {
+		return true;
+	}
+
+	log.info(`Attempting to create themes directory: ${pathToThemesDir}`);
 
 	sh.mkdir('-p', pathToThemesDir);
 	return true;

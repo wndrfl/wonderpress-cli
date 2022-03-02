@@ -10,6 +10,17 @@ const wordpress = require('./wordpress');
 const open = require('open');
 const sh = require('shelljs');
 
+export async function command(subcommand, args) {
+	switch(subcommand) {
+		case 'init':
+			await init(args);
+			break;
+	}
+
+	return true;
+}
+
+
 export async function bootstrapThemes() {
 
 	log.info('Searching for existing themes for bootstrapping...');
@@ -58,7 +69,7 @@ export async function installWonderpressTheme(opts) {
 
 	let url = 'https://github.com/wndrfl/wonderpress-theme/archive/master.zip';
 	await wordpress.installTheme(url, opts);
-	sh.exec('npm install --prefix ' + wordpress.pathToThemesDir + '/wonderpress-theme');
+	sh.exec('npm --prefix ' + wordpress.pathToThemesDir + '/wonderpress-theme run init');
 	return true;
 }
 
@@ -103,7 +114,7 @@ export async function installWPCLI() {
 	return true;
 }
 
-export async function setup() {
+export async function init(args) {
 
 	log.info('✨ Setting up Wonderpress...');
 
@@ -179,7 +190,7 @@ export async function setup() {
   ]);
 
   if(createReadmeAnswer.confirm === true) {
-		await readme.createReadme();
+		await readme.create();
   }
 
 
@@ -188,7 +199,26 @@ export async function setup() {
 	return true;
 }
 
-export async function startServer() {
-	log.info('Starting development server...');
-	sh.exec('wp server');
+export async function isWonderpressRoot() {
+	const config = await getWonderpressConfig();
+	return (config) ? true : false;
 }
+
+export async function setCwdToEnvironmentRoot() {
+	let path = process.cwd();
+	let seek = true;
+	let c = 0;
+	while(seek) {
+		if(c++ >= 50) break;
+		const checkPath = `${path}/${wonderpressConfigPath}`;
+		if(!await fs.existsSync(checkPath)) {
+			process.chdir('../');
+			path = process.cwd();
+		} else {
+			return path;
+		}
+	}
+
+	log.error('This does not appear to be a Wonderpress Development Environment.');
+}
+

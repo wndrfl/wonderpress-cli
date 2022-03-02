@@ -1,11 +1,29 @@
 import inquirer from 'inquirer';
 
+const core = require('./core');
 const fs = require('fs');
 const log = require('./log');
 const mustache = require('mustache');
 const sh = require('shelljs');
 
-export async function createReadme() {
+export async function command(subcommand, args) {
+	switch(subcommand) {
+		case 'create':
+			await create(args);
+			break;
+	}
+
+	return true;
+}
+
+export async function create(args) {
+
+	const dir = args['--dir'] ? args['--dir'] : '.';
+	process.chdir(dir);
+
+	if(! await core.setCwdToEnvironmentRoot()) {
+		return false;
+	}
 
 	log.info('Creating README.md...');
 
