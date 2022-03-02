@@ -1,8 +1,8 @@
 {
   "name": "@wndrfl/wonderpress-cli",
-  "version": "1.9.2",
+  "version": "1.10.0",
   "description": "A commandline interface for bootstrapping and working with the Wonderpress WordPress Development Environment.",
-  "main": "index.js",
+  "main": "./bin/wonderpress.js",
   "bin": {
     "wonderpress": "bin/wonderpress.js"
   },

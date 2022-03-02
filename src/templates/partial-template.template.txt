@@ -1,0 +1,13 @@
+<?php
+/**
+ * A {{ template_name }} partial template.
+ *
+ * @package Wonderpress Theme
+ */
+
+?>
+<!-- Partial: {{ template_name }} -->
+<div class="{{ template_class_name }}">
+
+</div>
+<!-- End: {{ template_name }} -->

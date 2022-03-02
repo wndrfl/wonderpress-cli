@@ -1,0 +1,50 @@
+<?php
+/**
+ * An {{ class_name }} partial class.
+ *
+ * @package Wonderpress Theme
+ */
+
+namespace Wonderpress\Partials;
+
+use Wonderpress\Partials\Abstract_Partial;
+
+/**
+ * {{ class_name }}
+ * Wonderpress\Partials\{{ class_name }}
+ */
+class {{ class_name }} extends Abstract_Partial {
+	{{# is_acf_compatible }}
+
+	/**
+	 * Whether this partial accepts an ACF parameter for easy hydration.
+	 *
+	 * @var Boolean \$_acf_compatible
+	 */
+	protected \$_acf_compatible = true;
+	{{/ is_acf_compatible }}
+	{{# has_partial_template }}
+
+	/**
+	 * A relative path to a partial template to use as the view for this partial.
+	 *
+	 * @var String|Boolean \$_partial_template
+	 */
+	protected \$_partial_template = '{{{ partial_template_path }}}';
+	{{/ has_partial_template }}
+
+	/**
+	 * A definition of all available properties.
+	 *
+	 * @var Array \$_properties
+	 */
+	protected static \$_properties = array(
+		{{# properties }}
+		'{{name}}' => array(
+			'description' => '{{description}}',
+			'format' => '{{type}}',
+			'required' => {{required}},
+		),
+		{{/ properties }}
+	);
+}

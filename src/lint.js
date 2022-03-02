@@ -1,13 +1,35 @@
-import inquirer from 'inquirer';
-
 const composer = require('./composer');
+const core = require('./core');
+const inquirer = require('inquirer');
 const log = require('./log');
 const sh = require('shelljs');
 const wordpress = require('./wordpress');
 
-export async function lintTheme(name, fix) {
+export async function command(subcommand, args) {
+	switch(subcommand) {
+		case 'theme':
+			await theme(args);
+			break;
+	}
+
+	return true;
+}
+
+export async function theme(args) {
 
 	log.info('Attempting to lint the active theme...');
+
+	const dir = args['--dir'] ? args['--dir'] : '.';
+	process.chdir(dir);
+
+	if(! await core.setCwdToEnvironmentRoot()) {
+		return false;
+	}
+
+	if(! await core.isWonderpressRoot()) {
+		log.error('Please run the lint command from the root directory of this project.');
+		return false;
+	}
 
 	if(! await wordpress.isInstalled()) {
 		log.error('WordPress is not installed. Please install WordPress first.');
@@ -22,7 +44,10 @@ export async function lintTheme(name, fix) {
 		return;
 	}
 
-	if(!name) {
+	const fix = args['--fix'] ? args['--fix'] : false;
+	let themeName = args['--name'] ? args['--name'] : null;
+
+	if(!themeName) {
 		let theme = await wordpress.getActiveTheme();
 
 		// If there is no active theme, we need to stop.
@@ -32,10 +57,10 @@ export async function lintTheme(name, fix) {
 			return false;
 		}
 
-		name = theme.name;
+		themeName = theme.name;
 	}
 
-	let path = wordpress.pathToThemesDir + '/' + name;
+	let path = wordpress.pathToThemesDir + '/' + themeName;
 
 	let cmd = './vendor/bin/phpcs';
 	cmd		+= ' ' + path;
@@ -56,13 +81,13 @@ export async function lintTheme(name, fix) {
 		sh.exec(fixCmd);
 
 		log.info('All issues that could be fixed were fixed. Rerunning lint...');
-		this.lintTheme(name, false);
+		this.lintTheme(themeName, false);
 
 	}else{
 		log.error('Issues were found during lint! Please see above...');
 	} 
 
-	if(fix === null) {
+	if(!fix) {
 		log.info('If you would like Wonderpress to automatically fix as many issues as possible, add the --fix (or -f) flag to the command.');
 	}
 
