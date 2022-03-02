@@ -16,7 +16,7 @@ export async function cli() {
 
     // Shortcuts
     '-d'        : '--dir',
-    '-f'        : '--force',
+    '-f'        : '--fix',
     '-n'        : '--name',
   }
 
