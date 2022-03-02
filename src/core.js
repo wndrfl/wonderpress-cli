@@ -27,6 +27,7 @@ export async function bootstrapThemes() {
 
   const themePaths = [];
 
+  // Get all the theme directories in the themes folder
   await fs.readdirSync(wordpress.pathToThemesDir).filter(function (path) {
     const themePath = wordpress.pathToThemesDir+'/'+path;
     if(fs.statSync(themePath).isDirectory()) {
@@ -39,10 +40,11 @@ export async function bootstrapThemes() {
     return;
   }
 
+  log.info(`Existing themes were found! Let\'s see if we can bootstrap them.`);
+
   themePaths.forEach((themePath) => {
-    log.info(`Bootstrapping theme: ${themePath}`);
-    sh.exec(`npm install --prefix ${themePath}`);
-    sh.exec(`composer install --working-dir=${themePath}`);
+    log.info(`Bootstrapping theme (if theme is Wonderpress-friendly): ${themePath}`);
+    sh.exec(`npm run wonderpress-init --prefix ${themePath} --if-present`);
     log.info(`Bootstrapping is complete.`);
   });
 }
@@ -69,7 +71,7 @@ export async function installWonderpressTheme(opts) {
 
   let url = 'https://github.com/wndrfl/wonderpress-theme/archive/master.zip';
   await wordpress.installTheme(url, opts);
-  sh.exec(`npm --prefix ${wordpress.pathToThemesDir}/wonderpress-theme run init`);
+  sh.exec(`npm --prefix ${wordpress.pathToThemesDir}/wonderpress-theme run wonderpress-init --if-present`);
   return true;
 }
 
@@ -77,24 +79,12 @@ export async function installWonderpressDevelopmentEnvironment(dir) {
 
   const targetDir = (dir) ? dir : '.';
 
-  log.info(`Installing Wonderpress Development Environment into ${targetDir}`);
-
   if(await getWonderpressConfig()) {
-    // Overwrite?
-    const installWonderpressAnswer = await inquirer.prompt([
-      {
-        type: 'confirm',
-        name: 'confirm',
-        message: 'Existing Wonderpress Development Environment detected. Would you like to overwrite it?',
-        default: false,
-      }
-    ]);
-
-    if(installWonderpressAnswer.confirm !== true) {
-      log.info(`Skipping Wonderpress Development Environment installation...`);
-      return;
-    }
+    log.info(`This appears to be an existing Wonderpress Development Environment. We will skip installation and proceed with initialization.`)
+    return true;
   }
+
+  log.info(`Installing Wonderpress Development Environment into ${targetDir}`);
 
   const tmpDir = '.wonderpress-tmp';
   sh.exec('rm -rf ' + tmpDir);
@@ -120,6 +110,32 @@ export async function installWPCLI() {
 export async function init(args) {
 
   const targetDir = args['--dir'] ? args['--dir'] : '.';
+
+  // Clear the entire directory?
+  if(args['--clean-slate']) {
+    if(targetDir == '.') {
+      log.error(`The --clean-slate does not work when initializing into your current directory. Please navigate outside of this directory and try again.`);
+      return false;
+    }
+
+    const cleanSlateConfirmationAnswer = await inquirer.prompt([
+      {
+        type: 'confirm',
+        name: 'confirm',
+        message: `Hey, this is serious. It will delete *everything* in the directory: \`${targetDir}\`. Are you sure you want to delete *everything* in this directory?`,
+        default: false,
+      }
+    ]);
+
+    if(cleanSlateConfirmationAnswer.confirm === true) {
+      log.warn(`Clearing the entire directory (clean slate!)`);
+      await sh.exec(`rm -rf ${targetDir}`);
+    } else {
+      log.success(`You are safe. Cancelling the installation. Please try again without requesting a clean slate installation.`);
+      return;
+    }
+  }
+
   if(!await fs.existsSync(targetDir)) {
     const mkdirResult = await fs.mkdir(targetDir, (err) => {
       if(err) {
@@ -128,26 +144,6 @@ export async function init(args) {
     });
   }
   process.chdir(targetDir);
-
-  // Clear the entire directory?
-  if(args['--clean-slate']) {
-    const cleanSlateConfirmationAnswer = await inquirer.prompt([
-      {
-        type: 'confirm',
-        name: 'confirm',
-        message: 'Hey, this is serious. It will delete *everything* in your current directory. Please note your current directory. Are you sure you want to delete *everything* in your current directory?',
-        default: false,
-      }
-    ]);
-
-    if(cleanSlateConfirmationAnswer.confirm === true) {
-      console.log(`🚨 Clearing the entire directory (clean slate!)`);
-      require('child_process').execSync(`rm -rf ./* && rm -rf .*`);
-    } else {
-      console.log(`You are safe. Cancelling the installation. Please try again without requesting a clean slate installation.`);
-      return;
-    }
-  }
 
   log.info(`✨ Setting up Wonderpress...`);
 
@@ -213,17 +209,19 @@ export async function init(args) {
   }
 
   // Create a Readme?
-  const createReadmeAnswer = await inquirer.prompt([
-    {
-      type: 'confirm',
-      name: 'confirm',
-      message: 'Would you like to create a readme?',
-      default: true,
-    }
-  ]);
+  if(! await readme.exists()) {
+    const createReadmeAnswer = await inquirer.prompt([
+      {
+        type: 'confirm',
+        name: 'confirm',
+        message: 'Would you like to create a readme?',
+        default: true,
+      }
+    ]);
 
-  if(createReadmeAnswer.confirm === true) {
-    await readme.create();
+    if(createReadmeAnswer.confirm === true) {
+      await readme.create();
+    }
   }
 
 

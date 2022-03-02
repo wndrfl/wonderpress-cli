@@ -6,6 +6,8 @@ const log = require('./log');
 const mustache = require('mustache');
 const sh = require('shelljs');
 
+const readmeFilePath = 'README.md';
+
 export async function command(subcommand, args) {
 	switch(subcommand) {
 		case 'create':
@@ -18,12 +20,17 @@ export async function command(subcommand, args) {
 
 export async function create(args) {
 
-	const dir = args['--dir'] ? args['--dir'] : '.';
+	const dir = args && args['--dir'] ? args['--dir'] : '.';
 	process.chdir(dir);
 
 	if(! await core.setCwdToEnvironmentRoot()) {
 		return false;
 	}
+
+  if(exists()) {
+    log.warn(`A README file already exists at \`${readmeFilePath}\`. Skipping README creation.`);
+    return true;
+  }
 
 	log.info('Creating README.md...');
 
@@ -81,10 +88,23 @@ export async function create(args) {
 	]);
 	var output = mustache.render(data, readmeAnswers);
 
-	await sh.exec(`cat > README.md <<EOF
+	await sh.exec(`cat > ${readmeFilePath} <<EOF
 ${output}`);
 
 	log.success('README created!');
 
 
+}
+
+export async function exists() {
+
+  log.info(`Checking for the existence of a README file at \`${readmeFilePath}\`...`);
+
+  if(await fs.existsSync(readmeFilePath)) {
+    log.info(`README file found!`);
+    return true;
+  }
+
+  log.info(`README file was not found.`);
+  return false;
 }

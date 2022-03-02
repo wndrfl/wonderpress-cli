@@ -18,18 +18,8 @@ export async function activateTheme(theme) {
 export async function configureWordPress() {
 
 	if( await this.hasConfig() ) {
-		let recreateAnswer = await inquirer.prompt([
-			{
-				type: 'confirm',
-				name: 'confirm',
-				message: 'A wp-config.php file already exists. Would you like to replace it?',
-				default: false
-			}
-		]);
-		if(!recreateAnswer.confirm) {
-			log.info('Skipping wp-config.php creation...');
-			return;
-		}
+    log.info(`A wp-config.php already exists. Skipping WordPress configuration...`);
+    return true;
 	}
 
 	// Set up the mysql2 connection

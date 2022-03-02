@@ -4,7 +4,7 @@ var colors = require('colors');
 colors.setTheme({
 	info: ['white'],
 	instructions: ['bold','white'],
-	warn: 'yellow',
+	warn: ['bold','yellow'],
 	success: ['bold','green'],
 	error: ['bold','red']
 });
