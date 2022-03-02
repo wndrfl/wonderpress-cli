@@ -143,7 +143,7 @@ export async function init(args) {
       }
     });
   }
-  process.chdir(targetDir);
+  process.chdir(`./${targetDir}`);
 
   log.info(`✨ Setting up Wonderpress...`);
 
