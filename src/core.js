@@ -11,73 +11,76 @@ const open = require('open');
 const sh = require('shelljs');
 
 export async function command(subcommand, args) {
-	switch(subcommand) {
-		case 'init':
-			await init(args);
-			break;
-	}
+  switch(subcommand) {
+    case 'init':
+      await init(args);
+      break;
+  }
 
-	return true;
+  return true;
 }
 
 
 export async function bootstrapThemes() {
 
-	log.info(`Searching for existing themes for bootstrapping...`);
+  log.info(`Searching for existing themes for bootstrapping...`);
 
-	const themePaths = [];
+  const themePaths = [];
 
-	await fs.readdirSync(wordpress.pathToThemesDir).filter(function (path) {
-		const themePath = wordpress.pathToThemesDir+'/'+path;
+  await fs.readdirSync(wordpress.pathToThemesDir).filter(function (path) {
+    const themePath = wordpress.pathToThemesDir+'/'+path;
     if(fs.statSync(themePath).isDirectory()) {
-    	themePaths.push(themePath);
+      themePaths.push(themePath);
     }
   })
 
-	if(themePaths.length < 1) {
-		log.info(`No themes were found for bootstrapping. Skipping...`);
-		return;
-	}
+  if(themePaths.length < 1) {
+    log.info(`No themes were found for bootstrapping. Skipping...`);
+    return;
+  }
 
-	themePaths.forEach((themePath) => {
-		log.info(`Bootstrapping theme: ${themePath}`);
-		sh.exec(`npm install --prefix ${themePath}`);
-		sh.exec(`composer install --working-dir=${themePath}`);
-		log.info(`Bootstrapping is complete.`);
-	});
+  themePaths.forEach((themePath) => {
+    log.info(`Bootstrapping theme: ${themePath}`);
+    sh.exec(`npm install --prefix ${themePath}`);
+    sh.exec(`composer install --working-dir=${themePath}`);
+    log.info(`Bootstrapping is complete.`);
+  });
 }
 
 export async function getWonderpressConfig() {
-	if(await fs.existsSync(wonderpressConfigPath)) {
-		const configRaw = fs.readFileSync(wonderpressConfigPath);
-		const configJson = JSON.parse(configRaw);
-		return configJson;
-	}
+  if(await fs.existsSync(wonderpressConfigPath)) {
+    const configRaw = fs.readFileSync(wonderpressConfigPath);
+    const configJson = JSON.parse(configRaw);
+    return configJson;
+  }
 
-	log.info(`No configuration file found at: ${wonderpressConfigPath}`);
+  log.info(`No configuration file found at: ${wonderpressConfigPath}`);
 
-	return false;
+  return false;
 }
 
 export async function installWonderpressTheme(opts) {
-	log.info(`Installing Wonderpress Theme...`);
+  log.info(`Installing Wonderpress Theme...`);
 
-	if(!await wordpress.isInstalled()) {
-		log.error(`WordPress is not installed. Please setup your Wonderpress Development Environment first.`);
-		return false;
-	}
+  if(!await wordpress.isInstalled()) {
+    log.error(`WordPress is not installed. Please setup your Wonderpress Development Environment first.`);
+    return false;
+  }
 
-	let url = 'https://github.com/wndrfl/wonderpress-theme/archive/master.zip';
-	await wordpress.installTheme(url, opts);
-	sh.exec(`npm --prefix ${wordpress.pathToThemesDir}/wonderpress-theme run init`);
-	return true;
+  let url = 'https://github.com/wndrfl/wonderpress-theme/archive/master.zip';
+  await wordpress.installTheme(url, opts);
+  sh.exec(`npm --prefix ${wordpress.pathToThemesDir}/wonderpress-theme run init`);
+  return true;
 }
 
-export async function installWonderpressDevelopmentEnvironment() {
-	log.info(`Installing Wonderpress Development Environment...`);
+export async function installWonderpressDevelopmentEnvironment(dir) {
 
-	if(await getWonderpressConfig()) {
-		// Overwrite?
+  const targetDir = (dir) ? dir : '.';
+
+  log.info(`Installing Wonderpress Development Environment into ${targetDir}`);
+
+  if(await getWonderpressConfig()) {
+    // Overwrite?
     const installWonderpressAnswer = await inquirer.prompt([
       {
         type: 'confirm',
@@ -88,33 +91,43 @@ export async function installWonderpressDevelopmentEnvironment() {
     ]);
 
     if(installWonderpressAnswer.confirm !== true) {
-    	log.info(`Skipping Wonderpress Development Environment installation...`);
-			return;
+      log.info(`Skipping Wonderpress Development Environment installation...`);
+      return;
     }
-	}
+  }
 
-	const tmpDir = '.wonderpress-tmp';
-	sh.exec('rm -rf ' + tmpDir);
-	let cmd = `git clone https://github.com/wndrfl/wonderpress-development-environment.git ${tmpDir} --progress --verbose`;
-	sh.exec(cmd);
-	sh.exec(`rm -rf ${tmpDir}/.git`);
-	sh.exec(`rm -rf ${tmpDir}/.github`);
-	sh.exec(`cp -R ${tmpDir}/. .`);
-	sh.exec(`rm -rf ${tmpDir}`);
+  const tmpDir = '.wonderpress-tmp';
+  sh.exec('rm -rf ' + tmpDir);
+  let cmd = `git clone https://github.com/wndrfl/wonderpress-development-environment.git ${tmpDir} --progress --verbose`;
+  sh.exec(cmd);
+  sh.exec(`rm -rf ${tmpDir}/.git`);
+  sh.exec(`rm -rf ${tmpDir}/.github`);
+  sh.exec(`cp -R ${tmpDir}/. ${targetDir}`);
+  sh.exec(`rm -rf ${tmpDir}`);
 }
 
 export async function installWPCLI() {
-	// Install `wp-cli` latest release
-	if (!sh.which('wp')) {
-		log.info(`Downloading and installing WP CLI`);
-		sh.exec(`curl -O https://raw.githubusercontent.com/wp-cli/builds/gh-pages/phar/wp-cli.phar`);
-		sh.exec(`mv wp-cli.phar wp-cli`);
-	}
+  // Install `wp-cli` latest release
+  if (!sh.which('wp')) {
+    log.info(`Downloading and installing WP CLI`);
+    sh.exec(`curl -O https://raw.githubusercontent.com/wp-cli/builds/gh-pages/phar/wp-cli.phar`);
+    sh.exec(`mv wp-cli.phar wp-cli`);
+  }
 
-	return true;
+  return true;
 }
 
 export async function init(args) {
+
+  const targetDir = args['--dir'] ? args['--dir'] : '.';
+  if(!await fs.existsSync(targetDir)) {
+    const mkdirResult = await fs.mkdir(targetDir, (err) => {
+      if(err) {
+        log.info(err);
+      }
+    });
+  }
+  process.chdir(targetDir);
 
   // Clear the entire directory?
   if(args['--clean-slate']) {
@@ -136,17 +149,17 @@ export async function init(args) {
     }
   }
 
-	log.info(`✨ Setting up Wonderpress...`);
+  log.info(`✨ Setting up Wonderpress...`);
 
-	await installWPCLI();
-	await installWonderpressDevelopmentEnvironment();
-	await wordpress.downloadWordPress();
-	await wordpress.configureWordPress();
-	await wordpress.installWordPress();
-	await composer.installComposer();
+  await installWPCLI();
+  await installWonderpressDevelopmentEnvironment();
+  await wordpress.downloadWordPress();
+  await wordpress.configureWordPress();
+  await wordpress.installWordPress();
+  await composer.installComposer();
 
-	// Initialize any existing themes found in wonderpress.json
-	await bootstrapThemes();
+  // Initialize any existing themes found in wonderpress.json
+  await bootstrapThemes();
 
   // Attempt to activate an existing theme, or install Wonderpress Theme
   log.info(`Checking for themes that can be activated...`);
@@ -155,15 +168,15 @@ export async function init(args) {
 
   if(themes.length > 0) {
 
-  	const choices = [];
-  	themes.forEach((theme) => {
-  		choices.push({
-  			'name' : theme.name,
-  			'value' : theme.name
-  		});
-  	});
+    const choices = [];
+    themes.forEach((theme) => {
+      choices.push({
+        'name' : theme.name,
+        'value' : theme.name
+      });
+    });
 
-		// Which theme to activate?
+    // Which theme to activate?
     const themeToActivateAnswer = await inquirer.prompt([
       {
         type: 'list',
@@ -174,15 +187,15 @@ export async function init(args) {
     ]);
 
     if(themeToActivateAnswer.themeToActivate) {
-    	wordpress.activateTheme(themeToActivateAnswer.themeToActivate);
+      wordpress.activateTheme(themeToActivateAnswer.themeToActivate);
     }
 
-	// No other themes... try Wonderpress Theme
+  // No other themes... try Wonderpress Theme
   } else {
 
     log.info(`No existing themes for activation detected...`);
 
-		// Install Wonderpress Theme?
+    // Install Wonderpress Theme?
     const installWonderpressAnswer = await inquirer.prompt([
       {
         type: 'confirm',
@@ -193,9 +206,9 @@ export async function init(args) {
     ]);
 
     if(installWonderpressAnswer.confirm === true) {
-			await installWonderpressTheme({
-				activate: true
-			});
+      await installWonderpressTheme({
+        activate: true
+      });
     }
   }
 
@@ -210,35 +223,35 @@ export async function init(args) {
   ]);
 
   if(createReadmeAnswer.confirm === true) {
-		await readme.create();
+    await readme.create();
   }
 
 
-	log.success(`The Wonderpress environment has been initialized!`);
+  log.success(`The Wonderpress environment has been initialized!`);
 
-	return true;
+  return true;
 }
 
 export async function isWonderpressRoot() {
-	const config = await getWonderpressConfig();
-	return (config) ? true : false;
+  const config = await getWonderpressConfig();
+  return (config) ? true : false;
 }
 
 export async function setCwdToEnvironmentRoot() {
-	let path = process.cwd();
-	let seek = true;
-	let c = 0;
-	while(seek) {
-		if(c++ >= 50) break;
-		const checkPath = `${path}/${wonderpressConfigPath}`;
-		if(!await fs.existsSync(checkPath)) {
-			process.chdir('../');
-			path = process.cwd();
-		} else {
-			return path;
-		}
-	}
+  let path = process.cwd();
+  let seek = true;
+  let c = 0;
+  while(seek) {
+    if(c++ >= 50) break;
+    const checkPath = `${path}/${wonderpressConfigPath}`;
+    if(!await fs.existsSync(checkPath)) {
+      process.chdir('../');
+      path = process.cwd();
+    } else {
+      return path;
+    }
+  }
 
-	log.error(`This does not appear to be a Wonderpress Development Environment.`);
+  log.error(`This does not appear to be a Wonderpress Development Environment.`);
 }
 
