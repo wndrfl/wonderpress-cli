@@ -1,6 +1,4 @@
-import arg from 'arg';
-import inquirer from 'inquirer';
-
+const arg = require('arg');
 const core = require('./core');
 const lint = require('./lint');
 const partial = require('./partial');
@@ -13,7 +11,6 @@ export async function cli() {
     '--clean-slate'     : Boolean,
     '--dir'             : String,
     '--fix'             : Boolean,
-    '--force'           : Boolean,
     '--init'            : Boolean,
     '--name'            : String,
 
@@ -30,26 +27,6 @@ export async function cli() {
       permissive: true
     }
   );
-
-  // Clear the entire directory?
-  if(args['--clean-slate']) {
-    const cleanSlateConfirmationAnswer = await inquirer.prompt([
-      {
-        type: 'confirm',
-        name: 'confirm',
-        message: 'Hey, this is serious. It will delete *everything* in your current directory. Please note your current directory. Are you sure you want to delete *everything* in your current directory?',
-        default: false,
-      }
-    ]);
-
-    if(cleanSlateConfirmationAnswer.confirm === true) {
-      console.log('🚨 Clearing the entire directory (clean slate!)');
-      require('child_process').execSync('rm -rf ./* && rm -rf .*');
-    } else {
-      console.log('You are safe. Cancelling the installation. Please try again without requesting a clean slate installation.');
-      return;
-    }
-  }
 
   const cmd = args._[0];
   

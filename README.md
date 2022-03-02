@@ -1,43 +1,38 @@
-# ✨Wonderpress CLI
-A commandline interface for bootstrapping and working with the Wonderpress WordPress environment. 
+# {{ project_name }}
 
-## Installation
+{{ project_description }}
 
-Using npm:
+## Environments
 
-```
-$ npm install -g @wndrfl/wonderpress-cli
-```
+| Environment | Branch  | URL                          	|
+|-------------|---------|-------------------------------|
+| Production  | master  | {{ production_url }}          |
+| Staging     | staging | {{ stage_url }}  				|
+| Development | develop | {{ dev_url }}      			|
 
-## Quick Start
-The most basic invocation of the Wonderpress CLI operates as a wizard-style program. Simply running `$ wonderpress` in the command-line will present you with a table of contents of the various available features:
+## Development Workflow
 
-```
-$ wonderpress
-? What would you like to do? (Use arrow keys)
-❯ Setup the Wonderpress Development Environment
-  Start a development server
-  Install the Wonderpress Theme
-  Lint the active theme
-  Create a README
-```
+### Default Branch
 
-## Commands
-The Wonderpress provides different commands for many common tasks.
+`master`
 
-- `wonderpress install_wonderpress_theme` - Installs the [Wonderpress Theme](https://github.com/wndrfl/wonderpress-theme).
+### Branch naming convention
 
-- `wonderpress lint [-f --fix]` - Lints the current active WordPress theme against the [Wonderpress Coding Standards](https://github.com/wndrfl/wonderpress-development-environment/blob/master/phpcs.xml) (which is a slightly modified flavor of the [WordPress Coding Standards](https://developer.wordpress.org/coding-standards/wordpress-coding-standards/php/)). Optionally, Wonderpress can attempt to automatically "fix" lightweight issues if the `fix` or `-f` arguments are passed.
+- For bugs - `fix/issue-name` For example, `fix/syntax-errors`
+- For features - `feature/feature-name` For example, `feature/home-page`
 
-- `wonderpress readme` - Starts a wizard to aid in the creation of a new README file.
+### Testing
 
-- `wonderpress setup [-c --clean-slate]` - Sets up a "Wonderpress" flavored WordPress Development Environment from scratch, configures and installs WordPress, installs various developer tools, and optionally installs a blank theme. Optionally, Wonderpress can completely wipe the current install and setup from scratch (this is super duper dangerous and should only be run if you really don't care about your previous work with the directory).
+List down tests created for the project and details on how to execute them locally.
 
-- `wonderpress server` - Starts web server to run WordPress locally. (uses [WP CLI](https://developer.wordpress.org/cli/commands/server/))
+- PHP Unit tests if any.
+- Behat tests if any.
+- GitHub actions/travis/circleci etc. CI test cases if any.
 
+### Coding Standards and Linting
 
-## License
-MIT
+This environment is automatically codesniffed against the [WordPress Coding Standards](https://developer.wordpress.org/coding-standards/wordpress-coding-standards/php/) when pushed to Github.
 
-## Collaborators
-- Johnnie Munger johnnie@wonderful.io
+To run codesniffing locally:
+
+`$ wonderpress lint`

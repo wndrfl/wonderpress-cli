@@ -1,7 +1,6 @@
-import inquirer from 'inquirer';
-
 const composer = require('./composer');
 const core = require('./core');
+const inquirer = require('inquirer');
 const log = require('./log');
 const sh = require('shelljs');
 const wordpress = require('./wordpress');
