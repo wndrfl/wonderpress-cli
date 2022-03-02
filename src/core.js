@@ -4,7 +4,7 @@ import inquirer from 'inquirer';
 const composer = require('./composer');
 const log = require('./log');
 const readme = require('./readme');
-const wonderpressConfigPath = './wonderpress.json';
+const wonderpressConfigPath = './.wonderpress';
 const wordpress = require('./wordpress');
 
 const open = require('open');
