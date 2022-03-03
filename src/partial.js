@@ -204,7 +204,4 @@ ${partialTemplateOutput}`);
 		log.success(`View template created at: ${templateFilePath}`);
 	}
 
-
-
-
 }
