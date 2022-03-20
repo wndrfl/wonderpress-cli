@@ -4,6 +4,7 @@ const lint = require('./lint');
 const partial = require('./partial');
 const readme = require('./readme');
 const server = require('./server');
+const template = require('./template');
 
 export async function cli() {
 
@@ -17,6 +18,7 @@ export async function cli() {
     // Shortcuts
     '-d'        : '--dir',
     '-f'        : '--fix',
+    '-i'        : '--init',
     '-n'        : '--name',
   }
 
@@ -45,6 +47,9 @@ export async function cli() {
       break;
     case 'readme':
       await readme.command(args._[1],args);
+      break;
+    case 'template':
+      await template.command(args._[1],args);
       break;
   }
 }

@@ -34,7 +34,7 @@ export async function create(args) {
 
 	log.info('Creating README.md...');
 
-	let path = require.resolve('./templates/readme.template.md');
+	let path = require.resolve('./templates/readme.mustache');
 	let data = fs.readFileSync(path, 'utf8');
 
 
