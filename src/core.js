@@ -71,7 +71,7 @@ export async function installWonderpressTheme(opts) {
 
   let url = 'https://github.com/wndrfl/wonderpress-theme/archive/master.zip';
   await wordpress.installTheme(url, opts);
-  sh.exec(`npm --prefix ${wordpress.pathToThemesDir}/wonderpress-theme run wonderpress-init --if-present`);
+  sh.exec(`npm --prefix ${wordpress.pathToThemesDir}/wonderpress-theme install`);
   return true;
 }
 
