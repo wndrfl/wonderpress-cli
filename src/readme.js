@@ -100,7 +100,7 @@ export async function exists() {
 
   log.info(`Checking for the existence of a README file at \`${readmeFilePath}\`...`);
 
-  if(await fs.existsSync(readmeFilePath)) {
+  if(await fs.existsSync(`${process.cwd()}/${readmeFilePath}`)) {
     log.info(`README file found!`);
     return true;
   }

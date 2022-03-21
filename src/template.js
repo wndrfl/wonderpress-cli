@@ -62,4 +62,6 @@ export async function create(opts) {
   await sh.exec(`cat > ${filePath} <<EOF
 ${templateOutput}`);
   log.success(`Template created: ${filePath}`);
+
+  sh.exec(`npm --prefix ${wordpress.pathToThemesDir}/wonderpress run postcreatetemplate --name=${templateNameFileFriendly} --if-present`);
 }

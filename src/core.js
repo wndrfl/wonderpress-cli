@@ -20,35 +20,6 @@ export async function command(subcommand, args) {
   return true;
 }
 
-
-export async function bootstrapThemes() {
-
-  log.info(`Searching for existing themes for bootstrapping...`);
-
-  const themePaths = [];
-
-  // Get all the theme directories in the themes folder
-  await fs.readdirSync(wordpress.pathToThemesDir).filter(function (path) {
-    const themePath = wordpress.pathToThemesDir+'/'+path;
-    if(fs.statSync(themePath).isDirectory()) {
-      themePaths.push(themePath);
-    }
-  })
-
-  if(themePaths.length < 1) {
-    log.info(`No themes were found for bootstrapping. Skipping...`);
-    return;
-  }
-
-  log.info(`Existing themes were found! Let\'s see if we can bootstrap them.`);
-
-  themePaths.forEach((themePath) => {
-    log.info(`Bootstrapping theme (if theme is Wonderpress-friendly): ${themePath}`);
-    sh.exec(`npm run wonderpress-init --prefix ${themePath} --if-present`);
-    log.info(`Bootstrapping is complete.`);
-  });
-}
-
 export async function getWonderpressConfig() {
   if(await fs.existsSync(wonderpressConfigPath)) {
     const configRaw = fs.readFileSync(wonderpressConfigPath);
@@ -59,20 +30,6 @@ export async function getWonderpressConfig() {
   log.info(`No configuration file found at: ${wonderpressConfigPath}`);
 
   return false;
-}
-
-export async function installWonderpressTheme(opts) {
-  log.info(`Installing Wonderpress Theme...`);
-
-  if(!await wordpress.isInstalled()) {
-    log.error(`WordPress is not installed. Please setup your Wonderpress Development Environment first.`);
-    return false;
-  }
-
-  let url = 'https://github.com/wndrfl/wonderpress-theme/archive/master.zip';
-  await wordpress.installTheme(url, opts);
-  sh.exec(`npm --prefix ${wordpress.pathToThemesDir}/wonderpress-theme install`);
-  return true;
 }
 
 export async function installWonderpressDevelopmentEnvironment(dir) {
@@ -154,15 +111,18 @@ export async function init(args) {
   await wordpress.installWordPress();
   await composer.installComposer();
 
-  // Initialize any existing themes found in wonderpress.json
-  await bootstrapThemes();
-
   // Attempt to activate an existing theme, or install Wonderpress Theme
   log.info(`Checking for themes that can be activated...`);
 
   const themes = await wordpress.getAllThemes();
 
-  if(themes.length > 0) {
+  if(themes.length == 1) {
+
+    log.info(`Activating ${themes[0].name} theme...`);
+    sh.exec(`npm --prefix ${wordpress.pathToThemesDir}/${themes[0].name} install`);
+    wordpress.activateTheme(themes[0].name);
+
+  } else if(themes.length > 1) {
 
     const choices = [];
     themes.forEach((theme) => {
@@ -183,29 +143,10 @@ export async function init(args) {
     ]);
 
     if(themeToActivateAnswer.themeToActivate) {
+      log.info(`Activating ${themeToActivateAnswer.themeToActivate} theme...`)
       wordpress.activateTheme(themeToActivateAnswer.themeToActivate);
     }
 
-  // No other themes... try Wonderpress Theme
-  } else {
-
-    log.info(`No existing themes for activation detected...`);
-
-    // Install Wonderpress Theme?
-    const installWonderpressAnswer = await inquirer.prompt([
-      {
-        type: 'confirm',
-        name: 'confirm',
-        message: 'Would you like to install the default Wonderpress Theme?',
-        default: true,
-      }
-    ]);
-
-    if(installWonderpressAnswer.confirm === true) {
-      await installWonderpressTheme({
-        activate: true
-      });
-    }
   }
 
   // Create a Readme?
@@ -223,7 +164,6 @@ export async function init(args) {
       await readme.create();
     }
   }
-
 
   log.success(`The Wonderpress environment has been initialized!`);
 
