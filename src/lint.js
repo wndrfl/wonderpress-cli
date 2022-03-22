@@ -87,7 +87,9 @@ export async function theme(dir, opts) {
 		sh.exec(fixCmd);
 
 		log.info('All issues that could be fixed were fixed. Rerunning lint...');
-		theme(themeName, false);
+		theme(process.cwd(), {
+      name : themeName
+    });
 
 	}else{
 		log.error('Issues were found during lint! Please see above...');
