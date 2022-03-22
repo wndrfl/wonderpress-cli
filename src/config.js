@@ -1,7 +1,10 @@
-const fs = require("fs");
-const log = require("./log");
+const fs = require('fs-extra');
+const rc = require('rc');
 
-export async function get(dir) {
+/**
+ * Determine if a config file exists in a directory.
+ **/
+export async function exists(dir) {
 
   let config;
 
@@ -11,7 +14,7 @@ export async function get(dir) {
     const data = fs.readFileSync(path);
     config = JSON.parse(data);
   } catch(err) {
-    // log.info(`No .wonderpressrc found.`);
+    //
   }
 
   // Check for .wonderpress (old version)
@@ -21,9 +24,20 @@ export async function get(dir) {
       const data = fs.readFileSync(path);
       config = JSON.parse(data);
     } catch(err) {
-      // log.info(`No .wonderpress found`);
+      //
     }
   }
 
   return config;
+}
+
+/**
+ * Get a config in rc format (JSON is acceptable)
+ **/
+export async function get() {
+
+  const config = rc('wonderpress', {
+    //
+  });
+
 }

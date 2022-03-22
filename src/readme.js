@@ -1,7 +1,6 @@
-import inquirer from 'inquirer';
-
 const core = require('./core');
 const fs = require('fs');
+const inquirer = require('inquirer');
 const log = require('./log');
 const mustache = require('mustache');
 const sh = require('shelljs');

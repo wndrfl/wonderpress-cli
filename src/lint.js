@@ -1,5 +1,4 @@
 const composer = require('./composer');
-const config = require('./config');
 const core = require('./core');
 const inquirer = require('inquirer');
 const log = require('./log');

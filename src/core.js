@@ -79,7 +79,7 @@ export async function init(dir, opts) {
 
   // Check to see if there is already an installation in
   // the target directory. If there is, then don't install.
-  if(! await config.get(process.cwd())) {
+  if(! await config.exists(process.cwd())) {
 
     log.info(`Installing Wonderpress Development Environment into ${process.cwd()}`);
 
@@ -175,27 +175,40 @@ export async function init(dir, opts) {
 }
 
 /**
- * Attempt to find the Wonderpress Development Environment root,
- * and change the cwd context to the root if found.
+ * Get the root directory of the Wonderpress environment.
  **/
-export async function setCwdToEnvironmentRoot() {
+export async function getRootDir() {
   let path = process.cwd();
   let seek = true;
   let c = 0;
   while(seek) {
     if(c++ >= 50) break;
-    if(! await config.get(path)) {
-      process.chdir('../');
-      path = process.cwd();
+    if(! await config.exists(path)) {
+      path = `../${path}`;
     } else {
       return path;
     }
   }
 
-  // Return back to the original path
-  process.chdir(path);
+  return false;
+
+}
+
+/**
+ * Attempt to find the Wonderpress Development Environment root,
+ * and change the cwd context to the root if found.
+ **/
+export async function setCwdToEnvironmentRoot() {
+
+  const path = await getRootDir();
+
+  if(path) {
+    process.chdir(path);
+    return true;
+  }
 
   log.error(`This does not appear to be a Wonderpress Development Environment.`);
+  return false;
 }
 
 /**

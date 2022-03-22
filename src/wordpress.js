@@ -1,7 +1,6 @@
-import inquirer from 'inquirer';
-
 const core = require('./core');
 const fs = require('fs');
+const inquirer = require('inquirer');
 const log = require('./log');
 const mysql2 = require('mysql2/promise');
 const sh = require('shelljs');
