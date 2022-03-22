@@ -44,6 +44,10 @@ Create a Wonderpress "partial" (both a PHP class and an accompanying view templa
 
 Starts a web server to run WordPress locally. (uses [WP CLI](https://developer.wordpress.org/cli/commands/server/))
 
+#### `wonderpress template create`
+
+Create a Wonderpress custom page template.
+
 ### [Support](#support)
 
 The CLI has been tested on the following tools. Please let us know if how it works in your environment!
