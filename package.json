@@ -21,9 +21,11 @@
   "author": "Johnnie Munger",
   "license": "MIT",
   "dependencies": {
+    "@wndrfl/static-kit-cli": "^2.5.3",
     "arg": "^4.1.3",
     "colors": "^1.4.0",
     "esm": "^3.2.25",
+    "fs-extra": "^10.0.1",
     "inquirer": "^7.3.3",
     "mustache": "^4.0.1",
     "mysql2": "^2.2.5",

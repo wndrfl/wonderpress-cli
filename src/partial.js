@@ -1,12 +1,14 @@
-import inquirer from 'inquirer';
-
 const core = require('./core');
 const fs = require('fs');
+const inquirer = require('inquirer');
 const log = require('./log');
 const mustache = require('mustache');
 const sh = require('shelljs');
 const wordpress = require('./wordpress');
 
+/**
+ * Accept and route a command.
+ **/
 export async function command(subcommand, args) {
 	switch(subcommand) {
 		case 'create':
@@ -17,6 +19,9 @@ export async function command(subcommand, args) {
 	return true;
 }
 
+/**
+ * Create a new "partial".
+ **/
 export async function create(args) {
 
 	const dir = args['--dir'] ? args['--dir'] : '.';

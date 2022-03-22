@@ -1,33 +1,40 @@
 const composer = require('./composer');
+const config = require('./config');
 const core = require('./core');
 const inquirer = require('inquirer');
 const log = require('./log');
 const sh = require('shelljs');
 const wordpress = require('./wordpress');
 
+/**
+ * Accept and route a command.
+ **/
 export async function command(subcommand, args) {
 	switch(subcommand) {
 		case 'theme':
-			await theme(args);
+			await theme(args['--dir'] || null, {
+        fix : args['--fix'] || false,
+        name : args['--name'] || null,
+      });
 			break;
 	}
 
 	return true;
 }
 
-export async function theme(args) {
+/**
+ * Codesniff a specific theme (or the active theme).
+ **/
+export async function theme(dir, opts) {
 
 	log.info('Attempting to lint the active theme...');
 
-	const dir = args['--dir'] ? args['--dir'] : '.';
+  opts = opts || {};
+
+	dir = dir || process.cwd();
 	process.chdir(dir);
 
 	if(! await core.setCwdToEnvironmentRoot()) {
-		return false;
-	}
-
-	if(! await core.isWonderpressRoot()) {
-		log.error('Please run the lint command from the root directory of this project.');
 		return false;
 	}
 
@@ -44,8 +51,8 @@ export async function theme(args) {
 		return;
 	}
 
-	const fix = args['--fix'] ? args['--fix'] : false;
-	let themeName = args['--name'] ? args['--name'] : null;
+	const fix = opts.fix ? opts.fix : false;
+	let themeName = opts.name ? opts.name : null;
 
 	if(!themeName) {
 		let theme = await wordpress.getActiveTheme();

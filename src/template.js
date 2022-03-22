@@ -5,14 +5,17 @@ const fs = require('fs');
 const log = require('./log');
 const mustache = require('mustache');
 const sh = require('shelljs');
+const staticCli = require('@wndrfl/static-kit-cli');
 const wordpress = require('./wordpress');
 
+/**
+ * Accept and route a command.
+ **/
 export async function command(subcommand, args) {
   switch(subcommand) {
     case 'create':
-      await create({
+      await create(args['--name'] || null, {
         dir : args['--dir'] || null,
-        name : args['--name'] || null,
       });
       break;
   }
@@ -20,7 +23,17 @@ export async function command(subcommand, args) {
   return true;
 }
 
-export async function create(opts) {
+/**
+ * Create a customer WordPress page template.
+ **/
+export async function create(templateName, opts) {
+
+  if(!templateName) {
+    log.error(`No name provided. Please provide a name by using the --name flag. Aborting template creation.`);
+    return;
+  }
+
+  opts = opts || {};
 
   const dir = opts.dir || `${process.cwd()}/.`;
 
@@ -28,12 +41,6 @@ export async function create(opts) {
 
   if(! await core.setCwdToEnvironmentRoot()) {
     return false;
-  }
-
-  const templateName = opts.name || null;
-  if(!templateName) {
-    log.error(`No name provided. Please provide a name by using the --name flag. Aborting template creation.`);
-    return;
   }
 
   const templateNameLower = templateName.toLowerCase();
@@ -63,5 +70,5 @@ export async function create(opts) {
 ${templateOutput}`);
   log.success(`Template created: ${filePath}`);
 
-  sh.exec(`npm --prefix ${wordpress.pathToThemesDir}/wonderpress run postcreatetemplate --name=${templateNameFileFriendly} --if-present`);
+  await staticCli.template.create(`${wordpress.pathToThemesDir}/wonderpress`, templateNameFileFriendly);
 }

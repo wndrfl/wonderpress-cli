@@ -2,6 +2,9 @@ const fs = require('fs');
 const log = require('./log');
 const sh = require('shelljs');
 
+/**
+ * Installs Composer packages
+ **/
 export async function installComposer() {
 
 	log.info('Checking for an existing Composer installation...');
