@@ -85,13 +85,23 @@ export async function init(dir, opts) {
 
     // Clone and prune the Wonderpress Development Environment
     const tmpDir = '.wonderpress-tmp';
-    sh.exec('rm -rf ' + tmpDir);
-    let cmd = `git clone https://github.com/wndrfl/wonderpress-development-environment.git ${tmpDir} --progress --verbose`;
+    await fs.emptyDirSync(tmpDir);
+
+    let cmd = `git clone https://github.com/wndrfl/wonderpress-development-environment.git ${tmpDir} --depth=1 --progress --verbose`;
     sh.exec(cmd);
-    sh.exec(`rm -rf ${tmpDir}/.git`);
-    sh.exec(`rm -rf ${tmpDir}/.github`);
-    sh.exec(`cp -R ${tmpDir}/. ${process.cwd()}`);
-    sh.exec(`rm -rf ${tmpDir}`);
+
+    // Copy a filtered list of files
+    await fs.copySync(tmpDir, process.cwd(), {
+      filter: (src, dest) => {
+        // Ignore specific files
+        const basename = src.split(/[\\/]/).pop();
+        return ![
+          '.git',
+          '.github'
+        ].includes(basename);
+      }
+    });
+    await fs.removeSync(tmpDir);
 
     // Install Static Kit
     const saveCwd = process.cwd();
@@ -111,6 +121,9 @@ export async function init(dir, opts) {
 
   // Install WordPress Core
   await wordpress.installWordPress();
+
+  // Install the Wonderpress Core as an MU (must use) plugin
+  await wordpress.installMuPlugin('https://github.com/wndrfl/wonderpress-core.git');
 
   // Install Composer
   await composer.installComposer();

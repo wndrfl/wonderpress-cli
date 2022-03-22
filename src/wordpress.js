@@ -1,19 +1,27 @@
 const core = require('./core');
-const fs = require('fs');
+const fs = require('fs-extra');
 const inquirer = require('inquirer');
 const log = require('./log');
 const mysql2 = require('mysql2/promise');
+const rc = require('rc');
 const sh = require('shelljs');
 const sqlString = require('sqlstring');
 
-const pathToThemesDir = './wp-content/themes';
-exports.pathToThemesDir = pathToThemesDir;
+// Common paths
+export const pathToThemesDir = './wp-content/themes';
+export const pathToMuPluginsDir = './wp-content/mu-plugins';
 
+/**
+ * Activate a specific theme.
+ **/
 export async function activateTheme(theme) {
 	log.info('Attempting to activate theme: ' + theme);
 	sh.exec('wp theme activate ' + theme);
 }
 
+/**
+ * Create and setup a wp-config.php
+ **/
 export async function configureWordPress() {
 
 	if( await this.hasConfig() ) {
@@ -124,6 +132,9 @@ export async function configureWordPress() {
 	return true;
 }
 
+/**
+ * Create the themes directory
+ **/
 export async function createThemesDirectory() {
 
 	if(! await core.setCwdToEnvironmentRoot()) {
@@ -135,21 +146,22 @@ export async function createThemesDirectory() {
 		return false;
 	}
 
-	if(await fs.existsSync(pathToThemesDir)) {
-		return true;
-	}
+  await fs.ensureDirSync(pathToMuPluginsDir);
 
-	log.info(`Attempting to create themes directory: ${pathToThemesDir}`);
-
-	sh.mkdir('-p', pathToThemesDir);
 	return true;
 }
 
+/**
+ * Download WordPress core (without wp-content)
+ **/
 export async function downloadWordPress() {
 	sh.exec('wp core download --skip-content --force');
 	return true;
 }
 
+/**
+ * Get the active theme
+ **/
 export async function getActiveTheme() {
 
 	log.info('Grabbing the currently active theme...');
@@ -175,6 +187,9 @@ export async function getActiveTheme() {
 	return themes[0];
 }
 
+/**
+ * Get a list of all installed themes
+ **/
 export async function getAllThemes() {
 	try {
 		let themes = JSON.parse(sh.exec('wp theme list --format=json', { silent: true }));
@@ -184,11 +199,17 @@ export async function getAllThemes() {
 	}
 }
 
+/**
+ * Check for the existense of a wp-config.php
+ **/
 export async function hasConfig() {
 	const path = sh.exec('wp config path');
 	return path.length > 0 ? true : false;
 }
 
+/**
+ * Install WordPress
+ **/
 export async function installWordPress() {
 
 	if( await this.isInstalled() ) {
@@ -247,6 +268,60 @@ export async function installWordPress() {
 	return true;
 }
 
+/**
+ * Install a specific plugin and optionally activate
+ **/
+export async function installPlugin(url, activate) {
+  let cmd = `wp plugin install ${url}`;
+  if(activate) {
+    cmd += ` --activate`;
+  }
+  sh.exec(cmd);
+}
+
+/**
+ * Install an MU (Must Use) Plugin
+ **/
+export async function installMuPlugin(externalPluginZipUrl) {
+
+  log.info(`Installing MU Plugin: ${externalPluginZipUrl}...`);
+
+  await fs.ensureDirSync(pathToMuPluginsDir);
+
+  const tmpDir = '.wonderpress-tmp';
+  await fs.emptyDirSync(tmpDir);
+
+  const cmd = `git clone ${externalPluginZipUrl} ${tmpDir} --depth=1 --progress --verbose`;
+  sh.exec(cmd);
+
+  // Check to see if the plugin has a .wonderpressrc
+  const saveCwd = process.cwd();
+  process.chdir(tmpDir);
+  const wonderpressConfig = rc('wonderpress', {
+    //
+  });
+  process.chdir(saveCwd);
+
+  // Copy a filtered list of files
+  await fs.copySync(tmpDir, pathToMuPluginsDir, {
+    filter: (src, dest) => {
+
+      // Always copy if no config
+      if(!wonderpressConfig || !wonderpressConfig.ignore) {
+        return true;
+      }
+
+      // Ignore specific files
+      const basename = src.split(/[\\/]/).pop();
+      return !wonderpressConfig.ignore.includes(basename);
+    }
+  });
+  await fs.removeSync(tmpDir);
+}
+
+/**
+ * Install a Theme and optionally activate
+ **/
 export async function installTheme(url, opts) {
 
 	opts = opts ? opts : {};
@@ -277,6 +352,9 @@ export async function installTheme(url, opts) {
 	sh.exec(cmd);
 }
 
+/**
+ * Check whether WordPress Core is installed
+ **/
 export async function isInstalled() {
 	let isInstalled = await sh.exec('wp core is-installed').code;
 	return (isInstalled === 0);
