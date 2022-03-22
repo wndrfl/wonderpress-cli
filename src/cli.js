@@ -4,6 +4,7 @@ const lint = require('./lint');
 const partial = require('./partial');
 const readme = require('./readme');
 const server = require('./server');
+const template = require('./template');
 
 export async function cli() {
 
@@ -13,11 +14,14 @@ export async function cli() {
     '--fix'             : Boolean,
     '--init'            : Boolean,
     '--name'            : String,
+    '--version'         : Boolean,
 
     // Shortcuts
     '-d'        : '--dir',
     '-f'        : '--fix',
+    '-i'        : '--init',
     '-n'        : '--name',
+    '-v'        : '--version',
   }
 
   const args = arg(
@@ -28,7 +32,14 @@ export async function cli() {
     }
   );
 
-  const cmd = args._[0];
+  let cmd = args._[0];
+
+  // Handle for no cmd
+  if(cmd == undefined) {
+    if(args['--version']) {
+      cmd = 'version';
+    }
+  }
   
   switch(cmd) {
     case 'partial':
@@ -45,6 +56,12 @@ export async function cli() {
       break;
     case 'readme':
       await readme.command(args._[1],args);
+      break;
+    case 'template':
+      await template.command(args._[1],args);
+      break;
+    case 'version':
+      await core.command('version',args);
       break;
   }
 }

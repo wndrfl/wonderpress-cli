@@ -2,21 +2,29 @@ const { execSync } = require('child_process');
 const core = require('./core');
 const log = require('./log');
 
+/**
+ * Accept and route a command.
+ **/
 export async function command(subcommand, args) {
 	switch(subcommand) {
 		case 'start':
-			await start(args);
+			await start(args['--dir'] || null);
 			break;
 	}
 
 	return true;
 }
 
-export async function start(args) {
+/**
+ * Start a server with `wp server`.
+ **/
+export async function start(dir) {
 
-	const dir = args['--dir'] ? args['--dir'] : '.';
+	dir = dir || process.cwd();
 	process.chdir(dir);
 
+  // The server command needs to be run from root
+  // Try and force cwd context to root
 	if(! await core.setCwdToEnvironmentRoot()) {
 		return false;
 	}

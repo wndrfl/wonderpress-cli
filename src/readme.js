@@ -1,43 +1,48 @@
-import inquirer from 'inquirer';
-
 const core = require('./core');
 const fs = require('fs');
+const inquirer = require('inquirer');
 const log = require('./log');
 const mustache = require('mustache');
 const sh = require('shelljs');
 
-const readmeFilePath = 'README.md';
+const readmeFileName = 'README.md';
 
+/**
+ * Accept and route a command.
+ **/
 export async function command(subcommand, args) {
 	switch(subcommand) {
 		case 'create':
-			await create(args);
+			await create(args['--dir'] || null, {});
 			break;
 	}
 
 	return true;
 }
 
-export async function create(args) {
+/**
+ * Create a README file.
+ **/
+export async function create(dir, opts) {
 
-	const dir = args && args['--dir'] ? args['--dir'] : '.';
+	dir = dir || process.cwd();
 	process.chdir(dir);
 
-	if(! await core.setCwdToEnvironmentRoot()) {
-		return false;
-	}
+  opts = opts || {};
 
-  if(exists()) {
-    log.warn(`A README file already exists at \`${readmeFilePath}\`. Skipping README creation.`);
+  // Check to make sure a README doesn't already exist
+  if(await exists(process.cwd())) {
+    log.warn(`A README file already exists. Skipping README creation.`);
     return true;
   }
 
 	log.info('Creating README.md...');
 
-	let path = require.resolve('./templates/readme.template.md');
+  // Get the template file
+	let path = require.resolve('./templates/readme.mustache');
 	let data = fs.readFileSync(path, 'utf8');
 
-
+  // Ask various questions to help create a README
 	let readmeAnswers = await inquirer.prompt([
 		{
 			type: 'input',
@@ -88,19 +93,22 @@ export async function create(args) {
 	]);
 	var output = mustache.render(data, readmeAnswers);
 
-	await sh.exec(`cat > ${readmeFilePath} <<EOF
+	await sh.exec(`cat > ${readmeFileName} <<EOF
 ${output}`);
 
 	log.success('README created!');
-
-
 }
 
-export async function exists() {
+/**
+ * Check to see if a README exists in a given directory
+ **/
+export async function exists(dir) {
 
-  log.info(`Checking for the existence of a README file at \`${readmeFilePath}\`...`);
+  const path = `${dir}/${readmeFileName}`;
 
-  if(await fs.existsSync(readmeFilePath)) {
+  log.info(`Checking for the existence of a README file at \`${path}\`...`);
+
+  if(await fs.existsSync(`${path}`)) {
     log.info(`README file found!`);
     return true;
   }
