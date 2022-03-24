@@ -69,5 +69,5 @@ export async function create(templateName, opts) {
 ${templateOutput}`);
   log.success(`Template created: ${filePath}`);
 
-  await staticCli.template.create(`${wordpress.pathToThemesDir}/wonderpress`, templateNameFileFriendly);
+  await staticCli.template.create(`${themeDir}/static`, templateNameFileFriendly);
 }
