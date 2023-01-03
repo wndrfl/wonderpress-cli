@@ -40,7 +40,7 @@ export async function cli() {
       cmd = 'version';
     }
   }
-  
+
   switch(cmd) {
     case 'partial':
       await partial.command(args._[1],args);

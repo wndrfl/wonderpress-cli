@@ -63,7 +63,7 @@ export async function init(dir, opts) {
 
     if(cleanSlateConfirmationAnswer.confirm === true) {
       log.warn(`Clearing the entire directory (clean slate!)`);
-      await sh.exec(`rm -rf ${targetDir}`);
+      await sh.exec(`rm -rf ${targetDir}/*`);
     } else {
       log.success(`You are safe. Cancelling the installation. Please try again without requesting a clean slate installation.`);
       return;
