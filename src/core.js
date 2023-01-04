@@ -64,6 +64,7 @@ export async function init(dir, opts) {
     if(cleanSlateConfirmationAnswer.confirm === true) {
       log.warn(`Clearing the entire directory (clean slate!)`);
       await sh.exec(`rm -rf ${targetDir}/*`);
+      await sh.exec(`rm -rf ${targetDir}/.*`);
     } else {
       log.success(`You are safe. Cancelling the installation. Please try again without requesting a clean slate installation.`);
       return;
@@ -79,6 +80,8 @@ export async function init(dir, opts) {
 
   // Check to see if there is already an installation in
   // the target directory. If there is, then don't install.
+  const configExists = await config.exists(process.cwd());
+  console.log(configExists);
   if(! await config.exists(process.cwd())) {
 
     log.info(`Installing Wonderpress Development Environment into ${process.cwd()}`);

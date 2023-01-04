@@ -10,25 +10,13 @@ export async function exists(dir) {
 
   // Check for .wonderpressrc
   let path = `${dir}/.wonderpressrc`;
-  try {
-    const data = fs.readFileSync(path);
-    config = JSON.parse(data);
-  } catch(err) {
-    //
-  }
+  if (await fs.existsSync(path)) return true;
 
   // Check for .wonderpress (old version)
-  if(!config) {
-    let path = `${dir}/.wonderpress`;
-    try {
-      const data = fs.readFileSync(path);
-      config = JSON.parse(data);
-    } catch(err) {
-      //
-    }
-  }
+  path = `${dir}/.wonderpress`;
+  if (await fs.existsSync(path)) return true;
 
-  return config;
+  return false;
 }
 
 /**
