@@ -1,5 +1,7 @@
-const fs = require('fs-extra');
-const rc = require('rc');
+import fs from 'fs-extra';
+import path from 'path';
+import * as log from './log.js';
+import rc from 'rc';
 
 /**
  * Determine if a config file exists in a directory.

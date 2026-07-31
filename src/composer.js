@@ -1,6 +1,6 @@
-const fs = require('fs');
-const log = require('./log');
-const sh = require('shelljs');
+import fs from 'fs-extra';
+import sh from 'shelljs';
+import * as log from './log.js';
 
 /**
  * Installs Composer packages

@@ -1,11 +1,12 @@
-const core = require('./core');
-const fs = require('fs-extra');
-const inquirer = require('inquirer');
-const log = require('./log');
-const mysql2 = require('mysql2/promise');
-const rc = require('rc');
-const sh = require('shelljs');
-const sqlString = require('sqlstring');
+import fs from 'fs-extra';
+import path from 'path';
+import * as log from './log.js';
+import sh from 'shelljs';
+import * as config from './config.js';
+import inquirer from 'inquirer';
+import mysql2 from 'mysql2/promise';
+import rc from 'rc';
+import sqlString from 'sqlstring';
 
 // Common paths
 export const pathToThemesDir = './wp-content/themes';
@@ -14,9 +15,9 @@ export const pathToMuPluginsDir = './wp-content/mu-plugins';
 /**
  * Activate a specific theme.
  **/
-export async function activateTheme(theme) {
-	log.info('Attempting to activate theme: ' + theme);
-	sh.exec('wp theme activate ' + theme);
+export async function activateTheme(themeName) {
+	log.info('Attempting to activate theme: ' + themeName);
+	sh.exec('wp theme activate ' + themeName);
 }
 
 /**
@@ -24,14 +25,14 @@ export async function activateTheme(theme) {
  **/
 export async function configureWordPress() {
 
-	if( await this.hasConfig() ) {
-    log.info(`A wp-config.php already exists. Skipping WordPress configuration...`);
-    return true;
+	if (await this.hasConfig()) {
+		log.info(`A wp-config.php already exists. Skipping WordPress configuration...`);
+		return true;
 	}
 
 	// Set up the mysql2 connection
 	let connection = false;
-	while(!connection) {
+	while (!connection) {
 
 		var questions = [
 			{
@@ -45,7 +46,7 @@ export async function configureWordPress() {
 				name: 'dbUser',
 				message: 'What is the database username?',
 				default: 'root',
-				validate: function(input) {
+				validate: function (input) {
 					return input !== '';
 				}
 			},
@@ -59,20 +60,20 @@ export async function configureWordPress() {
 		var configAnswers = await inquirer.prompt(questions);
 
 		connection = await mysql2.createConnection({
-			host     : configAnswers.dbHost,
-			user     : configAnswers.dbUser,
-			password : configAnswers.dbPassword
+			host: configAnswers.dbHost,
+			user: configAnswers.dbUser,
+			password: configAnswers.dbPassword
 		})
-		.catch(() => {
-			log.error('The hostname / username / password combination you entered wasn\'t correct. Try again?');
-			connection = false;
-		});
+			.catch(() => {
+				log.error('The hostname / username / password combination you entered wasn\'t correct. Try again?');
+				connection = false;
+			});
 
 	}
 
 	// Configure the database
 	let validDatabase = false;
-	while(!validDatabase) {
+	while (!validDatabase) {
 
 		var questions = [
 			{
@@ -85,48 +86,48 @@ export async function configureWordPress() {
 		var databaseAnswers = await inquirer.prompt(questions);
 
 		await connection.execute("SELECT SCHEMA_NAME FROM INFORMATION_SCHEMA.SCHEMATA WHERE SCHEMA_NAME = ?", [databaseAnswers.dbName])
-				.then( async ([rows,fields]) => {
+			.then(async ([rows, fields]) => {
 
-					if(rows.length) {
-						validDatabase = true;
-						return true;
-					}
+				if (rows.length) {
+					validDatabase = true;
+					return true;
+				}
 
-					let createAnswer = await inquirer.prompt([
-						{
-							type: 'confirm',
-							name: 'confirm',
-							message: 'The database `' + databaseAnswers.dbName + '` doesn\'t exist, would you like to create it?.',
-							default: true
-						}
-					]);
-					if(createAnswer.confirm) {
-						await connection.execute("CREATE DATABASE " + sqlString.escapeId(databaseAnswers.dbName))
-								.then(() => {
-									log.success('The database `' + databaseAnswers.dbName + '` was created!');
-									validDatabase = true;
-								})
-								.catch((err) => {
-									console.warn(err);
-									validDatabase = false;
-								});
+				let createAnswer = await inquirer.prompt([
+					{
+						type: 'confirm',
+						name: 'confirm',
+						message: 'The database `' + databaseAnswers.dbName + '` doesn\'t exist, would you like to create it?.',
+						default: true
 					}
-					
-				})
-				.catch((err) => {
-					console.warn(err);
-					validDatabase = false;
-				});
+				]);
+				if (createAnswer.confirm) {
+					await connection.execute("CREATE DATABASE " + sqlString.escapeId(databaseAnswers.dbName))
+						.then(() => {
+							log.success('The database `' + databaseAnswers.dbName + '` was created!');
+							validDatabase = true;
+						})
+						.catch((err) => {
+							console.warn(err);
+							validDatabase = false;
+						});
+				}
+
+			})
+			.catch((err) => {
+				console.warn(err);
+				validDatabase = false;
+			});
 	}
 
 	connection.end();
-	
+
 	// Use WP CLI to create the wp-config.php file
-	let wpConfigCreateCmd 	= 'wp config create';
-	wpConfigCreateCmd 		+= ' --dbhost=' + configAnswers.dbHost;
-	wpConfigCreateCmd 		+= ' --dbuser=' + configAnswers.dbUser;
-	wpConfigCreateCmd 		+= ' --dbpass=' + configAnswers.dbPassword;
-	wpConfigCreateCmd 		+= ' --dbname=' + databaseAnswers.dbName;
+	let wpConfigCreateCmd = 'wp config create';
+	wpConfigCreateCmd += ' --dbhost=' + configAnswers.dbHost;
+	wpConfigCreateCmd += ' --dbuser=' + configAnswers.dbUser;
+	wpConfigCreateCmd += ' --dbpass=' + configAnswers.dbPassword;
+	wpConfigCreateCmd += ' --dbname=' + databaseAnswers.dbName;
 	sh.exec(wpConfigCreateCmd);
 
 	return true;
@@ -137,16 +138,16 @@ export async function configureWordPress() {
  **/
 export async function createThemesDirectory() {
 
-	if(! await core.setCwdToEnvironmentRoot()) {
+	if (! await config.setCwdToEnvironmentRoot()) {
 		return false;
 	}
 
-	if(! await this.isInstalled()) {
+	if (! await this.isInstalled()) {
 		log.error('WordPress is not installed. Please install WordPress, first.');
 		return false;
 	}
 
-  await fs.ensureDirSync(pathToMuPluginsDir);
+	await fs.ensureDirSync(pathToMuPluginsDir);
 
 	return true;
 }
@@ -166,19 +167,19 @@ export async function getActiveTheme() {
 
 	log.info('Grabbing the currently active theme...');
 
-	if(! await this.isInstalled()) {
+	if (! await this.isInstalled()) {
 		log.error('WordPress is not installed. Please install WordPress, first.');
 		return false;
 	}
 
 	let themes = JSON.parse(sh.exec('wp theme list --status=active --format=json', { silent: true }));
 
-	if(!themes.length) {
+	if (!themes.length) {
 		log.error('There are no active themes.');
 		return false;
 	}
 
-	if(themes.length > 1) {
+	if (themes.length > 1) {
 		log.error('Somehow there is more than 1 active theme. Beats me.');
 		return false;
 	}
@@ -194,7 +195,7 @@ export async function getAllThemes() {
 	try {
 		let themes = JSON.parse(sh.exec('wp theme list --format=json', { silent: true }));
 		return themes;
-	} catch(e) {
+	} catch (e) {
 		return [];
 	}
 }
@@ -212,7 +213,7 @@ export async function hasConfig() {
  **/
 export async function installWordPress() {
 
-	if( await this.isInstalled() ) {
+	if (await this.isInstalled()) {
 		log.info('WordPress is already installed...');
 		return;
 	}
@@ -224,7 +225,7 @@ export async function installWordPress() {
 			name: 'url',
 			message: 'What is the url you would like to use for development?',
 			default: 'wonderpress.localhost',
-			validate: function(input) {
+			validate: function (input) {
 				return input !== '';
 			}
 		},
@@ -233,7 +234,7 @@ export async function installWordPress() {
 			name: 'title',
 			message: 'What is the title of the site?',
 			default: 'wonderpress',
-			validate: function(input) {
+			validate: function (input) {
 				return input !== '';
 			}
 		},
@@ -257,12 +258,12 @@ export async function installWordPress() {
 		},
 	]);
 
-	let wpInstallCmd 	= 'wp core install';
-	wpInstallCmd 		+= ' --url=' + installAnswers.url;
-	wpInstallCmd 		+= ' --title=' + installAnswers.title;
-	wpInstallCmd 		+= ' --admin_user=' + installAnswers.adminUser;
-	wpInstallCmd 		+= ' --admin_password=' + installAnswers.adminPassword;
-	wpInstallCmd 		+= ' --admin_email=' + installAnswers.adminEmail;
+	let wpInstallCmd = 'wp core install';
+	wpInstallCmd += ' --url=' + installAnswers.url;
+	wpInstallCmd += ' --title=' + installAnswers.title;
+	wpInstallCmd += ' --admin_user=' + installAnswers.adminUser;
+	wpInstallCmd += ' --admin_password=' + installAnswers.adminPassword;
+	wpInstallCmd += ' --admin_email=' + installAnswers.adminEmail;
 	sh.exec(wpInstallCmd);
 
 	return true;
@@ -272,51 +273,51 @@ export async function installWordPress() {
  * Install a specific plugin and optionally activate
  **/
 export async function installPlugin(url, activate) {
-  let cmd = `wp plugin install ${url}`;
-  if(activate) {
-    cmd += ` --activate`;
-  }
-  sh.exec(cmd);
+	let cmd = `wp plugin install ${url}`;
+	if (activate) {
+		cmd += ` --activate`;
+	}
+	sh.exec(cmd);
 }
 
 /**
  * Install an MU (Must Use) Plugin
  **/
-export async function installMuPlugin(externalPluginZipUrl) {
+export async function installMuPlugin(url) {
 
-  log.info(`Installing MU Plugin: ${externalPluginZipUrl}...`);
+	log.info(`Installing MU Plugin: ${url}...`);
 
-  await fs.ensureDirSync(pathToMuPluginsDir);
+	await fs.ensureDirSync(pathToMuPluginsDir);
 
-  const tmpDir = '.wonderpress-tmp';
-  await fs.emptyDirSync(tmpDir);
+	const tmpDir = '.wonderpress-tmp';
+	await fs.emptyDirSync(tmpDir);
 
-  const cmd = `git clone ${externalPluginZipUrl} ${tmpDir} --depth=1 --progress --verbose`;
-  sh.exec(cmd);
+	const cmd = `git clone ${url} ${tmpDir} --depth=1 --progress --verbose`;
+	sh.exec(cmd);
 
-  // Check to see if the plugin has a .wonderpressrc
-  const saveCwd = process.cwd();
-  process.chdir(tmpDir);
-  const wonderpressConfig = rc('wonderpress', {
-    //
-  });
-  process.chdir(saveCwd);
+	// Check to see if the plugin has a .wonderpressrc
+	const saveCwd = process.cwd();
+	process.chdir(tmpDir);
+	const wonderpressConfig = rc('wonderpress', {
+		//
+	});
+	process.chdir(saveCwd);
 
-  // Copy a filtered list of files
-  await fs.copySync(tmpDir, pathToMuPluginsDir, {
-    filter: (src, dest) => {
+	// Copy a filtered list of files
+	await fs.copySync(tmpDir, pathToMuPluginsDir, {
+		filter: (src, dest) => {
 
-      // Always copy if no config
-      if(!wonderpressConfig || !wonderpressConfig.ignore) {
-        return true;
-      }
+			// Always copy if no config
+			if (!wonderpressConfig || !wonderpressConfig.ignore) {
+				return true;
+			}
 
-      // Ignore specific files
-      const basename = src.split(/[\\/]/).pop();
-      return !wonderpressConfig.ignore.includes(basename);
-    }
-  });
-  await fs.removeSync(tmpDir);
+			// Ignore specific files
+			const basename = src.split(/[\\/]/).pop();
+			return !wonderpressConfig.ignore.includes(basename);
+		}
+	});
+	await fs.removeSync(tmpDir);
 }
 
 /**
@@ -327,12 +328,12 @@ export async function installTheme(url, opts) {
 	opts = opts ? opts : {};
 
 	let cmd = 'wp theme install';
-	cmd 	+= ' ' + url;
-	cmd 	+= ' --color';
-	
+	cmd += ' ' + url;
+	cmd += ' --color';
+
 	// Should we activate this theme?
 	let activate = opts.activate;
-	if(!opts.hasOwnProperty('activate')) {
+	if (!opts.hasOwnProperty('activate')) {
 		let activateAnswer = await inquirer.prompt([
 			{
 				type: 'confirm',
@@ -341,11 +342,11 @@ export async function installTheme(url, opts) {
 				default: true
 			}
 		]);
-		if(activateAnswer.confirm) {
+		if (activateAnswer.confirm) {
 			activate = true;
 		}
 	}
-	if(activate) {
+	if (activate) {
 		cmd += ' --activate';
 	}
 
