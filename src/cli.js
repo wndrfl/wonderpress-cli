@@ -15,6 +15,22 @@ export async function cli() {
     '--name': String,
     '--version': Boolean,
 
+    // partial create
+    '--acf': Boolean,
+    '--no-template': Boolean,
+    '--template-name': String,
+    '--theme': String,
+    '--prop': [String],
+    '--json': String,
+
+    // readme create
+    '--project-name': String,
+    '--project-description': String,
+    '--github-url': String,
+    '--production-url': String,
+    '--stage-url': String,
+    '--dev-url': String,
+
     // Shortcuts
     '-d': '--dir',
     '-f': '--fix',
