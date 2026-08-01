@@ -6,9 +6,10 @@ A commandline interface for bootstrapping and working with the Wonderpress-flavo
 1.  [Documentation](#documentation)
     1.  [Installation](#installation)
     2.  [Commands](#commands)
-2.  [Support](#support)
-3.  [Known issues](#issues)
-4.  [License](#license)
+2.  [Architecture](#architecture)
+3.  [Support](#support)
+4.  [Known issues](#issues)
+5.  [License](#license)
 
 ## [Documentation](#documentation)
 
@@ -47,6 +48,14 @@ Starts a web server to run WordPress locally. (uses [WP CLI](https://developer.w
 #### `wonderpress template create`
 
 Create a Wonderpress custom page template.
+
+## [Architecture](#architecture)
+
+WonderPress consumes [Static Kit](https://github.com/wndrfl/static-kit) as a
+dependency and delegates everything under the theme's `static/` directory to it
+— which is why Static Kit's `node_modules` is installed by the CLI, never
+committed. See [ARCHITECTURE.md](ARCHITECTURE.md) for the full ownership
+contract.
 
 ### [Support](#support)
 
