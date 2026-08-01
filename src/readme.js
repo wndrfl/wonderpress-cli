@@ -1,11 +1,19 @@
 import fs from 'fs-extra';
-import path from 'path';
 import * as log from './log.js';
 import inquirer from 'inquirer';
 import mustache from 'mustache';
-import sh from 'shelljs';
 
 const readmeFileName = 'README.md';
+
+// The README fields that can be supplied via flags.
+const README_FLAGS = [
+	'--project-name',
+	'--project-description',
+	'--github-url',
+	'--production-url',
+	'--stage-url',
+	'--dev-url',
+];
 
 /**
  * Accept and route a command.
@@ -13,7 +21,7 @@ const readmeFileName = 'README.md';
 export async function command(subcommand, args) {
 	switch (subcommand) {
 		case 'create':
-			await create(args['--dir'] || null, {});
+			await create(args);
 			break;
 	}
 
@@ -22,13 +30,18 @@ export async function command(subcommand, args) {
 
 /**
  * Create a README file.
+ *
+ * Flag-driven first: --json or any --project-* flag creates the README
+ * headlessly; otherwise the interactive wizard collects the same params. Both
+ * paths converge on writeReadme(). Called with no args (e.g. from `init`) it
+ * runs the wizard.
  **/
-export async function create(dir, opts) {
+export async function create(args) {
 
-	dir = dir || process.cwd();
+	args = args || {};
+
+	const dir = args['--dir'] || process.cwd();
 	process.chdir(dir);
-
-	opts = opts || {};
 
 	// Check to make sure a README doesn't already exist
 	if (await exists(process.cwd())) {
@@ -38,11 +51,92 @@ export async function create(dir, opts) {
 
 	log.info('Creating README.md...');
 
-	// Get the template file
-	let data = fs.readFileSync(new URL('./templates/readme.mustache', import.meta.url), 'utf8');
+	let params;
+	try {
+		if (args['--json']) {
+			params = paramsFromJson(args['--json']);
+		} else if (isHeadless(args)) {
+			params = paramsFromFlags(args);
+		} else {
+			params = await runWizard();
+		}
+	} catch (err) {
+		log.error(err.message);
+		return false;
+	}
 
-	// Ask various questions to help create a README
-	let readmeAnswers = await inquirer.prompt([
+	writeReadme(params);
+	return true;
+}
+
+/**
+ * Whether any README field was supplied via flags.
+ **/
+function isHeadless(args) {
+	return README_FLAGS.some((flag) => args[flag] !== undefined);
+}
+
+/**
+ * Build params from CLI flags, falling back to the same defaults as the wizard.
+ **/
+function paramsFromFlags(args) {
+	const projectName = args['--project-name'] || 'Wonderpress';
+	return {
+		project_name: projectName,
+		project_description: args['--project-description'] || `The official WordPress environment for ${projectName}`,
+		has_github: !!args['--github-url'],
+		github_url: args['--github-url'] || '',
+		production_url: args['--production-url'] || 'TBD',
+		stage_url: args['--stage-url'] || 'TBD',
+		dev_url: args['--dev-url'] || 'TBD',
+	};
+}
+
+/**
+ * Build params from a --json value: `@path/to/file.json` or an inline string.
+ **/
+function paramsFromJson(raw) {
+	let text;
+	if (raw.startsWith('@')) {
+		text = fs.readFileSync(raw.slice(1), 'utf8');
+	} else {
+		text = raw;
+	}
+
+	let spec;
+	try {
+		spec = JSON.parse(text);
+	} catch (e) {
+		throw new Error(`Could not parse --json input: ${e.message}`);
+	}
+
+	const projectName = spec.project_name || spec.name || 'Wonderpress';
+	return {
+		project_name: projectName,
+		project_description: spec.project_description || spec.description || `The official WordPress environment for ${projectName}`,
+		has_github: !!spec.github_url,
+		github_url: spec.github_url || '',
+		production_url: spec.production_url || 'TBD',
+		stage_url: spec.stage_url || 'TBD',
+		dev_url: spec.dev_url || 'TBD',
+	};
+}
+
+/**
+ * Render and write the README. Pure execution: no prompts.
+ **/
+function writeReadme(params) {
+	const template = fs.readFileSync(new URL('./templates/readme.mustache', import.meta.url), 'utf8');
+	const output = mustache.render(template, params);
+	fs.writeFileSync(readmeFileName, output);
+	log.success('README created!');
+}
+
+/**
+ * Interactive wizard — collects the same params the flags would.
+ **/
+async function runWizard() {
+	const answers = await inquirer.prompt([
 		{
 			type: 'input',
 			name: 'project_name',
@@ -90,12 +184,16 @@ export async function create(dir, opts) {
 			default: 'TBD'
 		}
 	]);
-	var output = mustache.render(data, readmeAnswers);
 
-	await sh.exec(`cat > ${readmeFileName} <<EOF
-${output}`);
-
-	log.success('README created!');
+	return {
+		project_name: answers.project_name,
+		project_description: answers.project_description,
+		has_github: answers.has_github,
+		github_url: answers.github_url || '',
+		production_url: answers.production_url,
+		stage_url: answers.stage_url,
+		dev_url: answers.dev_url,
+	};
 }
 
 /**

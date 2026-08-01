@@ -4,7 +4,6 @@ import * as log from './log.js';
 import mustache from 'mustache';
 import * as core from './core.js';
 import inquirer from 'inquirer';
-import sh from 'shelljs';
 import * as staticCli from '@wndrfl/static-kit-cli';
 import * as wordpress from './wordpress.js';
 
@@ -65,8 +64,8 @@ export async function create(templateName, opts) {
   });
   const fileName = `template-${templateNameFileFriendly}.php`;
   const filePath = `${templateFilePath}/${fileName}`;
-  await sh.exec(`cat > ${filePath} <<EOF
-${templateOutput}`);
+  fs.ensureDirSync(path.dirname(filePath));
+  fs.writeFileSync(filePath, templateOutput);
   log.success(`Template created: ${filePath}`);
 
   await staticCli.template.create(`${themeDir}/static`, templateNameFileFriendly);

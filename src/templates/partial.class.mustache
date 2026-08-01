@@ -19,26 +19,26 @@ class {{ class_name }} extends Abstract_Partial {
 	/**
 	 * Whether this partial accepts an ACF parameter for easy hydration.
 	 *
-	 * @var Boolean \$_acf_compatible
+	 * @var Boolean $_acf_compatible
 	 */
-	protected \$_acf_compatible = true;
+	protected $_acf_compatible = true;
 	{{/ is_acf_compatible }}
 	{{# has_partial_template }}
 
 	/**
 	 * A relative path to a partial template to use as the view for this partial.
 	 *
-	 * @var String|Boolean \$_partial_template
+	 * @var String|Boolean $_partial_template
 	 */
-	protected \$_partial_template = '{{{ partial_template_path }}}';
+	protected $_partial_template = '{{{ partial_template_path }}}';
 	{{/ has_partial_template }}
 
 	/**
 	 * A definition of all available properties.
 	 *
-	 * @var Array \$_properties
+	 * @var Array $_properties
 	 */
-	protected static \$_properties = array(
+	protected static $_properties = array(
 		{{# properties }}
 		'{{name}}' => array(
 			'description' => '{{description}}',
