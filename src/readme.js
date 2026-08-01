@@ -79,7 +79,7 @@ function isHeadless(args) {
 /**
  * Build params from CLI flags, falling back to the same defaults as the wizard.
  **/
-function paramsFromFlags(args) {
+export function paramsFromFlags(args) {
 	const projectName = args['--project-name'] || 'Wonderpress';
 	return {
 		project_name: projectName,
@@ -95,7 +95,7 @@ function paramsFromFlags(args) {
 /**
  * Build params from a --json value: `@path/to/file.json` or an inline string.
  **/
-function paramsFromJson(raw) {
+export function paramsFromJson(raw) {
 	let text;
 	if (raw.startsWith('@')) {
 		text = fs.readFileSync(raw.slice(1), 'utf8');
@@ -125,7 +125,7 @@ function paramsFromJson(raw) {
 /**
  * Render and write the README. Pure execution: no prompts.
  **/
-function writeReadme(params) {
+export function writeReadme(params) {
 	const template = fs.readFileSync(new URL('./templates/readme.mustache', import.meta.url), 'utf8');
 	const output = mustache.render(template, params);
 	fs.writeFileSync(readmeFileName, output);

@@ -15,7 +15,8 @@
     "node": ">=24.0.0"
   },
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
+    "test": "node --test \"tests/**/*.test.js\"",
+    "test:integration": "WP_INTEGRATION=1 node --test \"tests/**/*.test.js\"",
     "test-cli": "rm -rf test && mkdir test && cd test && npm install .. && node ../bin/wonderpress.js init --name test-project"
   },
   "files": [

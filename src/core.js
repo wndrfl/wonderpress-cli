@@ -7,6 +7,7 @@ import * as readme from './readme.js';
 import sh from 'shelljs';
 import * as staticCli from '@wndrfl/static-kit-cli';
 import * as wordpress from './wordpress.js';
+import { resolveInitConfig } from './init-config.js';
 import pkg from '../package.json' with { type: 'json' };
 
 /**
@@ -15,9 +16,7 @@ import pkg from '../package.json' with { type: 'json' };
 export async function command(subcommand, args) {
   switch (subcommand) {
     case 'init':
-      await init(args['--dir'] || null, {
-        cleanSlate: args['--clean-slate'] || false
-      });
+      await init(args['--dir'] || null, resolveInitConfig(args, process.env));
       break;
     case 'version':
       await version({});
@@ -30,7 +29,7 @@ export async function command(subcommand, args) {
 /**
  * Initialize a new or existing Wonderpress Development Environment
  **/
-export async function init(dir, opts) {
+export async function init(dir, initConfig) {
 
   // Check for WP CLI
   if (!sh.which('wp')) {
@@ -38,8 +37,8 @@ export async function init(dir, opts) {
     return 0;
   }
 
-  // Get options
-  opts = opts || {};
+  initConfig = initConfig || {};
+  const interactive = initConfig.interactive !== false;
 
   // Set the target directory
   const targetDir = dir || process.cwd();
@@ -47,22 +46,28 @@ export async function init(dir, opts) {
   // DO NOT set process.cwd() to targetDir yet.
 
   // Clear the entire directory?
-  if (opts.cleanSlate) {
+  if (initConfig.cleanSlate) {
     if (targetDir == '.') {
       log.error(`The --clean-slate does not work when initializing into your current directory. Please navigate outside of this directory and try again.`);
       return false;
     }
 
-    const cleanSlateConfirmationAnswer = await inquirer.prompt([
-      {
-        type: 'confirm',
-        name: 'confirm',
-        message: `Hey, this is serious. It will delete *everything* in the directory: \`${targetDir}\`. Are you sure you want to delete *everything* in this directory?`,
-        default: false,
-      }
-    ]);
+    // Destructive: prompt when interactive; a headless run only reaches here
+    // because --yes was passed, so proceed.
+    let doWipe = !interactive;
+    if (interactive) {
+      const cleanSlateConfirmationAnswer = await inquirer.prompt([
+        {
+          type: 'confirm',
+          name: 'confirm',
+          message: `Hey, this is serious. It will delete *everything* in the directory: \`${targetDir}\`. Are you sure you want to delete *everything* in this directory?`,
+          default: false,
+        }
+      ]);
+      doWipe = cleanSlateConfirmationAnswer.confirm === true;
+    }
 
-    if (cleanSlateConfirmationAnswer.confirm === true) {
+    if (doWipe) {
       log.warn(`Clearing the entire directory (clean slate!)`);
       await sh.exec(`rm -rf ${targetDir}/*`);
       await sh.exec(`rm -rf ${targetDir}/.*`);
@@ -119,10 +124,10 @@ export async function init(dir, opts) {
   await wordpress.downloadWordPress();
 
   // Configure WordPress Core
-  await wordpress.configureWordPress();
+  await wordpress.configureWordPress(initConfig);
 
   // Install WordPress Core
-  await wordpress.installWordPress();
+  await wordpress.installWordPress(initConfig);
 
   // Install the Wonderpress Core as an MU (must use) plugin
   await wordpress.installMuPlugin('https://github.com/wndrfl/wonderpress-core.git');
@@ -130,57 +135,58 @@ export async function init(dir, opts) {
   // Install Composer
   await composer.installComposer();
 
-  // Attempt to activate an existing theme
+  // Activate a theme. --theme wins; otherwise auto-activate a lone theme, and
+  // prompt (interactive) or error (headless) when several exist.
   log.info(`Checking for themes that can be activated...`);
-  const themes = await wordpress.getAllThemes();
+  if (initConfig.theme) {
+    log.info(`Activating ${initConfig.theme} theme...`);
+    wordpress.activateTheme(initConfig.theme);
+  } else {
+    const themes = await wordpress.getAllThemes();
 
-  // If there is only 1 theme, then lets activate it
-  if (themes.length == 1) {
-
-    log.info(`Activating ${themes[0].name} theme...`);
-    wordpress.activateTheme(themes[0].name);
-
-    // If there is more than 1 theme, then we need to have
-    // the user select which theme to activate
-  } else if (themes.length > 1) {
-
-    const choices = [];
-    themes.forEach((theme) => {
-      choices.push({
-        'name': theme.name,
-        'value': theme.name
-      });
-    });
-
-    // Which theme to activate?
-    const themeToActivateAnswer = await inquirer.prompt([
-      {
-        type: 'list',
-        name: 'themeToActivate',
-        message: 'Which theme would you like to activate?',
-        choices: choices,
+    if (themes.length == 1) {
+      log.info(`Activating ${themes[0].name} theme...`);
+      wordpress.activateTheme(themes[0].name);
+    } else if (themes.length > 1) {
+      if (interactive) {
+        const choices = themes.map((theme) => ({ name: theme.name, value: theme.name }));
+        const themeToActivateAnswer = await inquirer.prompt([
+          {
+            type: 'list',
+            name: 'themeToActivate',
+            message: 'Which theme would you like to activate?',
+            choices: choices,
+          }
+        ]);
+        if (themeToActivateAnswer.themeToActivate) {
+          log.info(`Activating ${themeToActivateAnswer.themeToActivate} theme...`);
+          wordpress.activateTheme(themeToActivateAnswer.themeToActivate);
+        }
+      } else {
+        log.error('Multiple themes found. Pass --theme <name> to choose which to activate.');
       }
-    ]);
-
-    if (themeToActivateAnswer.themeToActivate) {
-      log.info(`Activating ${themeToActivateAnswer.themeToActivate} theme...`)
-      wordpress.activateTheme(themeToActivateAnswer.themeToActivate);
     }
   }
 
   // Create a Readme?
   if (! await readme.exists(process.cwd())) {
-    const createReadmeAnswer = await inquirer.prompt([
-      {
-        type: 'confirm',
-        name: 'confirm',
-        message: 'Would you like to create a readme?',
-        default: true,
+    if (interactive) {
+      if (!initConfig.skipReadme) {
+        const createReadmeAnswer = await inquirer.prompt([
+          {
+            type: 'confirm',
+            name: 'confirm',
+            message: 'Would you like to create a readme?',
+            default: true,
+          }
+        ]);
+        if (createReadmeAnswer.confirm === true) {
+          await readme.create();
+        }
       }
-    ]);
-
-    if (createReadmeAnswer.confirm === true) {
-      await readme.create();
+    } else if (initConfig.readme) {
+      // Headless: generate a README named after the site title.
+      await readme.create({ '--project-name': (initConfig.wp && initConfig.wp.title) || undefined });
     }
   }
 
