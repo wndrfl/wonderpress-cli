@@ -4,6 +4,7 @@ import * as log from './log.js';
 import * as core from './core.js';
 import inquirer from 'inquirer';
 import mustache from 'mustache';
+import * as staticCli from '@wndrfl/static-kit-cli';
 import * as wordpress from './wordpress.js';
 import {
 	isValidClassName,
@@ -79,7 +80,7 @@ export async function create(args) {
 		return false;
 	}
 
-	writePartial(params, themeDir);
+	await writePartial(params, themeDir);
 	return true;
 }
 
@@ -97,6 +98,7 @@ export function paramsFromFlags(args) {
 		emit: {
 			block: !args['--no-block'],
 			manifest: !args['--no-manifest'],
+			style: !args['--no-style'],
 		},
 	};
 }
@@ -135,6 +137,7 @@ export function paramsFromJson(raw) {
 		emit: {
 			block: spec.block !== false,
 			manifest: spec.manifest !== false,
+			style: spec.style !== false,
 		},
 	};
 }
@@ -164,7 +167,7 @@ export function validateParams(params) {
  * Pure execution: no prompts, no network. Given identical params + themeDir it
  * produces identical output whether called from the flag path or the wizard.
  **/
-export function writePartial(params, themeDir) {
+export async function writePartial(params, themeDir) {
 
 	const partialTemplatePath = './partials/' + params.partial_template_name;
 
@@ -220,13 +223,6 @@ export function writePartial(params, themeDir) {
 		log.success(`Block metadata created at: ${blockPath}`);
 	}
 
-	// NOTE: the styling half (a per-component Static Kit style stub) is
-	// intentionally NOT emitted here. `static/` is a Static-Kit-installed tree,
-	// so scaffolding into it is Static Kit's responsibility (delegated the way
-	// `template create` calls `staticCli.template.create`). Emitting it here
-	// would hardcode Static Kit's internal layout into owned code. Tracked as a
-	// follow-up: add a component-scaffold API to static-kit-cli and delegate.
-
 	// Agent-readable manifest (AI half) — the contract + artifact paths.
 	if (emit.manifest !== false) {
 		const artifacts = {
@@ -237,6 +233,9 @@ export function writePartial(params, themeDir) {
 		}
 		if (emit.block !== false) {
 			artifacts.block = `blocks/${slug}/block.json`;
+		}
+		if (params.has_partial_template && emit.style !== false) {
+			artifacts.style = `static/src/scss/partials/_${slug}.scss`;
 		}
 		const manifest = {
 			name: params.class_name,
@@ -250,6 +249,15 @@ export function writePartial(params, themeDir) {
 		fs.ensureDirSync(path.dirname(manifestPath));
 		fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2) + '\n');
 		log.success(`Manifest created at: ${manifestPath}`);
+	}
+
+	// The styling half (a per-component, token-only style stub). `static/` is a
+	// Static-Kit-installed tree, so we delegate to Static Kit — which owns the
+	// location/format — instead of writing into it directly (same pattern as
+	// `template create` calling `staticCli.template.create`). Only partials that
+	// render a view get a style stub.
+	if (params.has_partial_template && emit.style !== false) {
+		await staticCli.component.create(`${themeDir}/static`, slug);
 	}
 }
 
@@ -389,6 +397,6 @@ async function runWizard(themeDir) {
 		has_partial_template: step1.has_partial_template,
 		partial_template_name: step1.has_partial_template ? step1.partial_template_name : defaultTemplateName(step1.class_name),
 		properties,
-		emit: { block: true, manifest: true },
+		emit: { block: true, manifest: true, style: true },
 	};
 }
