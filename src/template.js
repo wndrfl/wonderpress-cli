@@ -55,8 +55,7 @@ export async function create(templateName, opts) {
   const theme = await wordpress.getActiveTheme();
   const themeDir = await wordpress.pathToThemesDir + '/' + theme.name;
 
-  const templatePath = require.resolve('./templates/template.mustache');
-  const templateTemplate = fs.readFileSync(templatePath, 'utf8');
+  const templateTemplate = fs.readFileSync(new URL('./templates/template.mustache', import.meta.url), 'utf8');
   const templateFilePath = themeDir;
 
   // Create the template

@@ -1,7 +1,7 @@
 import fs from 'fs-extra';
 import path from 'path';
 import * as log from './log.js';
-import * as template from './template.js';
+import * as core from './core.js';
 import inquirer from 'inquirer';
 import mustache from 'mustache';
 import sh from 'shelljs';
@@ -39,12 +39,10 @@ export async function create(args) {
 
 	log.instructions('In Wonderpress, a "partial" is a PHP class that helps render a reusable view. Here we will create the PHP class (and optionally the PHP template for the view). Please answer the following questions:');
 
-	const partialClassPath = require.resolve('./templates/partial.class.mustache');
-	const partialClassTemplate = fs.readFileSync(partialClassPath, 'utf8');
+	const partialClassTemplate = fs.readFileSync(new URL('./templates/partial.class.mustache', import.meta.url), 'utf8');
 	const partialClassFilePath = `${themeDir}/src/partials`;
 
-	const partialTemplatePath = require.resolve('./templates/partial.template.mustache');
-	const partialTemplateTemplate = fs.readFileSync(partialTemplatePath, 'utf8');
+	const partialTemplateTemplate = fs.readFileSync(new URL('./templates/partial.template.mustache', import.meta.url), 'utf8');
 	const partialTemplateRelativeThemePath = './partials';
 	const partialTemplateFilePath = `${themeDir}/partials`;
 

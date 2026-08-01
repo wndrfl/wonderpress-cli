@@ -7,6 +7,7 @@ import * as readme from './readme.js';
 import sh from 'shelljs';
 import * as staticCli from '@wndrfl/static-kit-cli';
 import * as wordpress from './wordpress.js';
+import pkg from '../package.json' with { type: 'json' };
 
 /**
  * Accept and route a command.
@@ -80,8 +81,6 @@ export async function init(dir, opts) {
 
   // Check to see if there is already an installation in
   // the target directory. If there is, then don't install.
-  const configExists = await config.exists(process.cwd());
-  console.log(configExists);
   if (! await config.exists(process.cwd())) {
 
     log.info(`Installing Wonderpress Development Environment into ${process.cwd()}`);
@@ -231,7 +230,6 @@ export async function setCwdToEnvironmentRoot() {
  * Get the current version.
  **/
 export function version() {
-  const version = require('../package.json').version;
-  log.raw(`Wonderpress CLI ${version}`);
+  log.raw(`Wonderpress CLI ${pkg.version}`);
 }
 

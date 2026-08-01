@@ -3,6 +3,7 @@ import path from 'path';
 import * as log from './log.js';
 import sh from 'shelljs';
 import * as config from './config.js';
+import * as core from './core.js';
 import inquirer from 'inquirer';
 import mysql2 from 'mysql2/promise';
 import rc from 'rc';
@@ -138,7 +139,7 @@ export async function configureWordPress() {
  **/
 export async function createThemesDirectory() {
 
-	if (! await config.setCwdToEnvironmentRoot()) {
+	if (! await core.setCwdToEnvironmentRoot()) {
 		return false;
 	}
 

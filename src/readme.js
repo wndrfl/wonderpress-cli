@@ -1,7 +1,6 @@
 import fs from 'fs-extra';
 import path from 'path';
 import * as log from './log.js';
-import * as template from './template.js';
 import inquirer from 'inquirer';
 import mustache from 'mustache';
 import sh from 'shelljs';
@@ -40,8 +39,7 @@ export async function create(dir, opts) {
 	log.info('Creating README.md...');
 
 	// Get the template file
-	let path = require.resolve('./templates/readme.mustache');
-	let data = fs.readFileSync(path, 'utf8');
+	let data = fs.readFileSync(new URL('./templates/readme.mustache', import.meta.url), 'utf8');
 
 	// Ask various questions to help create a README
 	let readmeAnswers = await inquirer.prompt([
