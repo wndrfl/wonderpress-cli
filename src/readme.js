@@ -1,9 +1,9 @@
-const core = require('./core');
-const fs = require('fs');
-const inquirer = require('inquirer');
-const log = require('./log');
-const mustache = require('mustache');
-const sh = require('shelljs');
+import fs from 'fs-extra';
+import path from 'path';
+import * as log from './log.js';
+import inquirer from 'inquirer';
+import mustache from 'mustache';
+import sh from 'shelljs';
 
 const readmeFileName = 'README.md';
 
@@ -11,7 +11,7 @@ const readmeFileName = 'README.md';
  * Accept and route a command.
  **/
 export async function command(subcommand, args) {
-	switch(subcommand) {
+	switch (subcommand) {
 		case 'create':
 			await create(args['--dir'] || null, {});
 			break;
@@ -28,21 +28,20 @@ export async function create(dir, opts) {
 	dir = dir || process.cwd();
 	process.chdir(dir);
 
-  opts = opts || {};
+	opts = opts || {};
 
-  // Check to make sure a README doesn't already exist
-  if(await exists(process.cwd())) {
-    log.warn(`A README file already exists. Skipping README creation.`);
-    return true;
-  }
+	// Check to make sure a README doesn't already exist
+	if (await exists(process.cwd())) {
+		log.warn(`A README file already exists. Skipping README creation.`);
+		return true;
+	}
 
 	log.info('Creating README.md...');
 
-  // Get the template file
-	let path = require.resolve('./templates/readme.mustache');
-	let data = fs.readFileSync(path, 'utf8');
+	// Get the template file
+	let data = fs.readFileSync(new URL('./templates/readme.mustache', import.meta.url), 'utf8');
 
-  // Ask various questions to help create a README
+	// Ask various questions to help create a README
 	let readmeAnswers = await inquirer.prompt([
 		{
 			type: 'input',
@@ -54,7 +53,7 @@ export async function create(dir, opts) {
 			type: 'input',
 			name: 'project_description',
 			message: 'Write a brief description of this project.',
-			default: function(answers) {
+			default: function (answers) {
 				return 'The official WordPress environment for ' + answers.project_name;
 			}
 		},
@@ -68,7 +67,7 @@ export async function create(dir, opts) {
 			type: 'input',
 			name: 'github_url',
 			message: 'What is the Github URL for this project?',
-			when: function(answers) {
+			when: function (answers) {
 				return answers.has_github;
 			}
 		},
@@ -104,15 +103,15 @@ ${output}`);
  **/
 export async function exists(dir) {
 
-  const path = `${dir}/${readmeFileName}`;
+	const path = `${dir}/${readmeFileName}`;
 
-  log.info(`Checking for the existence of a README file at \`${path}\`...`);
+	log.info(`Checking for the existence of a README file at \`${path}\`...`);
 
-  if(await fs.existsSync(`${path}`)) {
-    log.info(`README file found!`);
-    return true;
-  }
+	if (await fs.existsSync(`${path}`)) {
+		log.info(`README file found!`);
+		return true;
+	}
 
-  log.info(`README file was not found.`);
-  return false;
+	log.info(`README file was not found.`);
+	return false;
 }

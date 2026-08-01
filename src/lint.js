@@ -1,20 +1,20 @@
-const composer = require('./composer');
-const core = require('./core');
-const inquirer = require('inquirer');
-const log = require('./log');
-const sh = require('shelljs');
-const wordpress = require('./wordpress');
+import sh from 'shelljs';
+import * as log from './log.js';
+import * as composer from './composer.js';
+import * as core from './core.js';
+import inquirer from 'inquirer';
+import * as wordpress from './wordpress.js';
 
 /**
  * Accept and route a command.
  **/
 export async function command(subcommand, args) {
-	switch(subcommand) {
+	switch (subcommand) {
 		case 'theme':
 			await theme(args['--dir'] || null, {
-        fix : args['--fix'] || false,
-        name : args['--name'] || null,
-      });
+				fix: args['--fix'] || false,
+				name: args['--name'] || null,
+			});
 			break;
 	}
 
@@ -28,37 +28,37 @@ export async function theme(dir, opts) {
 
 	log.info('Attempting to lint the active theme...');
 
-  opts = opts || {};
+	opts = opts || {};
 
 	dir = dir || process.cwd();
 	process.chdir(dir);
 
-	if(! await core.setCwdToEnvironmentRoot()) {
+	if (! await core.setCwdToEnvironmentRoot()) {
 		return false;
 	}
 
-	if(! await wordpress.isInstalled()) {
+	if (! await wordpress.isInstalled()) {
 		log.error('WordPress is not installed. Please install WordPress first.');
 		return false;
 	}
 
-	if(! await composer.installComposer()) {
+	if (! await composer.installComposer()) {
 		return;
 	}
 
-	if(! await wordpress.createThemesDirectory()) {
+	if (! await wordpress.createThemesDirectory()) {
 		return;
 	}
 
 	const fix = opts.fix ? opts.fix : false;
 	let themeName = opts.name ? opts.name : null;
 
-	if(!themeName) {
+	if (!themeName) {
 		let theme = await wordpress.getActiveTheme();
 
 		// If there is no active theme, we need to stop.
 		// The linter will only lint an active theme.
-		if(!theme) {
+		if (!theme) {
 			log.error('There is no active theme. Please fully install WordPress and activate a theme before trying again.');
 			return false;
 		}
@@ -69,33 +69,33 @@ export async function theme(dir, opts) {
 	let path = wordpress.pathToThemesDir + '/' + themeName;
 
 	let cmd = './vendor/bin/phpcs';
-	cmd		+= ' ' + path;
-	cmd		+= ' -p -v --colors';
+	cmd += ' ' + path;
+	cmd += ' -p -v --colors';
 	let lintResult = await sh.exec(cmd);
 
 	// lintResult.code will be 1 if there are any
 	// issues found in the lint.
-	if(lintResult.code === 0) {
+	if (lintResult.code === 0) {
 		log.success('Great! The theme passed all lints.');
 		return true;
 	}
 
-	if(fix) {
+	if (fix) {
 		let fixCmd = './vendor/bin/phpcbf';
-		fixCmd 		+= ' ' + path;
-		fixCmd		+= ' -p -v --colors';
+		fixCmd += ' ' + path;
+		fixCmd += ' -p -v --colors';
 		sh.exec(fixCmd);
 
 		log.info('All issues that could be fixed were fixed. Rerunning lint...');
 		theme(process.cwd(), {
-      name : themeName
-    });
+			name: themeName
+		});
 
-	}else{
+	} else {
 		log.error('Issues were found during lint! Please see above...');
-	} 
+	}
 
-	if(!fix) {
+	if (!fix) {
 		log.info('If you would like Wonderpress to automatically fix as many issues as possible, add the --fix (or -f) flag to the command.');
 	}
 

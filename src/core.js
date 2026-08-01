@@ -1,21 +1,22 @@
-const composer = require('./composer');
-const config = require('./config');
-const fs = require('fs-extra');
-const inquirer = require('inquirer');
-const log = require('./log');
-const readme = require('./readme');
-const sh = require('shelljs');
-const staticCli = require('@wndrfl/static-kit-cli');
-const wordpress = require('./wordpress');
+import * as composer from './composer.js';
+import * as config from './config.js';
+import fs from 'fs-extra';
+import inquirer from 'inquirer';
+import * as log from './log.js';
+import * as readme from './readme.js';
+import sh from 'shelljs';
+import * as staticCli from '@wndrfl/static-kit-cli';
+import * as wordpress from './wordpress.js';
+import pkg from '../package.json' with { type: 'json' };
 
 /**
  * Accept and route a command.
  **/
 export async function command(subcommand, args) {
-  switch(subcommand) {
+  switch (subcommand) {
     case 'init':
       await init(args['--dir'] || null, {
-        cleanSlate : args['--clean-slate'] || false
+        cleanSlate: args['--clean-slate'] || false
       });
       break;
     case 'version':
@@ -46,8 +47,8 @@ export async function init(dir, opts) {
   // DO NOT set process.cwd() to targetDir yet.
 
   // Clear the entire directory?
-  if(opts.cleanSlate) {
-    if(targetDir == '.') {
+  if (opts.cleanSlate) {
+    if (targetDir == '.') {
       log.error(`The --clean-slate does not work when initializing into your current directory. Please navigate outside of this directory and try again.`);
       return false;
     }
@@ -61,7 +62,7 @@ export async function init(dir, opts) {
       }
     ]);
 
-    if(cleanSlateConfirmationAnswer.confirm === true) {
+    if (cleanSlateConfirmationAnswer.confirm === true) {
       log.warn(`Clearing the entire directory (clean slate!)`);
       await sh.exec(`rm -rf ${targetDir}/*`);
       await sh.exec(`rm -rf ${targetDir}/.*`);
@@ -80,9 +81,7 @@ export async function init(dir, opts) {
 
   // Check to see if there is already an installation in
   // the target directory. If there is, then don't install.
-  const configExists = await config.exists(process.cwd());
-  console.log(configExists);
-  if(! await config.exists(process.cwd())) {
+  if (! await config.exists(process.cwd())) {
 
     log.info(`Installing Wonderpress Development Environment into ${process.cwd()}`);
 
@@ -109,9 +108,9 @@ export async function init(dir, opts) {
     // Install Static Kit
     const saveCwd = process.cwd();
     await staticCli.core.installKit(`./wp-content/themes/wonderpress/static`, {
-      compile : true,
-      init : true,
-      name : '404,archive,author,category,index,page,search,single,tag',
+      compile: true,
+      init: true,
+      name: '404,archive,author,category,index,page,search,single,tag',
     });
     process.chdir(saveCwd);
   }
@@ -136,20 +135,20 @@ export async function init(dir, opts) {
   const themes = await wordpress.getAllThemes();
 
   // If there is only 1 theme, then lets activate it
-  if(themes.length == 1) {
+  if (themes.length == 1) {
 
     log.info(`Activating ${themes[0].name} theme...`);
     wordpress.activateTheme(themes[0].name);
 
-  // If there is more than 1 theme, then we need to have
-  // the user select which theme to activate
-  } else if(themes.length > 1) {
+    // If there is more than 1 theme, then we need to have
+    // the user select which theme to activate
+  } else if (themes.length > 1) {
 
     const choices = [];
     themes.forEach((theme) => {
       choices.push({
-        'name' : theme.name,
-        'value' : theme.name
+        'name': theme.name,
+        'value': theme.name
       });
     });
 
@@ -163,14 +162,14 @@ export async function init(dir, opts) {
       }
     ]);
 
-    if(themeToActivateAnswer.themeToActivate) {
+    if (themeToActivateAnswer.themeToActivate) {
       log.info(`Activating ${themeToActivateAnswer.themeToActivate} theme...`)
       wordpress.activateTheme(themeToActivateAnswer.themeToActivate);
     }
   }
 
   // Create a Readme?
-  if(! await readme.exists(process.cwd())) {
+  if (! await readme.exists(process.cwd())) {
     const createReadmeAnswer = await inquirer.prompt([
       {
         type: 'confirm',
@@ -180,7 +179,7 @@ export async function init(dir, opts) {
       }
     ]);
 
-    if(createReadmeAnswer.confirm === true) {
+    if (createReadmeAnswer.confirm === true) {
       await readme.create();
     }
   }
@@ -197,9 +196,9 @@ export async function getRootDir() {
   let path = process.cwd();
   let seek = true;
   let c = 0;
-  while(seek) {
-    if(c++ >= 50) break;
-    if(! await config.exists(path)) {
+  while (seek) {
+    if (c++ >= 50) break;
+    if (! await config.exists(path)) {
       path = `../${path}`;
     } else {
       return path;
@@ -218,7 +217,7 @@ export async function setCwdToEnvironmentRoot() {
 
   const path = await getRootDir();
 
-  if(path) {
+  if (path) {
     process.chdir(path);
     return true;
   }
@@ -231,7 +230,6 @@ export async function setCwdToEnvironmentRoot() {
  * Get the current version.
  **/
 export function version() {
-  const version = require('../package.json').version;
-  log.raw(`Wonderpress CLI ${version}`);
+  log.raw(`Wonderpress CLI ${pkg.version}`);
 }
 
