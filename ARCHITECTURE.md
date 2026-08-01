@@ -32,7 +32,8 @@ enforced by the `node_modules` rule in the shipped
 | Concern | Owner | Where it lives |
 | --- | --- | --- |
 | PHP partials & templates (the render layer) | **WonderPress CLI** | `wp-content/themes/wonderpress/partials`, `.../src` |
-| `block.json` + component manifests | **WonderPress CLI** | `.../.wonderpress/manifest/*.json` |
+| Component manifests (always emitted) | **WonderPress CLI** | `.../.wonderpress/manifest/*.json` |
+| `block.json` + `render.php` (opt-in Gutenberg wrapper — `--block`) | **WonderPress CLI** | `.../blocks/<slug>/` |
 | The `static/` tree (layout, `.staticrc`) | **Static Kit** | `wp-content/themes/wonderpress/static` |
 | Component **style stubs** (token-only SCSS) | **Static Kit** | `static/` (created via delegation) |
 | `src/` → `dist/` asset compilation | **Static Kit** | `static/src`, `static/dist` |

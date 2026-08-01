@@ -23,7 +23,7 @@ test('partial create --json runs headlessly against a fixture', () => {
 	const dir = makeFixture();
 	try {
 		const spec = path.join(dir, 'spec.json');
-		fs.writeFileSync(spec, JSON.stringify({ name: 'Smoke_Test', properties: [{ name: 'body', type: 'string', required: true }] }));
+		fs.writeFileSync(spec, JSON.stringify({ name: 'Smoke_Test', block: true, properties: [{ name: 'body', type: 'string', required: true }] }));
 
 		const out = execFileSync('node', [BIN, 'partial', 'create', '--dir', dir, '--theme', 'smoke', '--json', '@' + spec], { encoding: 'utf8' });
 		assert.match(out, /created/i);
@@ -36,8 +36,9 @@ test('partial create --json runs headlessly against a fixture', () => {
 		assert.match(php, /'body'/);
 		assert.doesNotMatch(php, /\\\$/); // no heredoc escaping leaked
 
-		// the spine's additional outputs land too
+		// the spine's additional outputs land too (block opted in via the spec)
 		assert.ok(fs.existsSync(path.join(dir, 'wp-content/themes/smoke/blocks/smoke-test/block.json')), 'block.json should exist');
+		assert.ok(fs.existsSync(path.join(dir, 'wp-content/themes/smoke/blocks/smoke-test/render.php')), 'render.php should exist');
 		assert.ok(fs.existsSync(path.join(dir, 'wp-content/themes/smoke/.wonderpress/manifest/smoke-test.json')), 'manifest should exist');
 	} finally {
 		fs.removeSync(dir);
