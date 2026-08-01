@@ -39,7 +39,9 @@ Starts a wizard to aid in the creation of a new README file.
 
 #### `wonderpress partial create`
 
-Create a Wonderpress "partial" (both a PHP class and an accompanying view template) within the active Wonderpress-friendly theme.
+Create a Wonderpress "partial" (a PHP class and an accompanying view template) within the active Wonderpress-friendly theme, plus an agent-readable manifest and a delegated Static Kit style stub.
+
+A partial is a rendering primitive (a button, a section) — it is **not** a Gutenberg block. If you also want the partial exposed in the block editor, pass `--block`: the CLI additionally emits a `block.json` and a `render.php` that delegates the block's server render back to the partial. Block emission is opt-in; most partials are compositional and should not be blocks.
 
 #### `wonderpress server`
 

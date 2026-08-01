@@ -96,7 +96,10 @@ export function paramsFromFlags(args) {
 		partial_template_name: args['--template-name'] || defaultTemplateName(className),
 		properties: (args['--prop'] || []).map(parsePropFlag),
 		emit: {
-			block: !args['--no-block'],
+			// A partial is not a block. block.json + register_block_type is a
+			// formal Gutenberg registration, so it's opt-IN — only partials you
+			// explicitly want in the editor carry it.
+			block: !!args['--block'],
 			manifest: !args['--no-manifest'],
 			style: !args['--no-style'],
 		},
@@ -135,7 +138,9 @@ export function paramsFromJson(raw) {
 			description: p.description || '',
 		})),
 		emit: {
-			block: spec.block !== false,
+			// Opt-in (see paramsFromFlags): a block is only emitted when the
+			// spec explicitly asks for it.
+			block: spec.block === true,
 			manifest: spec.manifest !== false,
 			style: spec.style !== false,
 		},
@@ -211,8 +216,11 @@ export async function writePartial(params, themeDir) {
 	const styleApiAvailable = !!(staticCli.component && typeof staticCli.component.create === 'function');
 	const willEmitStyle = wantsStyle && styleApiAvailable;
 
-	// block.json (FSE half) — attributes derived from the properties.
-	if (emit.block !== false) {
+	// block.json (opt-in editor wrapper) — a partial is NOT a block, so this is
+	// only emitted when explicitly requested. The block delegates its server
+	// render to the backing partial via render.php, so it stays a thin Gutenberg
+	// wrapper rather than a second source of markup.
+	if (emit.block) {
 		const attributes = {};
 		for (const p of params.properties) {
 			attributes[p.name] = { type: PROP_TYPE_TO_BLOCK[p.type] || 'string' };
@@ -224,11 +232,21 @@ export async function writePartial(params, themeDir) {
 			title: humanizeClassName(params.class_name),
 			category: 'wonderpress',
 			attributes,
+			render: 'file:./render.php',
 		};
-		const blockPath = `${themeDir}/blocks/${slug}/block.json`;
-		fs.ensureDirSync(path.dirname(blockPath));
-		fs.writeFileSync(blockPath, JSON.stringify(block, null, 2) + '\n');
-		log.success(`Block metadata created at: ${blockPath}`);
+		const blockDir = `${themeDir}/blocks/${slug}`;
+		fs.ensureDirSync(blockDir);
+		fs.writeFileSync(`${blockDir}/block.json`, JSON.stringify(block, null, 2) + '\n');
+		log.success(`Block metadata created at: ${blockDir}/block.json`);
+
+		// Server render: delegate to the partial (block == partial-in-the-editor).
+		const renderTemplate = fs.readFileSync(new URL('./templates/block.render.mustache', import.meta.url), 'utf8');
+		const renderOutput = mustache.render(renderTemplate, {
+			slug,
+			class_name: params.class_name,
+		});
+		fs.writeFileSync(`${blockDir}/render.php`, renderOutput);
+		log.success(`Block render created at: ${blockDir}/render.php`);
 	}
 
 	// Agent-readable manifest (AI half) — the contract + artifact paths.
@@ -239,8 +257,9 @@ export async function writePartial(params, themeDir) {
 		if (params.has_partial_template) {
 			artifacts.view = `partials/${params.partial_template_name}`;
 		}
-		if (emit.block !== false) {
+		if (emit.block) {
 			artifacts.block = `blocks/${slug}/block.json`;
+			artifacts.render = `blocks/${slug}/render.php`;
 		}
 		if (willEmitStyle) {
 			artifacts.style = `static/src/scss/partials/_${slug}.scss`;
@@ -248,7 +267,8 @@ export async function writePartial(params, themeDir) {
 		const manifest = {
 			name: params.class_name,
 			slug,
-			block: `wonderpress/${slug}`,
+			// Only a partial that opted in to being a block advertises one.
+			...(emit.block ? { block: `wonderpress/${slug}` } : {}),
 			acf_compatible: params.is_acf_compatible,
 			properties: params.properties,
 			artifacts,
@@ -329,6 +349,13 @@ async function runWizard(themeDir) {
 				}
 				return valid;
 			}
+		},
+		{
+			type: 'confirm',
+			name: 'emit_block',
+			message: 'Also expose this partial as a Gutenberg block?',
+			suffix: '\nMost partials are compositional and should not be blocks; say "N" unless you want it in the editor:',
+			default: false,
 		}
 	]);
 
@@ -407,6 +434,6 @@ async function runWizard(themeDir) {
 		has_partial_template: step1.has_partial_template,
 		partial_template_name: step1.has_partial_template ? step1.partial_template_name : defaultTemplateName(step1.class_name),
 		properties,
-		emit: { block: true, manifest: true, style: true },
+		emit: { block: !!step1.emit_block, manifest: true, style: true },
 	};
 }

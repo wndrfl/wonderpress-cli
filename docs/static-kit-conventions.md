@@ -80,7 +80,8 @@ needed.
 | Artifact | Owner | How |
 |---|---|---|
 | PHP partial class + view template | **CLI** (the spine) | `partial create` |
-| `block.json` + `.wonderpress/manifest/*.json` | **CLI** (the spine) | `partial create` |
+| `.wonderpress/manifest/*.json` (always) | **CLI** (the spine) | `partial create` |
+| `blocks/<slug>/{block.json,render.php}` (opt-in) | **CLI** (the spine) | `partial create --block` |
 | per-**component** SCSS/JS partial | **Static Kit** | `staticCli.component.create(...)` — the CLI *delegates* |
 | per-**page** SCSS/JS entry | **Static Kit** | `staticCli.template.create(...)` — via `template create` |
 | SCSS→CSS / JS bundling, per-page compile | **Static Kit** | build step |
@@ -93,8 +94,11 @@ deliberate authoring act.
 ## CLI mapping
 
 - `partial create` → a reusable component: emits the PHP class/view (wrapper
-  class `<ns>-<slug>`, default `theme`), `block.json`, manifest; **delegates**
-  the SCSS/JS component partials to `staticCli.component.create`.
+  class `<ns>-<slug>`, default `theme`) and the manifest; **delegates** the
+  SCSS/JS component partials to `staticCli.component.create`. A partial is a
+  rendering primitive, **not** a Gutenberg block — pass `--block` to also emit a
+  `block.json` + `render.php` wrapper whose server render delegates back to the
+  partial.
 - `template create` → a page: **delegates** the per-page SCSS+JS entries to
   `staticCli.template.create`.
 - A `--namespace <ns>` on `partial create` (default `theme`) selects the scope
