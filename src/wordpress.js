@@ -22,114 +22,125 @@ export async function activateTheme(themeName) {
 }
 
 /**
- * Create and setup a wp-config.php
+ * Create and setup a wp-config.php.
+ *
+ * Accepts a resolved init config. In interactive mode any unprovided credential
+ * is prompted (retrying on failure); in non-interactive mode credentials come
+ * from the config and a failure aborts rather than looping.
  **/
-export async function configureWordPress() {
+export async function configureWordPress(config) {
+
+	config = config || {};
+	const interactive = config.interactive !== false;
+	const db = config.db || {};
 
 	if (await this.hasConfig()) {
 		log.info(`A wp-config.php already exists. Skipping WordPress configuration...`);
 		return true;
 	}
 
-	// Set up the mysql2 connection
+	// Resolve DB credentials and open a connection.
 	let connection = false;
+	let creds = { host: db.host, user: db.user, password: db.password };
+
 	while (!connection) {
 
-		var questions = [
-			{
-				type: 'input',
-				name: 'dbHost',
-				message: 'What is the database hostname?',
-				default: 'localhost',
-			},
-			{
-				type: 'input',
-				name: 'dbUser',
-				message: 'What is the database username?',
-				default: 'root',
-				validate: function (input) {
-					return input !== '';
-				}
-			},
-			{
-				type: 'input',
-				name: 'dbPassword',
-				message: 'What is the database password?',
-				default: ''
-			},
-		];
-		var configAnswers = await inquirer.prompt(questions);
+		if (interactive && (creds.host === undefined || creds.user === undefined || creds.password === undefined)) {
+			const answers = await inquirer.prompt([
+				{ type: 'input', name: 'dbHost', message: 'What is the database hostname?', default: creds.host ?? 'localhost' },
+				{ type: 'input', name: 'dbUser', message: 'What is the database username?', default: creds.user ?? 'root', validate: (input) => input !== '' },
+				{ type: 'input', name: 'dbPassword', message: 'What is the database password?', default: creds.password ?? '' },
+			]);
+			creds = { host: answers.dbHost, user: answers.dbUser, password: answers.dbPassword };
+		}
+
+		// Fill any still-unset values (headless) with defaults.
+		creds.host = creds.host ?? 'localhost';
+		creds.user = creds.user ?? 'root';
+		creds.password = creds.password ?? '';
 
 		connection = await mysql2.createConnection({
-			host: configAnswers.dbHost,
-			user: configAnswers.dbUser,
-			password: configAnswers.dbPassword
-		})
-			.catch(() => {
-				log.error('The hostname / username / password combination you entered wasn\'t correct. Try again?');
-				connection = false;
-			});
+			host: creds.host,
+			user: creds.user,
+			password: creds.password,
+		}).catch(() => false);
 
+		if (!connection) {
+			log.error('The hostname / username / password combination you entered wasn\'t correct.');
+			if (!interactive) {
+				return false;
+			}
+			creds = { host: undefined, user: undefined, password: undefined };
+		}
 	}
 
-	// Configure the database
+	// Resolve the database name, creating it if needed.
+	let dbName = db.name;
 	let validDatabase = false;
+
 	while (!validDatabase) {
 
-		var questions = [
-			{
-				type: 'input',
-				name: 'dbName',
-				message: 'What is the database name?',
-				default: 'wonderpress'
-			}
-		];
-		var databaseAnswers = await inquirer.prompt(questions);
+		if (interactive && dbName === undefined) {
+			const answers = await inquirer.prompt([
+				{ type: 'input', name: 'dbName', message: 'What is the database name?', default: 'wonderpress' },
+			]);
+			dbName = answers.dbName;
+		}
+		dbName = dbName ?? 'wonderpress';
 
-		await connection.execute("SELECT SCHEMA_NAME FROM INFORMATION_SCHEMA.SCHEMATA WHERE SCHEMA_NAME = ?", [databaseAnswers.dbName])
-			.then(async ([rows, fields]) => {
+		const [rows] = await connection.execute(
+			"SELECT SCHEMA_NAME FROM INFORMATION_SCHEMA.SCHEMATA WHERE SCHEMA_NAME = ?",
+			[dbName]
+		).catch((err) => { log.error(err.message); return [[]]; });
 
-				if (rows.length) {
-					validDatabase = true;
-					return true;
-				}
+		if (rows.length) {
+			validDatabase = true;
+			continue;
+		}
 
-				let createAnswer = await inquirer.prompt([
-					{
-						type: 'confirm',
-						name: 'confirm',
-						message: 'The database `' + databaseAnswers.dbName + '` doesn\'t exist, would you like to create it?.',
-						default: true
-					}
-				]);
-				if (createAnswer.confirm) {
-					await connection.execute("CREATE DATABASE " + sqlString.escapeId(databaseAnswers.dbName))
-						.then(() => {
-							log.success('The database `' + databaseAnswers.dbName + '` was created!');
-							validDatabase = true;
-						})
-						.catch((err) => {
-							console.warn(err);
-							validDatabase = false;
-						});
-				}
+		// Database is missing — create it? (auto-create when headless)
+		let doCreate = !interactive;
+		if (interactive) {
+			const answer = await inquirer.prompt([
+				{ type: 'confirm', name: 'confirm', message: 'The database `' + dbName + '` doesn\'t exist, would you like to create it?', default: true },
+			]);
+			doCreate = answer.confirm;
+		}
 
-			})
-			.catch((err) => {
-				console.warn(err);
-				validDatabase = false;
-			});
+		if (!doCreate) {
+			if (!interactive) { connection.end(); return false; }
+			dbName = undefined;
+			continue;
+		}
+
+		const created = await connection.execute("CREATE DATABASE " + sqlString.escapeId(dbName))
+			.then(() => true)
+			.catch((err) => { log.error(err.message); return false; });
+
+		if (created) {
+			log.success('The database `' + dbName + '` was created!');
+			validDatabase = true;
+		} else if (!interactive) {
+			connection.end();
+			return false;
+		} else {
+			dbName = undefined;
+		}
 	}
 
 	connection.end();
 
 	// Use WP CLI to create the wp-config.php file
 	let wpConfigCreateCmd = 'wp config create';
-	wpConfigCreateCmd += ' --dbhost=' + configAnswers.dbHost;
-	wpConfigCreateCmd += ' --dbuser=' + configAnswers.dbUser;
-	wpConfigCreateCmd += ' --dbpass=' + configAnswers.dbPassword;
-	wpConfigCreateCmd += ' --dbname=' + databaseAnswers.dbName;
-	sh.exec(wpConfigCreateCmd);
+	wpConfigCreateCmd += ' --dbhost=' + creds.host;
+	wpConfigCreateCmd += ' --dbuser=' + creds.user;
+	wpConfigCreateCmd += ' --dbpass=' + creds.password;
+	wpConfigCreateCmd += ' --dbname=' + dbName;
+	const configResult = sh.exec(wpConfigCreateCmd);
+	if (configResult.code !== 0) {
+		log.error('Failed to create wp-config.php.');
+		return false;
+	}
 
 	return true;
 }
@@ -210,62 +221,60 @@ export async function hasConfig() {
 }
 
 /**
- * Install WordPress
+ * Install WordPress.
+ *
+ * Accepts a resolved init config. Interactive mode prompts only for the install
+ * parameters not already supplied via flags/env; non-interactive uses the
+ * config values (defaults filling any gaps) and runs unattended.
  **/
-export async function installWordPress() {
+export async function installWordPress(config) {
+
+	config = config || {};
+	const interactive = config.interactive !== false;
+	const wp = config.wp || {};
 
 	if (await this.isInstalled()) {
 		log.info('WordPress is already installed...');
 		return;
 	}
 
-	// Ask questions about installation parameters
-	let installAnswers = await inquirer.prompt([
-		{
-			type: 'input',
-			name: 'url',
-			message: 'What is the url you would like to use for development?',
-			default: 'wonderpress.localhost',
-			validate: function (input) {
-				return input !== '';
-			}
-		},
-		{
-			type: 'input',
-			name: 'title',
-			message: 'What is the title of the site?',
-			default: 'wonderpress',
-			validate: function (input) {
-				return input !== '';
-			}
-		},
-		{
-			type: 'input',
-			name: 'adminUser',
-			message: 'What is the admin username?',
-			default: 'admin'
-		},
-		{
-			type: 'input',
-			name: 'adminPassword',
-			message: 'What is the admin password?',
-			default: 'supersecure'
-		},
-		{
-			type: 'input',
-			name: 'adminEmail',
-			message: 'What is the admin email?',
-			default: 'example@example.com'
-		},
-	]);
+	let vals = {
+		url: wp.url,
+		title: wp.title,
+		adminUser: wp.adminUser,
+		adminPassword: wp.adminPassword,
+		adminEmail: wp.adminEmail,
+	};
+
+	if (interactive) {
+		const answers = await inquirer.prompt([
+			{ type: 'input', name: 'url', message: 'What is the url you would like to use for development?', default: 'wonderpress.localhost', validate: (input) => input !== '', when: () => vals.url === undefined },
+			{ type: 'input', name: 'title', message: 'What is the title of the site?', default: 'wonderpress', validate: (input) => input !== '', when: () => vals.title === undefined },
+			{ type: 'input', name: 'adminUser', message: 'What is the admin username?', default: 'admin', when: () => vals.adminUser === undefined },
+			{ type: 'input', name: 'adminPassword', message: 'What is the admin password?', default: 'supersecure', when: () => vals.adminPassword === undefined },
+			{ type: 'input', name: 'adminEmail', message: 'What is the admin email?', default: 'example@example.com', when: () => vals.adminEmail === undefined },
+		]);
+		vals = { ...vals, ...answers };
+	}
+
+	// Fill any still-unset values (headless) with defaults.
+	vals.url = vals.url ?? 'wonderpress.localhost';
+	vals.title = vals.title ?? 'wonderpress';
+	vals.adminUser = vals.adminUser ?? 'admin';
+	vals.adminPassword = vals.adminPassword ?? 'supersecure';
+	vals.adminEmail = vals.adminEmail ?? 'example@example.com';
 
 	let wpInstallCmd = 'wp core install';
-	wpInstallCmd += ' --url=' + installAnswers.url;
-	wpInstallCmd += ' --title=' + installAnswers.title;
-	wpInstallCmd += ' --admin_user=' + installAnswers.adminUser;
-	wpInstallCmd += ' --admin_password=' + installAnswers.adminPassword;
-	wpInstallCmd += ' --admin_email=' + installAnswers.adminEmail;
-	sh.exec(wpInstallCmd);
+	wpInstallCmd += ' --url=' + vals.url;
+	wpInstallCmd += ' --title=' + JSON.stringify(vals.title);
+	wpInstallCmd += ' --admin_user=' + vals.adminUser;
+	wpInstallCmd += ' --admin_password=' + vals.adminPassword;
+	wpInstallCmd += ' --admin_email=' + vals.adminEmail;
+	const installResult = sh.exec(wpInstallCmd);
+	if (installResult.code !== 0) {
+		log.error('WordPress installation failed.');
+		return false;
+	}
 
 	return true;
 }

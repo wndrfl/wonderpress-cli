@@ -83,7 +83,7 @@ export async function create(args) {
 /**
  * Build params from CLI flags (--name, --prop, --acf, --no-template, ...).
  **/
-function paramsFromFlags(args) {
+export function paramsFromFlags(args) {
 	const className = args['--name'];
 	return {
 		class_name: className,
@@ -98,7 +98,7 @@ function paramsFromFlags(args) {
  * Build params from a --json value: `@path/to/file.json` or an inline JSON
  * string, matching the canonical partial contract.
  **/
-function paramsFromJson(raw) {
+export function paramsFromJson(raw) {
 	let text;
 	if (raw.startsWith('@')) {
 		text = fs.readFileSync(raw.slice(1), 'utf8');
@@ -131,7 +131,7 @@ function paramsFromJson(raw) {
 /**
  * Validate a fully-assembled params object. Throws with a clear message.
  **/
-function validateParams(params) {
+export function validateParams(params) {
 	if (!params.class_name || !isValidClassName(params.class_name)) {
 		throw new Error(`Invalid class name "${params.class_name || ''}". Must be WordPress snake-case, e.g. Example_Class.`);
 	}
@@ -153,7 +153,7 @@ function validateParams(params) {
  * Pure execution: no prompts, no network. Given identical params + themeDir it
  * produces identical output whether called from the flag path or the wizard.
  **/
-function writePartial(params, themeDir) {
+export function writePartial(params, themeDir) {
 
 	const partialTemplatePath = './partials/' + params.partial_template_name;
 

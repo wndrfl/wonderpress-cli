@@ -31,12 +31,27 @@ export async function cli() {
     '--stage-url': String,
     '--dev-url': String,
 
+    // init (headless)
+    '--yes': Boolean,
+    '--db-host': String,
+    '--db-user': String,
+    '--db-name': String,
+    '--db-password': String,
+    '--wp-url': String,
+    '--wp-title': String,
+    '--admin-user': String,
+    '--admin-email': String,
+    '--admin-password': String,
+    '--skip-readme': Boolean,
+    '--readme': Boolean,
+
     // Shortcuts
     '-d': '--dir',
     '-f': '--fix',
     '-i': '--init',
     '-n': '--name',
     '-v': '--version',
+    '-y': '--yes',
   };
 
   const args = arg(
