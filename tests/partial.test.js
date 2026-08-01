@@ -104,30 +104,16 @@ test('writePartial emits an agent manifest mirroring properties + artifact paths
 		assert.deepEqual(m.properties, [{ name: 'body', type: 'string', required: true, description: '' }]);
 		assert.equal(m.artifacts.class, 'src/partials/class-my-cool-thing.php');
 		assert.equal(m.artifacts.block, 'blocks/my-cool-thing/block.json');
-		assert.equal(m.artifacts.style, 'static/src/scss/partials/_my-cool-thing.scss');
 	} finally {
 		fs.removeSync(dir);
 	}
 });
 
-test('writePartial style stub selector matches the view slug', () => {
+test('emit opt-outs suppress block.json + manifest (class still written)', () => {
 	const dir = tmpTheme();
 	try {
-		writePartial(paramsFromFlags({ '--name': 'Testimonial' }), dir);
-		const scss = fs.readFileSync(path.join(dir, 'static/src/scss/partials/_testimonial.scss'), 'utf8');
-		assert.match(scss, /\.testimonial\s*\{/);
-		assert.match(scss, /@use '\.\.\/lib\/pallette'/);
-	} finally {
-		fs.removeSync(dir);
-	}
-});
-
-test('emit opt-outs suppress the three spine artifacts (class still written)', () => {
-	const dir = tmpTheme();
-	try {
-		writePartial(paramsFromFlags({ '--name': 'Solo', '--no-block': true, '--no-style': true, '--no-manifest': true }), dir);
+		writePartial(paramsFromFlags({ '--name': 'Solo', '--no-block': true, '--no-manifest': true }), dir);
 		assert.ok(!fs.existsSync(path.join(dir, 'blocks/solo/block.json')));
-		assert.ok(!fs.existsSync(path.join(dir, 'static/src/scss/partials/_solo.scss')));
 		assert.ok(!fs.existsSync(path.join(dir, '.wonderpress/manifest/solo.json')));
 		assert.ok(fs.existsSync(path.join(dir, 'src/partials/class-solo.php')));
 	} finally {

@@ -23,7 +23,6 @@ export async function cli() {
     '--prop': [String],
     '--json': String,
     '--no-block': Boolean,
-    '--no-style': Boolean,
     '--no-manifest': Boolean,
 
     // readme create

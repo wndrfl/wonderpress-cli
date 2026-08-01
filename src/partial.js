@@ -96,7 +96,6 @@ export function paramsFromFlags(args) {
 		properties: (args['--prop'] || []).map(parsePropFlag),
 		emit: {
 			block: !args['--no-block'],
-			style: !args['--no-style'],
 			manifest: !args['--no-manifest'],
 		},
 	};
@@ -135,7 +134,6 @@ export function paramsFromJson(raw) {
 		})),
 		emit: {
 			block: spec.block !== false,
-			style: spec.style !== false,
 			manifest: spec.manifest !== false,
 		},
 	};
@@ -222,19 +220,12 @@ export function writePartial(params, themeDir) {
 		log.success(`Block metadata created at: ${blockPath}`);
 	}
 
-	// Static Kit style stub (styling half) — tokens only; styles the view wrapper.
-	if (emit.style !== false && params.has_partial_template) {
-		const styleTemplate = fs.readFileSync(new URL('./templates/partial.style.mustache', import.meta.url), 'utf8');
-		const styleOutput = mustache.render(styleTemplate, {
-			name: humanizeClassName(params.class_name),
-			slug,
-		});
-		const stylePath = `${themeDir}/static/src/scss/partials/_${slug}.scss`;
-		fs.ensureDirSync(path.dirname(stylePath));
-		fs.writeFileSync(stylePath, styleOutput);
-		log.success(`Style stub created at: ${stylePath}`);
-		log.info(`Remember to \`@use 'partials/${slug}'\` from a Static Kit entry (e.g. single.scss) to compile it.`);
-	}
+	// NOTE: the styling half (a per-component Static Kit style stub) is
+	// intentionally NOT emitted here. `static/` is a Static-Kit-installed tree,
+	// so scaffolding into it is Static Kit's responsibility (delegated the way
+	// `template create` calls `staticCli.template.create`). Emitting it here
+	// would hardcode Static Kit's internal layout into owned code. Tracked as a
+	// follow-up: add a component-scaffold API to static-kit-cli and delegate.
 
 	// Agent-readable manifest (AI half) — the contract + artifact paths.
 	if (emit.manifest !== false) {
@@ -246,9 +237,6 @@ export function writePartial(params, themeDir) {
 		}
 		if (emit.block !== false) {
 			artifacts.block = `blocks/${slug}/block.json`;
-		}
-		if (emit.style !== false && params.has_partial_template) {
-			artifacts.style = `static/src/scss/partials/_${slug}.scss`;
 		}
 		const manifest = {
 			name: params.class_name,
@@ -401,6 +389,6 @@ async function runWizard(themeDir) {
 		has_partial_template: step1.has_partial_template,
 		partial_template_name: step1.has_partial_template ? step1.partial_template_name : defaultTemplateName(step1.class_name),
 		properties,
-		emit: { block: true, style: true, manifest: true },
+		emit: { block: true, manifest: true },
 	};
 }
