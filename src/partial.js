@@ -203,6 +203,14 @@ export async function writePartial(params, themeDir) {
 	const slug = classNameToSlug(params.class_name);
 	const emit = params.emit || {};
 
+	// The style stub is delegated to Static Kit's `component.create`. That API
+	// only exists in newer static-kit-cli builds; a theme may have an older
+	// published version installed. Detect it up front so we never crash on a
+	// missing API and never record a style artifact we did not actually write.
+	const wantsStyle = params.has_partial_template && emit.style !== false;
+	const styleApiAvailable = !!(staticCli.component && typeof staticCli.component.create === 'function');
+	const willEmitStyle = wantsStyle && styleApiAvailable;
+
 	// block.json (FSE half) — attributes derived from the properties.
 	if (emit.block !== false) {
 		const attributes = {};
@@ -234,7 +242,7 @@ export async function writePartial(params, themeDir) {
 		if (emit.block !== false) {
 			artifacts.block = `blocks/${slug}/block.json`;
 		}
-		if (params.has_partial_template && emit.style !== false) {
+		if (willEmitStyle) {
 			artifacts.style = `static/src/scss/partials/_${slug}.scss`;
 		}
 		const manifest = {
@@ -256,8 +264,10 @@ export async function writePartial(params, themeDir) {
 	// location/format — instead of writing into it directly (same pattern as
 	// `template create` calling `staticCli.template.create`). Only partials that
 	// render a view get a style stub.
-	if (params.has_partial_template && emit.style !== false) {
+	if (willEmitStyle) {
 		await staticCli.component.create(`${themeDir}/static`, slug);
+	} else if (wantsStyle && !styleApiAvailable) {
+		log.warn(`Style stub skipped for "${slug}": the installed @wndrfl/static-kit-cli has no component.create API. Upgrade Static Kit to enable per-partial style stubs; the partial, block, and manifest were still written.`);
 	}
 }
 
