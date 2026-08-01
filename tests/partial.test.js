@@ -75,3 +75,70 @@ test('writePartial: flag form and json form are byte-identical', () => {
 test('validateParams rejects a bad class name', () => {
 	assert.throws(() => validateParams({ class_name: 'bad-name', has_partial_template: false, properties: [] }), /Invalid class name/);
 });
+
+// --- spine emission (block.json / style / manifest) ---
+
+test('writePartial emits block.json with attributes mapped from props', () => {
+	const dir = tmpTheme();
+	try {
+		writePartial(paramsFromFlags({ '--name': 'Testimonial', '--prop': ['quote:string:required', 'featured:boolean'] }), dir);
+		const block = JSON.parse(fs.readFileSync(path.join(dir, 'blocks/testimonial/block.json'), 'utf8'));
+		assert.equal(block.name, 'wonderpress/testimonial');
+		assert.equal(block.title, 'Testimonial');
+		assert.equal(block.attributes.quote.type, 'string');
+		assert.equal(block.attributes.featured.type, 'boolean');
+	} finally {
+		fs.removeSync(dir);
+	}
+});
+
+test('writePartial emits an agent manifest mirroring properties + artifact paths', () => {
+	const dir = tmpTheme();
+	try {
+		writePartial(paramsFromFlags({ '--name': 'My_Cool_Thing', '--acf': true, '--prop': ['body:string:required'] }), dir);
+		const m = JSON.parse(fs.readFileSync(path.join(dir, '.wonderpress/manifest/my-cool-thing.json'), 'utf8'));
+		assert.equal(m.name, 'My_Cool_Thing');
+		assert.equal(m.slug, 'my-cool-thing');
+		assert.equal(m.block, 'wonderpress/my-cool-thing');
+		assert.equal(m.acf_compatible, true);
+		assert.deepEqual(m.properties, [{ name: 'body', type: 'string', required: true, description: '' }]);
+		assert.equal(m.artifacts.class, 'src/partials/class-my-cool-thing.php');
+		assert.equal(m.artifacts.block, 'blocks/my-cool-thing/block.json');
+	} finally {
+		fs.removeSync(dir);
+	}
+});
+
+test('emit opt-outs suppress block.json + manifest (class still written)', () => {
+	const dir = tmpTheme();
+	try {
+		writePartial(paramsFromFlags({ '--name': 'Solo', '--no-block': true, '--no-manifest': true }), dir);
+		assert.ok(!fs.existsSync(path.join(dir, 'blocks/solo/block.json')));
+		assert.ok(!fs.existsSync(path.join(dir, '.wonderpress/manifest/solo.json')));
+		assert.ok(fs.existsSync(path.join(dir, 'src/partials/class-solo.php')));
+	} finally {
+		fs.removeSync(dir);
+	}
+});
+
+test('block.json + manifest are identical across flag and json paths', () => {
+	const spec = {
+		name: 'Testimonial', acf_compatible: true, template: true, properties: [
+			{ name: 'quote', type: 'string', required: true },
+			{ name: 'featured', type: 'boolean', required: false },
+		],
+	};
+	const flags = { '--name': 'Testimonial', '--acf': true, '--prop': ['quote:string:required', 'featured:boolean'] };
+	const t1 = tmpTheme();
+	const t2 = tmpTheme();
+	try {
+		writePartial(paramsFromFlags(flags), t1);
+		writePartial(paramsFromJson(JSON.stringify(spec)), t2);
+		for (const rel of ['blocks/testimonial/block.json', '.wonderpress/manifest/testimonial.json']) {
+			assert.equal(fs.readFileSync(path.join(t1, rel), 'utf8'), fs.readFileSync(path.join(t2, rel), 'utf8'), rel);
+		}
+	} finally {
+		fs.removeSync(t1);
+		fs.removeSync(t2);
+	}
+});

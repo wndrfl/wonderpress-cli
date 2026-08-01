@@ -69,3 +69,31 @@ export function classNameToFileSlug(className) {
 export function defaultTemplateName(className) {
 	return className.toLowerCase().replaceAll('_', '-') + '.php';
 }
+
+/**
+ * Bare kebab slug for a class name (no `class-` prefix, no extension).
+ * Used for the block name/dir, the style partial filename, and the manifest key.
+ * e.g. My_Cool_Thing -> my-cool-thing
+ **/
+export function classNameToSlug(className) {
+	return className.toLowerCase().replaceAll('_', '-');
+}
+
+/**
+ * Human-friendly title from a class name (words are already capitalized).
+ * e.g. My_Cool_Thing -> "My Cool Thing"
+ **/
+export function humanizeClassName(className) {
+	return className.replaceAll('_', ' ');
+}
+
+/**
+ * Map a Wonderpress property type to a block.json attribute type.
+ * The four PROP_TYPES all correspond 1:1 to valid block attribute types.
+ **/
+export const PROP_TYPE_TO_BLOCK = {
+	string: 'string',
+	boolean: 'boolean',
+	array: 'array',
+	object: 'object',
+};

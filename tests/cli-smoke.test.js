@@ -35,6 +35,10 @@ test('partial create --json runs headlessly against a fixture', () => {
 		assert.match(php, /class Smoke_Test extends Abstract_Partial/);
 		assert.match(php, /'body'/);
 		assert.doesNotMatch(php, /\\\$/); // no heredoc escaping leaked
+
+		// the spine's additional outputs land too
+		assert.ok(fs.existsSync(path.join(dir, 'wp-content/themes/smoke/blocks/smoke-test/block.json')), 'block.json should exist');
+		assert.ok(fs.existsSync(path.join(dir, 'wp-content/themes/smoke/.wonderpress/manifest/smoke-test.json')), 'manifest should exist');
 	} finally {
 		fs.removeSync(dir);
 	}

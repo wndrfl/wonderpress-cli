@@ -22,6 +22,8 @@ export async function cli() {
     '--theme': String,
     '--prop': [String],
     '--json': String,
+    '--no-block': Boolean,
+    '--no-manifest': Boolean,
 
     // readme create
     '--project-name': String,
