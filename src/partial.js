@@ -11,8 +11,11 @@ import {
 	isValidPropType,
 	parsePropFlag,
 	classNameToFileSlug,
+	classNameToSlug,
+	humanizeClassName,
 	defaultTemplateName,
 	PROP_TYPES,
+	PROP_TYPE_TO_BLOCK,
 } from './validate.js';
 
 /**
@@ -91,6 +94,11 @@ export function paramsFromFlags(args) {
 		has_partial_template: !args['--no-template'],
 		partial_template_name: args['--template-name'] || defaultTemplateName(className),
 		properties: (args['--prop'] || []).map(parsePropFlag),
+		emit: {
+			block: !args['--no-block'],
+			style: !args['--no-style'],
+			manifest: !args['--no-manifest'],
+		},
 	};
 }
 
@@ -125,6 +133,11 @@ export function paramsFromJson(raw) {
 			required: !!p.required,
 			description: p.description || '',
 		})),
+		emit: {
+			block: spec.block !== false,
+			style: spec.style !== false,
+			manifest: spec.manifest !== false,
+		},
 	};
 }
 
@@ -183,6 +196,72 @@ export function writePartial(params, themeDir) {
 		fs.ensureDirSync(path.dirname(viewFilePath));
 		fs.writeFileSync(viewFilePath, viewOutput);
 		log.success(`View template created at: ${viewFilePath}`);
+	}
+
+	// The spine's additional outputs — all derived from the same params.
+	const slug = classNameToSlug(params.class_name);
+	const emit = params.emit || {};
+
+	// block.json (FSE half) — attributes derived from the properties.
+	if (emit.block !== false) {
+		const attributes = {};
+		for (const p of params.properties) {
+			attributes[p.name] = { type: PROP_TYPE_TO_BLOCK[p.type] || 'string' };
+		}
+		const block = {
+			$schema: 'https://schemas.wp.org/trunk/block.json',
+			apiVersion: 3,
+			name: `wonderpress/${slug}`,
+			title: humanizeClassName(params.class_name),
+			category: 'wonderpress',
+			attributes,
+		};
+		const blockPath = `${themeDir}/blocks/${slug}/block.json`;
+		fs.ensureDirSync(path.dirname(blockPath));
+		fs.writeFileSync(blockPath, JSON.stringify(block, null, 2) + '\n');
+		log.success(`Block metadata created at: ${blockPath}`);
+	}
+
+	// Static Kit style stub (styling half) — tokens only; styles the view wrapper.
+	if (emit.style !== false && params.has_partial_template) {
+		const styleTemplate = fs.readFileSync(new URL('./templates/partial.style.mustache', import.meta.url), 'utf8');
+		const styleOutput = mustache.render(styleTemplate, {
+			name: humanizeClassName(params.class_name),
+			slug,
+		});
+		const stylePath = `${themeDir}/static/src/scss/partials/_${slug}.scss`;
+		fs.ensureDirSync(path.dirname(stylePath));
+		fs.writeFileSync(stylePath, styleOutput);
+		log.success(`Style stub created at: ${stylePath}`);
+		log.info(`Remember to \`@use 'partials/${slug}'\` from a Static Kit entry (e.g. single.scss) to compile it.`);
+	}
+
+	// Agent-readable manifest (AI half) — the contract + artifact paths.
+	if (emit.manifest !== false) {
+		const artifacts = {
+			class: `src/partials/${classNameToFileSlug(params.class_name)}.php`,
+		};
+		if (params.has_partial_template) {
+			artifacts.view = `partials/${params.partial_template_name}`;
+		}
+		if (emit.block !== false) {
+			artifacts.block = `blocks/${slug}/block.json`;
+		}
+		if (emit.style !== false && params.has_partial_template) {
+			artifacts.style = `static/src/scss/partials/_${slug}.scss`;
+		}
+		const manifest = {
+			name: params.class_name,
+			slug,
+			block: `wonderpress/${slug}`,
+			acf_compatible: params.is_acf_compatible,
+			properties: params.properties,
+			artifacts,
+		};
+		const manifestPath = `${themeDir}/.wonderpress/manifest/${slug}.json`;
+		fs.ensureDirSync(path.dirname(manifestPath));
+		fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2) + '\n');
+		log.success(`Manifest created at: ${manifestPath}`);
 	}
 }
 
@@ -322,5 +401,6 @@ async function runWizard(themeDir) {
 		has_partial_template: step1.has_partial_template,
 		partial_template_name: step1.has_partial_template ? step1.partial_template_name : defaultTemplateName(step1.class_name),
 		properties,
+		emit: { block: true, style: true, manifest: true },
 	};
 }

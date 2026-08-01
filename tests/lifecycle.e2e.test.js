@@ -60,6 +60,8 @@ test('lifecycle: init -> create partial -> lint -> teardown', { skip: !RUN, time
 
 		const classFile = path.join(dir, 'wp-content/themes/wonderpress/src/partials/class-lifecycle-test.php');
 		assert.ok(fs.existsSync(classFile), 'partial class should exist in the real theme');
+		assert.ok(fs.existsSync(path.join(dir, 'wp-content/themes/wonderpress/blocks/lifecycle-test/block.json')), 'block.json should exist in the real theme');
+		assert.ok(fs.existsSync(path.join(dir, 'wp-content/themes/wonderpress/.wonderpress/manifest/lifecycle-test.json')), 'manifest should exist in the real theme');
 
 		// 4. Best-effort lint: assert the generated partial passes phpcs WHEN the
 		// toolchain is available. The boilerplate currently pins a security-flagged
