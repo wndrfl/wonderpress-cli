@@ -41,7 +41,45 @@ Starts a wizard to aid in the creation of a new README file.
 
 Create a Wonderpress "partial" (a PHP class and an accompanying view template) within the active Wonderpress-friendly theme, plus an agent-readable manifest and a delegated Static Kit style stub.
 
-A partial is a rendering primitive (a button, a section) — it is **not** a Gutenberg block. If you also want the partial exposed in the block editor, pass `--block`: the CLI additionally emits a `block.json` and a `render.php` that delegates the block's server render back to the partial. Block emission is opt-in; most partials are compositional and should not be blocks.
+A partial is a rendering primitive (a button, a section) — it is **not** a Gutenberg block. A **block is definitionally a thin wrapper over a partial**: its `render.php` delegates to the partial class, so a block cannot exist without its partial, while a partial lives perfectly well without a block.
+
+| Flag | Description |
+| --- | --- |
+| `--name <Class_Name>` | The partial's PHP class name (headless; omit for the wizard). |
+| `--json <@file\|string>` | Create from a JSON spec instead of flags. |
+| `--prop <name:type[:required]>` | Declare a property (repeatable). |
+| `--acf` | Configure the partial as ACF compatible. |
+| `--block` | Also expose the partial as a Gutenberg block (`block.json` + a `render.php` that delegates back to the partial). Opt-in. |
+| `--js` | Also scaffold a JS behavior class for the partial (`static/src/js/lib/partials/<Name>.js`, delegated to Static Kit). Opt-in — most partials have no behavior. |
+| `--template-name <name.php>` | Name the view template. |
+| `--no-template` | Skip the view template. |
+| `--no-style` | Skip the delegated SCSS style stub. |
+| `--no-manifest` | Skip the manifest. |
+| `--theme <name>` / `--dir <path>` | Target a specific theme / environment root. |
+
+#### `wonderpress partial list`
+
+List every partial in the theme (name, slug, and the block wrapping it, if any). Reads `.wonderpress/manifest/*.json` — the manifest directory is the CLI's index.
+
+#### `wonderpress partial remove <Name>`
+
+Remove a partial and every artifact its manifest records (class, view template, style stub, behavior class), then the manifest itself. Accepts a class name (`Call_To_Action`) or a slug (`call-to-action`).
+
+If a block wraps the partial the removal is refused — run `wonderpress block remove <Name>` first, or pass `--with-block` to remove both.
+
+#### `wonderpress block create <Name>`
+
+Retrofit a Gutenberg block onto an existing partial: emits `blocks/<slug>/block.json` and a `render.php` that delegates to the partial, and records the block in the partial's manifest. The output is identical to having passed `--block` at creation time.
+
+A block needs a partial to wrap, so if none exists the command tells you to run `wonderpress partial create --name <Name> --block` instead of scaffolding a partial with no properties.
+
+#### `wonderpress block list`
+
+List every block in the theme, with the partial backing it.
+
+#### `wonderpress block remove <Name>`
+
+Remove a block's directory and strip it from the manifest. The backing partial is left untouched.
 
 #### `wonderpress server`
 

@@ -44,3 +44,33 @@ test('partial create --json runs headlessly against a fixture', () => {
 		fs.removeSync(dir);
 	}
 });
+
+test('partial/block list + remove route through the CLI against a fixture', () => {
+	const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'wp-env-'));
+	const run = (...argv) => execFileSync('node', [BIN, ...argv, '--dir', dir, '--theme', 'smoke'], { encoding: 'utf8' });
+	try {
+		fs.writeFileSync(path.join(dir, '.wonderpressrc'), '{}');
+		fs.ensureDirSync(path.join(dir, 'wp-content/themes/smoke/src/partials'));
+		fs.ensureDirSync(path.join(dir, 'wp-content/themes/smoke/partials'));
+
+		run('partial', 'create', '--name', 'Smoke_Test', '--block');
+
+		const partials = run('partial', 'list');
+		assert.match(partials, /Smoke_Test\s+smoke-test\s+wonderpress\/smoke-test/);
+		assert.match(run('block', 'list'), /wonderpress\/smoke-test\s+Smoke_Test/);
+
+		// A block wraps a partial, so the partial cannot be removed out from under it.
+		assert.match(run('partial', 'remove', 'Smoke_Test'), /wrapped by block wonderpress\/smoke-test/);
+		assert.ok(fs.existsSync(path.join(dir, 'wp-content/themes/smoke/src/partials/class-smoke-test.php')));
+
+		run('block', 'remove', 'Smoke_Test');
+		assert.ok(!fs.existsSync(path.join(dir, 'wp-content/themes/smoke/blocks/smoke-test')));
+
+		run('partial', 'remove', 'Smoke_Test');
+		assert.ok(!fs.existsSync(path.join(dir, 'wp-content/themes/smoke/src/partials/class-smoke-test.php')));
+		assert.ok(!fs.existsSync(path.join(dir, 'wp-content/themes/smoke/.wonderpress/manifest/smoke-test.json')));
+		assert.match(run('partial', 'list'), /No partials found/);
+	} finally {
+		fs.removeSync(dir);
+	}
+});
