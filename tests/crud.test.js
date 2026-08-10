@@ -15,6 +15,7 @@ import {
 	paramsFromManifest,
 	removePartial,
 	staticArtifacts,
+	validateParams,
 	writeManifest,
 	writePartial,
 } from '../src/partial.js';
@@ -33,6 +34,15 @@ function tmpTheme() {
 			dist: { js: 'dist/js', css: 'dist/css', images: 'dist/images' },
 		},
 	}));
+	return dir;
+}
+
+// The same theme fixture WITHOUT a Static Kit tree — the common real-world case
+// where `component.create` no-ops and nothing delegated can be recorded.
+function tmpThemeNoStatic() {
+	const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'wp-crud-'));
+	fs.ensureDirSync(path.join(dir, 'src/partials'));
+	fs.ensureDirSync(path.join(dir, 'partials'));
 	return dir;
 }
 
@@ -271,4 +281,134 @@ test('listPartials and listBlocks read the manifest index', async () => {
 	} finally {
 		fs.removeSync(dir);
 	}
+});
+
+// --- the manifest never lies: every artifact it names exists ---
+
+test('every artifact the manifest advertises exists on disk', async () => {
+	const dir = tmpTheme();
+	try {
+		await writePartial(paramsFromFlags({ '--name': 'Call_To_Action', '--block': true, '--js': true }), dir);
+
+		const m = manifestOf(dir, 'call-to-action');
+		// The delegated halves are the point of the check, so make sure they were
+		// in fact advertised — otherwise this passes vacuously.
+		assert.ok(m.artifacts.style && m.artifacts.script, 'a real static tree yields both delegated halves');
+		for (const [key, rel] of Object.entries(m.artifacts)) {
+			assert.ok(fs.existsSync(path.join(dir, rel)), `artifacts.${key} (${rel}) should exist`);
+		}
+	} finally {
+		fs.removeSync(dir);
+	}
+});
+
+test('without a static tree the manifest records no delegated artifacts', async () => {
+	const dir = tmpThemeNoStatic();
+	try {
+		await writePartial(paramsFromFlags({ '--name': 'Call_To_Action', '--js': true }), dir);
+
+		assert.ok(!fs.existsSync(path.join(dir, 'static')), 'nothing was written into a static tree that does not exist');
+
+		const m = manifestOf(dir, 'call-to-action');
+		assert.equal(m.artifacts.style, undefined, 'never advertise a style stub that was not written');
+		assert.equal(m.artifacts.script, undefined, 'never advertise a behavior class that was not written');
+		for (const [key, rel] of Object.entries(m.artifacts)) {
+			assert.ok(fs.existsSync(path.join(dir, rel)), `artifacts.${key} (${rel}) should exist`);
+		}
+	} finally {
+		fs.removeSync(dir);
+	}
+});
+
+test('--js with --no-template records no script artifact', async () => {
+	const dir = tmpTheme();
+	try {
+		await writePartial(paramsFromFlags({ '--name': 'Hero', '--js': true, '--no-template': true }), dir);
+
+		const m = manifestOf(dir, 'hero');
+		assert.equal(m.artifacts.view, undefined, 'no view was requested');
+		assert.equal(m.artifacts.script, undefined, 'a behavior class needs a view to attach to');
+		assert.equal(m.artifacts.style, undefined);
+		assert.ok(!fs.existsSync(path.join(dir, 'static/src/js/lib/partials/Hero.js')), 'nothing delegated was written');
+	} finally {
+		fs.removeSync(dir);
+	}
+});
+
+// --- containment: a manifest is a file on disk, not a trusted delete list ---
+
+test('removePartial refuses an artifact path that escapes the theme', async () => {
+	const parent = fs.mkdtempSync(path.join(os.tmpdir(), 'wp-outside-'));
+	const dir = path.join(parent, 'theme');
+	const bystander = path.join(parent, 'outside.txt');
+	try {
+		fs.ensureDirSync(path.join(dir, 'src/partials'));
+		fs.ensureDirSync(path.join(dir, 'partials'));
+		fs.writeFileSync(bystander, 'do not delete me');
+
+		await writePartial(paramsFromFlags({ '--name': 'Hero' }), dir);
+
+		// Poison the index the way a crafted or corrupted manifest would.
+		const file = path.join(dir, '.wonderpress/manifest/hero.json');
+		const manifest = JSON.parse(fs.readFileSync(file, 'utf8'));
+		manifest.artifacts.style = '../outside.txt';
+		fs.writeFileSync(file, JSON.stringify(manifest, null, 2) + '\n');
+
+		assert.equal(removePartial(dir, 'Hero'), true, 'one bad entry does not abort the removal');
+
+		assert.ok(fs.existsSync(bystander), 'a file outside the theme must survive');
+		assert.equal(fs.readFileSync(bystander, 'utf8'), 'do not delete me');
+		assert.ok(!fs.existsSync(path.join(dir, 'src/partials/class-hero.php')), 'the in-theme artifacts still go');
+		assert.ok(!fs.existsSync(file), 'the manifest still goes');
+	} finally {
+		fs.removeSync(parent);
+	}
+});
+
+test('removePartial refuses a name that is not a safe slug', () => {
+	const parent = fs.mkdtempSync(path.join(os.tmpdir(), 'wp-outside-'));
+	const dir = path.join(parent, 'theme');
+	const bystander = path.join(parent, 'outside.txt');
+	try {
+		fs.ensureDirSync(dir);
+		fs.writeFileSync(bystander, 'do not delete me');
+
+		assert.equal(removePartial(dir, '../../../foo'), false);
+		assert.ok(fs.existsSync(bystander));
+	} finally {
+		fs.removeSync(parent);
+	}
+});
+
+test('a malformed manifest is skipped by list and refused by remove', async () => {
+	const dir = tmpTheme();
+	try {
+		await writePartial(paramsFromFlags({ '--name': 'Hero' }), dir);
+		fs.writeFileSync(path.join(dir, '.wonderpress/manifest/junk.json'), '[]\n');
+
+		assert.deepEqual(listPartials(dir), [{ name: 'Hero', slug: 'hero', block: null }], 'junk rows never reach the table');
+		assert.deepEqual(listBlocks(dir), []);
+		assert.equal(removePartial(dir, 'junk'), false);
+		assert.equal(addBlock(dir, 'junk'), false);
+		assert.equal(removeBlock(dir, 'junk'), false);
+	} finally {
+		fs.removeSync(dir);
+	}
+});
+
+// --- param validation ---
+
+test('a block without the manifest is refused: the index is what makes it manageable', () => {
+	assert.throws(
+		() => validateParams(paramsFromFlags({ '--name': 'Hero', '--block': true, '--no-manifest': true })),
+		/A block requires the manifest/
+	);
+	assert.throws(
+		() => validateParams(paramsFromJson(JSON.stringify({ name: 'Hero', block: true, manifest: false }))),
+		/A block requires the manifest/
+	);
+
+	// Either half alone is still fine.
+	validateParams(paramsFromFlags({ '--name': 'Hero', '--no-manifest': true }));
+	validateParams(paramsFromFlags({ '--name': 'Hero', '--block': true }));
 });
