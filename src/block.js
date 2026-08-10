@@ -1,7 +1,7 @@
 import fs from 'fs-extra';
 import * as log from './log.js';
 import * as partial from './partial.js';
-import { nameToSlug } from './validate.js';
+import { isSafeSlug, nameToSlug, resolveWithin } from './validate.js';
 
 /**
  * Blocks.
@@ -42,8 +42,13 @@ export async function command(subcommand, args) {
  **/
 export function addBlock(themeDir, name) {
 
-	const slug = nameToSlug(name);
-	const manifest = partial.readManifest(themeDir, slug);
+	const lookupSlug = nameToSlug(name);
+	if (!isSafeSlug(lookupSlug)) {
+		log.error(`Invalid partial name "${name}". A component name resolves to a slug of lowercase letters, numbers, and dashes.`);
+		return false;
+	}
+
+	const manifest = partial.readManifest(themeDir, lookupSlug);
 	if (!manifest) {
 		log.error(`No partial named "${name}" is recorded in this theme. A block is a wrapper around a partial, so create both at once with \`wonderpress partial create --name ${name} --block\`.`);
 		return false;
@@ -53,9 +58,18 @@ export function addBlock(themeDir, name) {
 		log.info(`"${manifest.name}" is already exposed as ${manifest.block}. Rewriting it from the manifest...`);
 	}
 
+	// The manifest is a file on disk, so its contract is re-validated before we
+	// write anything derived from it.
 	const artifacts = manifest.artifacts || {};
-	const params = partial.paramsFromManifest(manifest);
-	params.emit.block = true;
+	let params;
+	try {
+		params = partial.paramsFromManifest(manifest);
+		params.emit.block = true;
+		partial.validateParams(params);
+	} catch (err) {
+		log.error(`Cannot wrap "${name}" in a block: ${err.message}`);
+		return false;
+	}
 
 	partial.writeBlock(params, themeDir);
 	partial.writeManifest(params, themeDir, {
@@ -125,10 +139,23 @@ export async function list(args) {
  **/
 export function removeBlock(themeDir, name) {
 
-	const slug = nameToSlug(name);
-	const manifest = partial.readManifest(themeDir, slug);
+	const lookupSlug = nameToSlug(name);
+	if (!isSafeSlug(lookupSlug)) {
+		log.error(`Invalid partial name "${name}". A component name resolves to a slug of lowercase letters, numbers, and dashes.`);
+		return false;
+	}
+
+	const manifest = partial.readManifest(themeDir, lookupSlug);
 	if (!manifest) {
 		log.error(`No partial named "${name}" is recorded in this theme. Run \`wonderpress block list\` to see what exists.`);
+		return false;
+	}
+
+	// The manifest names itself; every derived path comes from that, not from
+	// what the user typed.
+	const slug = manifest.slug;
+	if (!isSafeSlug(slug)) {
+		log.error(`The manifest for "${name}" records an unusable slug "${slug}". Fix the manifest before removing this block.`);
 		return false;
 	}
 
@@ -148,7 +175,12 @@ export function removeBlock(themeDir, name) {
 		delete manifest.artifacts.render;
 	}
 
-	const file = partial.manifestPath(themeDir, slug);
+	const file = resolveWithin(themeDir, `.wonderpress/manifest/${slug}.json`);
+	if (!file) {
+		log.error(`Refusing to rewrite the manifest for "${slug}": that path escapes the theme directory.`);
+		return false;
+	}
+
 	fs.writeFileSync(file, JSON.stringify(manifest, null, 2) + '\n');
 	log.success(`Manifest updated at: ${file}`);
 

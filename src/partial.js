@@ -15,7 +15,9 @@ import {
 	classNameToSlug,
 	humanizeClassName,
 	defaultTemplateName,
+	isSafeSlug,
 	nameToSlug,
+	resolveWithin,
 	slugToPascal,
 	PROP_TYPES,
 	PROP_TYPE_TO_BLOCK,
@@ -227,6 +229,14 @@ export function validateParams(params) {
 			throw new Error(`Invalid property type "${p.type}" for property "${p.name}". Valid types: ${PROP_TYPES.join(', ')}.`);
 		}
 	}
+
+	// A block that is not in the index is unmanageable: `block list`,
+	// `block remove`, and `partial remove` all read the manifest, so a block
+	// written without one is an orphan nothing can find again.
+	const emit = params.emit || {};
+	if (emit.block && emit.manifest === false) {
+		throw new Error('A block requires the manifest (it is the index that makes the block manageable). Drop --no-manifest or --block.');
+	}
 }
 
 /**
@@ -270,6 +280,12 @@ export async function writePartial(params, themeDir) {
 	const slug = classNameToSlug(params.class_name);
 	const emit = params.emit || {};
 
+	// Neither delegated half is meaningful for a partial that renders no view,
+	// so `--js --no-template` gets nothing. Say so rather than swallowing it.
+	if (emit.script === true && !params.has_partial_template) {
+		log.warn(`Skipped the JS behavior class for "${slug}": a behavior stub is only emitted for partials that render a view template. Drop --no-template if this partial needs client-side JS.`);
+	}
+
 	// The style/behavior halves are delegated to Static Kit's `component.create`.
 	// That API only exists in newer static-kit-cli builds; a theme may have an
 	// older published version installed. Detect it up front so we never crash on
@@ -277,32 +293,64 @@ export async function writePartial(params, themeDir) {
 	const componentApiAvailable = !!(staticCli.component && typeof staticCli.component.create === 'function');
 	const { wantsStyle, wantsScript, willEmitStyle, willEmitScript } = staticArtifacts(params, componentApiAvailable);
 
+	// Delegate FIRST, then record. `component.create` silently no-ops when the
+	// static tree has no config (no `.staticrc`) or no src path for a half, so
+	// asking for it is not evidence that it landed — only the file on disk is.
+	//
+	// `static/` is a Static-Kit-installed tree, so we delegate to Static Kit —
+	// which owns the location/format — instead of writing into it directly (same
+	// pattern as `template create` calling `staticCli.template.create`).
+	if (willEmitStyle || willEmitScript) {
+		await staticCli.component.create(`${themeDir}/static`, slug, {
+			style: willEmitStyle,
+			script: willEmitScript,
+		});
+	}
+
+	// Existence is the source of truth for the delegated halves.
+	//
+	// TODO (cross-repo, not this PR): static-kit's `component.create` should
+	// return the paths it actually wrote, and the CLI should record those. Until
+	// it does we can only probe Static Kit's DEFAULT layout, so a theme with
+	// custom `.staticrc` src paths writes real files at paths we cannot see —
+	// conservatively recorded as "not written" rather than recorded wrongly.
+	const staticPaths = staticArtifactPaths(slug);
+	const wroteStyle = wantsStyle && fs.existsSync(`${themeDir}/${staticPaths.style}`);
+	const wroteScript = wantsScript && fs.existsSync(`${themeDir}/${staticPaths.script}`);
+
+	const skipped = [!wroteStyle && wantsStyle ? 'style stub' : null, !wroteScript && wantsScript ? 'JS behavior class' : null].filter(Boolean).join(' and ');
+	if (skipped) {
+		const why = componentApiAvailable
+			? 'Static Kit wrote nothing at the expected default path — the theme has no configured static tree (`static/.staticrc`), or uses a custom src layout'
+			: 'the installed @wndrfl/static-kit-cli has no component.create API — upgrade Static Kit to enable per-partial static assets';
+		log.warn(`Skipped the ${skipped} for "${slug}": ${why}. It is not recorded in the manifest; the partial, block, and manifest were still written.`);
+	}
+
 	// block.json (opt-in editor wrapper) — a partial is NOT a block, so this is
 	// only emitted when explicitly requested.
 	if (emit.block) {
 		writeBlock(params, themeDir);
 	}
 
-	// Agent-readable manifest (AI half) — the contract + artifact paths.
+	// Agent-readable manifest (AI half) — the contract + the artifacts that
+	// actually exist.
 	if (emit.manifest !== false) {
-		writeManifest(params, themeDir, { style: willEmitStyle, script: willEmitScript });
+		writeManifest(params, themeDir, { style: wroteStyle, script: wroteScript });
 	}
+}
 
-	// The styling half (a per-component, token-only style stub) and the optional
-	// behavior half (a class-based JS partial). `static/` is a Static-Kit-installed
-	// tree, so we delegate to Static Kit — which owns the location/format —
-	// instead of writing into it directly (same pattern as `template create`
-	// calling `staticCli.template.create`). Only partials that render a view get
-	// either half.
-	if (willEmitStyle || willEmitScript) {
-		await staticCli.component.create(`${themeDir}/static`, slug, {
-			style: willEmitStyle,
-			script: willEmitScript,
-		});
-	} else if ((wantsStyle || wantsScript) && !componentApiAvailable) {
-		const skipped = [wantsStyle ? 'style stub' : null, wantsScript ? 'JS behavior class' : null].filter(Boolean).join(' and ');
-		log.warn(`Skipped the ${skipped} for "${slug}": the installed @wndrfl/static-kit-cli has no component.create API. Upgrade Static Kit to enable per-partial static assets; the partial, block, and manifest were still written.`);
-	}
+/**
+ * The default paths Static Kit writes a component's delegated halves to,
+ * relative to the theme directory.
+ *
+ * Kept in lockstep with `staticCli.component.create` so writePartial can probe
+ * for what landed and writeManifest can record it — both from one definition.
+ **/
+export function staticArtifactPaths(slug) {
+	return {
+		style: `static/src/scss/partials/_${slug}.scss`,
+		script: `static/src/js/lib/partials/${slugToPascal(slug)}.js`,
+	};
 }
 
 /**
@@ -392,11 +440,12 @@ export function writeManifest(params, themeDir, written = {}) {
 		artifacts.block = `blocks/${slug}/block.json`;
 		artifacts.render = `blocks/${slug}/render.php`;
 	}
+	const staticPaths = staticArtifactPaths(slug);
 	if (written.style) {
-		artifacts.style = `static/src/scss/partials/_${slug}.scss`;
+		artifacts.style = staticPaths.style;
 	}
 	if (written.script) {
-		artifacts.script = `static/src/js/lib/partials/${slugToPascal(slug)}.js`;
+		artifacts.script = staticPaths.script;
 	}
 
 	const manifest = {
@@ -425,7 +474,21 @@ export function manifestPath(themeDir, slug) {
 }
 
 /**
- * Read a single manifest by slug. Returns null when the component is unknown.
+ * Whether a parsed manifest is shaped like the index entry the CRUD commands
+ * assume. Everything downstream derives paths from `name`/`slug`, so a file
+ * that has neither (`[]`, `null`, a bare number) is not a manifest at all.
+ **/
+export function isValidManifest(manifest) {
+	return !!manifest
+		&& typeof manifest === 'object'
+		&& !Array.isArray(manifest)
+		&& typeof manifest.name === 'string' && !!manifest.name
+		&& typeof manifest.slug === 'string' && !!manifest.slug;
+}
+
+/**
+ * Read a single manifest by slug. Returns null when the component is unknown,
+ * or when the file on disk is not a usable manifest.
  **/
 export function readManifest(themeDir, slug) {
 
@@ -434,12 +497,20 @@ export function readManifest(themeDir, slug) {
 		return null;
 	}
 
+	let manifest;
 	try {
-		return JSON.parse(fs.readFileSync(file, 'utf8'));
+		manifest = JSON.parse(fs.readFileSync(file, 'utf8'));
 	} catch (e) {
 		log.error(`Could not parse the manifest at ${file}: ${e.message}`);
 		return null;
 	}
+
+	if (!isValidManifest(manifest)) {
+		log.error(`The manifest at ${file} is malformed: it must be an object with string "name" and "slug" fields. Fix or delete it.`);
+		return null;
+	}
+
+	return manifest;
 }
 
 /**
@@ -459,22 +530,39 @@ export function readManifests(themeDir) {
 		.filter((file) => file.endsWith('.json'))
 		.sort()
 		.map((file) => {
+			let manifest;
 			try {
-				return JSON.parse(fs.readFileSync(path.join(dir, file), 'utf8'));
+				manifest = JSON.parse(fs.readFileSync(path.join(dir, file), 'utf8'));
 			} catch (e) {
 				log.warn(`Skipping unreadable manifest ${file}: ${e.message}`);
 				return null;
 			}
+
+			if (!isValidManifest(manifest)) {
+				log.warn(`Skipping malformed manifest ${file}: expected an object with string "name" and "slug" fields.`);
+				return null;
+			}
+
+			return manifest;
 		})
 		.filter(Boolean);
 }
 
 /**
  * Delete a block's directory. Returns whether anything was there to remove.
+ *
+ * This is a recursive delete, so the directory is resolved through
+ * `resolveWithin` — a slug is user-derived, and no removal may ever land
+ * outside the theme.
  **/
 export function removeBlockDir(themeDir, slug) {
 
-	const blockDir = `${themeDir}/blocks/${slug}`;
+	const blockDir = resolveWithin(themeDir, `blocks/${slug}`);
+	if (!blockDir) {
+		log.error(`Refusing to remove "blocks/${slug}": that path escapes the theme directory.`);
+		return false;
+	}
+
 	if (!fs.existsSync(blockDir)) {
 		return false;
 	}
@@ -525,10 +613,25 @@ export async function list(args) {
  **/
 export function removePartial(themeDir, name, options = {}) {
 
-	const slug = nameToSlug(name);
-	const manifest = readManifest(themeDir, slug);
+	// The user's input only locates the manifest; a name that cannot be a
+	// filesystem-safe slug is refused outright rather than resolved.
+	const lookupSlug = nameToSlug(name);
+	if (!isSafeSlug(lookupSlug)) {
+		log.error(`Invalid partial name "${name}". A component name resolves to a slug of lowercase letters, numbers, and dashes.`);
+		return false;
+	}
+
+	const manifest = readManifest(themeDir, lookupSlug);
 	if (!manifest) {
 		log.error(`No partial named "${name}" is recorded in this theme. Run \`wonderpress partial list\` to see what exists.`);
+		return false;
+	}
+
+	// The manifest is authoritative about its own identity, so every derived
+	// path comes from `manifest.slug` rather than from what the user typed.
+	const slug = manifest.slug;
+	if (!isSafeSlug(slug)) {
+		log.error(`The manifest for "${name}" records an unusable slug "${slug}". Fix the manifest before removing this partial.`);
 		return false;
 	}
 
@@ -538,16 +641,29 @@ export function removePartial(themeDir, name, options = {}) {
 	}
 
 	// The manifest is the record of what was written, so it is also the
-	// deletion list — we never guess at paths.
+	// deletion list — we never guess at paths. It is also just a file on disk,
+	// so every entry is resolved back inside the theme before anything is
+	// deleted; one bad entry is skipped rather than aborting the removal.
 	const artifacts = manifest.artifacts || {};
 	for (const key of ['class', 'view', 'style', 'script']) {
 		if (!artifacts[key]) {
 			continue;
 		}
-		const file = `${themeDir}/${artifacts[key]}`;
+
+		const file = resolveWithin(themeDir, artifacts[key]);
+		if (!file) {
+			log.error(`Refusing to remove ${key} "${artifacts[key]}": that path escapes the theme directory. Skipping it.`);
+			continue;
+		}
+
 		if (fs.existsSync(file)) {
 			fs.removeSync(file);
 			log.success(`Removed ${key}: ${file}`);
+		} else {
+			// Nothing to delete is not the same as nothing was there: a theme with
+			// a custom `.staticrc` layout can have real files the manifest cannot
+			// name (see the TODO in writePartial).
+			log.warn(`Nothing to remove for ${key}: ${file} does not exist. If this theme uses a custom static layout, check for an orphaned file by hand.`);
 		}
 	}
 
@@ -555,7 +671,12 @@ export function removePartial(themeDir, name, options = {}) {
 		removeBlockDir(themeDir, slug);
 	}
 
-	const file = manifestPath(themeDir, slug);
+	const file = resolveWithin(themeDir, `.wonderpress/manifest/${slug}.json`);
+	if (!file) {
+		log.error(`Refusing to remove the manifest for "${slug}": that path escapes the theme directory.`);
+		return false;
+	}
+
 	fs.removeSync(file);
 	log.success(`Removed manifest: ${file}`);
 	return true;

@@ -54,8 +54,13 @@ A partial is a rendering primitive (a button, a section) — it is **not** a Gut
 | `--template-name <name.php>` | Name the view template. |
 | `--no-template` | Skip the view template. |
 | `--no-style` | Skip the delegated SCSS style stub. |
-| `--no-manifest` | Skip the manifest. |
+| `--no-manifest` | Skip the manifest. Cannot be combined with `--block`. |
 | `--theme <name>` / `--dir <path>` | Target a specific theme / environment root. |
+
+Two combinations are worth knowing: `--block --no-manifest` is refused (the
+manifest is the index that makes a block manageable), and `--js --no-template`
+emits no behavior class, because a behavior stub is only scaffolded for a
+partial that renders a view.
 
 #### `wonderpress partial list`
 

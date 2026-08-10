@@ -39,7 +39,17 @@ test('partial create --json runs headlessly against a fixture', () => {
 		// the spine's additional outputs land too (block opted in via the spec)
 		assert.ok(fs.existsSync(path.join(dir, 'wp-content/themes/smoke/blocks/smoke-test/block.json')), 'block.json should exist');
 		assert.ok(fs.existsSync(path.join(dir, 'wp-content/themes/smoke/blocks/smoke-test/render.php')), 'render.php should exist');
-		assert.ok(fs.existsSync(path.join(dir, 'wp-content/themes/smoke/.wonderpress/manifest/smoke-test.json')), 'manifest should exist');
+		const manifestFile = path.join(dir, 'wp-content/themes/smoke/.wonderpress/manifest/smoke-test.json');
+		assert.ok(fs.existsSync(manifestFile), 'manifest should exist');
+
+		// This fixture has no Static Kit tree, so the delegated halves cannot land.
+		// The manifest must say so rather than advertising files that do not exist.
+		const manifest = JSON.parse(fs.readFileSync(manifestFile, 'utf8'));
+		assert.equal(manifest.artifacts.style, undefined, 'no style artifact without a static tree');
+		assert.equal(manifest.artifacts.script, undefined, 'no script artifact without a static tree');
+		for (const [key, rel] of Object.entries(manifest.artifacts)) {
+			assert.ok(fs.existsSync(path.join(dir, 'wp-content/themes/smoke', rel)), `artifacts.${key} (${rel}) should exist`);
+		}
 	} finally {
 		fs.removeSync(dir);
 	}

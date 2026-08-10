@@ -84,6 +84,20 @@ format:
 This keeps a single source of truth for anything under `static/`: if the Static
 Kit layout changes, WonderPress inherits it for free instead of drifting.
 
+#### The known asymmetry: removal
+
+Creation is delegated; **removal currently is not**. Static Kit exposes no
+`component.remove`, so `partial remove` deletes the delegated outputs (the style
+stub and the JS behavior class) from `static/` directly, using the paths its
+manifest recorded at creation time. This is a deliberate, documented exception
+to "the CLI never writes into `static/`" — a partial you removed should not
+leave its assets behind. It is slated to move behind Static Kit as soon as a
+removal API exists. Relatedly, `component.create` does not report the paths it
+wrote, so the CLI can only confirm Static Kit's **default** layout; under a
+custom `.staticrc` src layout the delegated artifacts are recorded as not
+written (and a removal warns about the file it cannot name) rather than
+recording a path that may be wrong.
+
 ### Versioning
 
 The `@wndrfl/static-kit-cli` version range in [`package.json`](package.json) is
