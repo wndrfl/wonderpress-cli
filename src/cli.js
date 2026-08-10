@@ -1,4 +1,5 @@
 import arg from 'arg';
+import * as block from './block.js';
 import * as core from './core.js';
 import * as lint from './lint.js';
 import * as partial from './partial.js';
@@ -26,6 +27,9 @@ export async function cli() {
     '--js': Boolean,
     '--no-manifest': Boolean,
     '--no-style': Boolean,
+
+    // partial remove
+    '--with-block': Boolean,
 
     // readme create
     '--project-name': String,
@@ -78,6 +82,9 @@ export async function cli() {
   switch (cmd) {
     case 'partial':
       await partial.command(args._[1], args);
+      break;
+    case 'block':
+      await block.command(args._[1], args);
       break;
     case 'init':
       await core.command('init', args);
