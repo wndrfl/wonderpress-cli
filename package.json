@@ -1,6 +1,6 @@
 {
   "name": "@wndrfl/wonderpress-cli",
-  "version": "2.3.4",
+  "version": "2.4.0",
   "description": "A commandline interface for bootstrapping and working with the Wonderpress WordPress Development Environment.",
   "main": "./bin/wonderpress.js",
   "type": "module",
@@ -28,7 +28,7 @@
   "author": "Johnnie Munger",
   "license": "MIT",
   "dependencies": {
-    "@wndrfl/static-kit-cli": "^2.10.6",
+    "@wndrfl/static-kit-cli": "^2.12.0",
     "arg": "^5.0.2",
     "colors": "^1.4.0",
     "fs-extra": "^11.2.0",
