@@ -23,6 +23,7 @@ export async function cli() {
     '--prop': [String],
     '--json': String,
     '--block': Boolean,
+    '--js': Boolean,
     '--no-manifest': Boolean,
     '--no-style': Boolean,
 

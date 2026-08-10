@@ -80,6 +80,31 @@ export function classNameToSlug(className) {
 }
 
 /**
+ * Coerce a user-supplied component name into its kebab slug.
+ * Accepts either a class name or a slug, so the CRUD commands take whichever
+ * form the user has in hand.
+ * e.g. Call_To_Action -> call-to-action, call-to-action -> call-to-action
+ **/
+export function nameToSlug(name) {
+	return String(name || '').trim().toLowerCase().replaceAll('_', '-');
+}
+
+/**
+ * PascalCase name for a slug, matching how Static Kit names a component's JS
+ * behavior class file (`<src js>/lib/partials/<Pascal>.js`). Kept in lockstep
+ * with `staticCli.component.create` so the manifest can record the path of a
+ * file that Static Kit actually wrote.
+ * e.g. call-to-action -> CallToAction
+ **/
+export function slugToPascal(slug) {
+	return String(slug || '')
+		.split('-')
+		.filter(Boolean)
+		.map((word) => word[0].toUpperCase() + word.slice(1))
+		.join('');
+}
+
+/**
  * Human-friendly title from a class name (words are already capitalized).
  * e.g. My_Cool_Thing -> "My Cool Thing"
  **/

@@ -15,6 +15,8 @@ import {
 	classNameToSlug,
 	humanizeClassName,
 	defaultTemplateName,
+	nameToSlug,
+	slugToPascal,
 	PROP_TYPES,
 	PROP_TYPE_TO_BLOCK,
 } from './validate.js';
@@ -27,19 +29,26 @@ export async function command(subcommand, args) {
 		case 'create':
 			await create(args);
 			break;
+		case 'list':
+			await list(args);
+			break;
+		case 'remove':
+			await remove(args);
+			break;
 	}
 
 	return true;
 }
 
 /**
- * Create a new "partial".
+ * Resolve the theme directory a command operates on, after moving the cwd to
+ * the environment root.
  *
- * Flag-driven first: if --json or --name is provided the partial is created
- * headlessly; otherwise the interactive wizard collects the same params. Both
- * paths converge on writePartial() so their output is identical.
+ * --theme skips the WordPress lookup (and so lets the op run headlessly without
+ * a configured database); otherwise the currently active theme wins. Returns
+ * false when the environment or the theme could not be resolved.
  **/
-export async function create(args) {
+export async function resolveThemeDir(args) {
 
 	const dir = args['--dir'] ? args['--dir'] : '.';
 	process.chdir(dir);
@@ -48,9 +57,6 @@ export async function create(args) {
 		return false;
 	}
 
-	// Resolve the target theme directory. --theme skips the WP lookup (and lets
-	// the op run headlessly without a configured database); otherwise fall back
-	// to the currently active theme.
 	let themeName;
 	if (args['--theme']) {
 		themeName = args['--theme'];
@@ -62,7 +68,23 @@ export async function create(args) {
 		}
 		themeName = theme.name;
 	}
-	const themeDir = wordpress.pathToThemesDir + '/' + themeName;
+
+	return wordpress.pathToThemesDir + '/' + themeName;
+}
+
+/**
+ * Create a new "partial".
+ *
+ * Flag-driven first: if --json or --name is provided the partial is created
+ * headlessly; otherwise the interactive wizard collects the same params. Both
+ * paths converge on writePartial() so their output is identical.
+ **/
+export async function create(args) {
+
+	const themeDir = await resolveThemeDir(args);
+	if (!themeDir) {
+		return false;
+	}
 
 	// Gather params: --json, then --name (flags), else the interactive wizard.
 	let params;
@@ -102,6 +124,9 @@ export function paramsFromFlags(args) {
 			block: !!args['--block'],
 			manifest: !args['--no-manifest'],
 			style: !args['--no-style'],
+			// Most partials have no behavior, so the JS half is opt-IN too: the
+			// file's existence is itself the signal that this one does.
+			script: !!args['--js'],
 		},
 	};
 }
@@ -143,6 +168,43 @@ export function paramsFromJson(raw) {
 			block: spec.block === true,
 			manifest: spec.manifest !== false,
 			style: spec.style !== false,
+			// Opt-in as well; `script` is accepted as an alias of `js`.
+			script: spec.js === true || spec.script === true,
+		},
+	};
+}
+
+/**
+ * Reconstruct a params object from a manifest file's contents.
+ *
+ * The manifest is the CLI's index of what a theme contains, so retrofitting a
+ * block onto an existing partial (`block create`) reads the original contract
+ * back from here instead of asking the user to restate it. The manifest records
+ * the view by path rather than by name, so the template name is derived from
+ * `artifacts.view`.
+ **/
+export function paramsFromManifest(manifest) {
+
+	if (!manifest || !manifest.name) {
+		throw new Error('Could not read a component name from the manifest.');
+	}
+
+	const artifacts = manifest.artifacts || {};
+	const hasView = !!artifacts.view;
+
+	return {
+		class_name: manifest.name,
+		is_acf_compatible: !!manifest.acf_compatible,
+		has_partial_template: hasView,
+		partial_template_name: hasView ? path.basename(artifacts.view) : defaultTemplateName(manifest.name),
+		properties: manifest.properties || [],
+		emit: {
+			block: !!manifest.block,
+			manifest: true,
+			// Reflect what the manifest says was actually written, so a rewrite
+			// never invents (or drops) a delegated artifact.
+			style: !!artifacts.style,
+			script: !!artifacts.script,
 		},
 	};
 }
@@ -208,87 +270,314 @@ export async function writePartial(params, themeDir) {
 	const slug = classNameToSlug(params.class_name);
 	const emit = params.emit || {};
 
-	// The style stub is delegated to Static Kit's `component.create`. That API
-	// only exists in newer static-kit-cli builds; a theme may have an older
-	// published version installed. Detect it up front so we never crash on a
-	// missing API and never record a style artifact we did not actually write.
-	const wantsStyle = params.has_partial_template && emit.style !== false;
-	const styleApiAvailable = !!(staticCli.component && typeof staticCli.component.create === 'function');
-	const willEmitStyle = wantsStyle && styleApiAvailable;
+	// The style/behavior halves are delegated to Static Kit's `component.create`.
+	// That API only exists in newer static-kit-cli builds; a theme may have an
+	// older published version installed. Detect it up front so we never crash on
+	// a missing API and never record an artifact we did not actually write.
+	const componentApiAvailable = !!(staticCli.component && typeof staticCli.component.create === 'function');
+	const { wantsStyle, wantsScript, willEmitStyle, willEmitScript } = staticArtifacts(params, componentApiAvailable);
 
 	// block.json (opt-in editor wrapper) — a partial is NOT a block, so this is
-	// only emitted when explicitly requested. The block delegates its server
-	// render to the backing partial via render.php, so it stays a thin Gutenberg
-	// wrapper rather than a second source of markup.
+	// only emitted when explicitly requested.
 	if (emit.block) {
-		const attributes = {};
-		for (const p of params.properties) {
-			attributes[p.name] = { type: PROP_TYPE_TO_BLOCK[p.type] || 'string' };
-		}
-		const block = {
-			$schema: 'https://schemas.wp.org/trunk/block.json',
-			apiVersion: 3,
-			name: `wonderpress/${slug}`,
-			title: humanizeClassName(params.class_name),
-			category: 'wonderpress',
-			attributes,
-			render: 'file:./render.php',
-		};
-		const blockDir = `${themeDir}/blocks/${slug}`;
-		fs.ensureDirSync(blockDir);
-		fs.writeFileSync(`${blockDir}/block.json`, JSON.stringify(block, null, 2) + '\n');
-		log.success(`Block metadata created at: ${blockDir}/block.json`);
-
-		// Server render: delegate to the partial (block == partial-in-the-editor).
-		const renderTemplate = fs.readFileSync(new URL('./templates/block.render.mustache', import.meta.url), 'utf8');
-		const renderOutput = mustache.render(renderTemplate, {
-			slug,
-			class_name: params.class_name,
-		});
-		fs.writeFileSync(`${blockDir}/render.php`, renderOutput);
-		log.success(`Block render created at: ${blockDir}/render.php`);
+		writeBlock(params, themeDir);
 	}
 
 	// Agent-readable manifest (AI half) — the contract + artifact paths.
 	if (emit.manifest !== false) {
-		const artifacts = {
-			class: `src/partials/${classNameToFileSlug(params.class_name)}.php`,
-		};
-		if (params.has_partial_template) {
-			artifacts.view = `partials/${params.partial_template_name}`;
-		}
-		if (emit.block) {
-			artifacts.block = `blocks/${slug}/block.json`;
-			artifacts.render = `blocks/${slug}/render.php`;
-		}
-		if (willEmitStyle) {
-			artifacts.style = `static/src/scss/partials/_${slug}.scss`;
-		}
-		const manifest = {
-			name: params.class_name,
-			slug,
-			// Only a partial that opted in to being a block advertises one.
-			...(emit.block ? { block: `wonderpress/${slug}` } : {}),
-			acf_compatible: params.is_acf_compatible,
-			properties: params.properties,
-			artifacts,
-		};
-		const manifestPath = `${themeDir}/.wonderpress/manifest/${slug}.json`;
-		fs.ensureDirSync(path.dirname(manifestPath));
-		fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2) + '\n');
-		log.success(`Manifest created at: ${manifestPath}`);
+		writeManifest(params, themeDir, { style: willEmitStyle, script: willEmitScript });
 	}
 
-	// The styling half (a per-component, token-only style stub). `static/` is a
-	// Static-Kit-installed tree, so we delegate to Static Kit — which owns the
-	// location/format — instead of writing into it directly (same pattern as
-	// `template create` calling `staticCli.template.create`). Only partials that
-	// render a view get a style stub.
-	if (willEmitStyle) {
-		await staticCli.component.create(`${themeDir}/static`, slug);
-	} else if (wantsStyle && !styleApiAvailable) {
-		log.warn(`Style stub skipped for "${slug}": the installed @wndrfl/static-kit-cli has no component.create API. Upgrade Static Kit to enable per-partial style stubs; the partial, block, and manifest were still written.`);
+	// The styling half (a per-component, token-only style stub) and the optional
+	// behavior half (a class-based JS partial). `static/` is a Static-Kit-installed
+	// tree, so we delegate to Static Kit — which owns the location/format —
+	// instead of writing into it directly (same pattern as `template create`
+	// calling `staticCli.template.create`). Only partials that render a view get
+	// either half.
+	if (willEmitStyle || willEmitScript) {
+		await staticCli.component.create(`${themeDir}/static`, slug, {
+			style: willEmitStyle,
+			script: willEmitScript,
+		});
+	} else if ((wantsStyle || wantsScript) && !componentApiAvailable) {
+		const skipped = [wantsStyle ? 'style stub' : null, wantsScript ? 'JS behavior class' : null].filter(Boolean).join(' and ');
+		log.warn(`Skipped the ${skipped} for "${slug}": the installed @wndrfl/static-kit-cli has no component.create API. Upgrade Static Kit to enable per-partial static assets; the partial, block, and manifest were still written.`);
 	}
+}
+
+/**
+ * Decide which delegated (Static Kit) halves a set of params should produce.
+ *
+ * Both halves come from the same `component.create` API, so both are gated on
+ * that API being present in the installed static-kit-cli build — and neither is
+ * meaningful for a partial that renders no view.
+ **/
+export function staticArtifacts(params, apiAvailable) {
+
+	const emit = params.emit || {};
+	const wantsStyle = !!params.has_partial_template && emit.style !== false;
+	const wantsScript = !!params.has_partial_template && emit.script === true;
+
+	return {
+		wantsStyle,
+		wantsScript,
+		willEmitStyle: wantsStyle && !!apiAvailable,
+		willEmitScript: wantsScript && !!apiAvailable,
+	};
+}
+
+/**
+ * Write a partial's opt-in Gutenberg wrapper: `block.json` plus the `render.php`
+ * that delegates the block's server render back to the partial.
+ *
+ * A block is definitionally a thin wrapper over a partial — it never carries
+ * markup of its own — so this is the single code path behind both
+ * `partial create --block` and `block create`.
+ **/
+export function writeBlock(params, themeDir) {
+
+	const slug = classNameToSlug(params.class_name);
+
+	const attributes = {};
+	for (const p of params.properties) {
+		attributes[p.name] = { type: PROP_TYPE_TO_BLOCK[p.type] || 'string' };
+	}
+	const block = {
+		$schema: 'https://schemas.wp.org/trunk/block.json',
+		apiVersion: 3,
+		name: `wonderpress/${slug}`,
+		title: humanizeClassName(params.class_name),
+		category: 'wonderpress',
+		attributes,
+		render: 'file:./render.php',
+	};
+	const blockDir = `${themeDir}/blocks/${slug}`;
+	fs.ensureDirSync(blockDir);
+	fs.writeFileSync(`${blockDir}/block.json`, JSON.stringify(block, null, 2) + '\n');
+	log.success(`Block metadata created at: ${blockDir}/block.json`);
+
+	// Server render: delegate to the partial (block == partial-in-the-editor).
+	const renderTemplate = fs.readFileSync(new URL('./templates/block.render.mustache', import.meta.url), 'utf8');
+	const renderOutput = mustache.render(renderTemplate, {
+		slug,
+		class_name: params.class_name,
+	});
+	fs.writeFileSync(`${blockDir}/render.php`, renderOutput);
+	log.success(`Block render created at: ${blockDir}/render.php`);
+
+	return blockDir;
+}
+
+/**
+ * Write the agent-readable manifest — the component's contract plus the paths of
+ * the artifacts that were ACTUALLY written.
+ *
+ * `written` reports which delegated halves landed, so the manifest never
+ * advertises a file that does not exist. Every writer goes through here, which
+ * is what keeps `partial create --block` and `partial create` + `block create`
+ * byte-identical.
+ **/
+export function writeManifest(params, themeDir, written = {}) {
+
+	const slug = classNameToSlug(params.class_name);
+	const emit = params.emit || {};
+
+	const artifacts = {
+		class: `src/partials/${classNameToFileSlug(params.class_name)}.php`,
+	};
+	if (params.has_partial_template) {
+		artifacts.view = `partials/${params.partial_template_name}`;
+	}
+	if (emit.block) {
+		artifacts.block = `blocks/${slug}/block.json`;
+		artifacts.render = `blocks/${slug}/render.php`;
+	}
+	if (written.style) {
+		artifacts.style = `static/src/scss/partials/_${slug}.scss`;
+	}
+	if (written.script) {
+		artifacts.script = `static/src/js/lib/partials/${slugToPascal(slug)}.js`;
+	}
+
+	const manifest = {
+		name: params.class_name,
+		slug,
+		// Only a partial that opted in to being a block advertises one.
+		...(emit.block ? { block: `wonderpress/${slug}` } : {}),
+		acf_compatible: params.is_acf_compatible,
+		properties: params.properties,
+		artifacts,
+	};
+
+	const file = manifestPath(themeDir, slug);
+	fs.ensureDirSync(path.dirname(file));
+	fs.writeFileSync(file, JSON.stringify(manifest, null, 2) + '\n');
+	log.success(`Manifest created at: ${file}`);
+
+	return file;
+}
+
+/**
+ * Path to a component's manifest file within a theme.
+ **/
+export function manifestPath(themeDir, slug) {
+	return `${themeDir}/.wonderpress/manifest/${slug}.json`;
+}
+
+/**
+ * Read a single manifest by slug. Returns null when the component is unknown.
+ **/
+export function readManifest(themeDir, slug) {
+
+	const file = manifestPath(themeDir, slug);
+	if (!fs.existsSync(file)) {
+		return null;
+	}
+
+	try {
+		return JSON.parse(fs.readFileSync(file, 'utf8'));
+	} catch (e) {
+		log.error(`Could not parse the manifest at ${file}: ${e.message}`);
+		return null;
+	}
+}
+
+/**
+ * Read every manifest in a theme, sorted by slug.
+ *
+ * `.wonderpress/manifest/` is the CLI's index — `list` and `remove` read it
+ * rather than scanning (and guessing at) source files.
+ **/
+export function readManifests(themeDir) {
+
+	const dir = `${themeDir}/.wonderpress/manifest`;
+	if (!fs.existsSync(dir)) {
+		return [];
+	}
+
+	return fs.readdirSync(dir)
+		.filter((file) => file.endsWith('.json'))
+		.sort()
+		.map((file) => {
+			try {
+				return JSON.parse(fs.readFileSync(path.join(dir, file), 'utf8'));
+			} catch (e) {
+				log.warn(`Skipping unreadable manifest ${file}: ${e.message}`);
+				return null;
+			}
+		})
+		.filter(Boolean);
+}
+
+/**
+ * Delete a block's directory. Returns whether anything was there to remove.
+ **/
+export function removeBlockDir(themeDir, slug) {
+
+	const blockDir = `${themeDir}/blocks/${slug}`;
+	if (!fs.existsSync(blockDir)) {
+		return false;
+	}
+
+	fs.removeSync(blockDir);
+	log.success(`Block removed: ${blockDir}`);
+	return true;
+}
+
+/**
+ * Rows for `partial list`, read from the manifest index.
+ **/
+export function listPartials(themeDir) {
+	return readManifests(themeDir).map((manifest) => ({
+		name: manifest.name,
+		slug: manifest.slug,
+		block: manifest.block || null,
+	}));
+}
+
+/**
+ * List every partial the manifest index knows about.
+ **/
+export async function list(args) {
+
+	const themeDir = await resolveThemeDir(args);
+	if (!themeDir) {
+		return false;
+	}
+
+	const rows = listPartials(themeDir);
+	if (!rows.length) {
+		log.info(`No partials found in ${themeDir}. Create one with \`wonderpress partial create --name <Name>\`.`);
+		return true;
+	}
+
+	log.table(['NAME', 'SLUG', 'BLOCK'], rows.map((row) => [row.name, row.slug, row.block || '—']));
+	log.info(`${rows.length} partial${rows.length === 1 ? '' : 's'}.`);
+	return true;
+}
+
+/**
+ * Delete a partial and everything the manifest says was written for it.
+ *
+ * A block cannot exist without its partial, so removing a partial that is
+ * wrapped by one is refused unless `withBlock` is set — that refusal is the
+ * safety here (this is a flag-driven headless tool, so there are no prompts).
+ **/
+export function removePartial(themeDir, name, options = {}) {
+
+	const slug = nameToSlug(name);
+	const manifest = readManifest(themeDir, slug);
+	if (!manifest) {
+		log.error(`No partial named "${name}" is recorded in this theme. Run \`wonderpress partial list\` to see what exists.`);
+		return false;
+	}
+
+	if (manifest.block && !options.withBlock) {
+		log.error(`This partial is wrapped by block ${manifest.block}. Run \`wonderpress block remove ${manifest.name}\` first, or pass --with-block.`);
+		return false;
+	}
+
+	// The manifest is the record of what was written, so it is also the
+	// deletion list — we never guess at paths.
+	const artifacts = manifest.artifacts || {};
+	for (const key of ['class', 'view', 'style', 'script']) {
+		if (!artifacts[key]) {
+			continue;
+		}
+		const file = `${themeDir}/${artifacts[key]}`;
+		if (fs.existsSync(file)) {
+			fs.removeSync(file);
+			log.success(`Removed ${key}: ${file}`);
+		}
+	}
+
+	if (manifest.block) {
+		removeBlockDir(themeDir, slug);
+	}
+
+	const file = manifestPath(themeDir, slug);
+	fs.removeSync(file);
+	log.success(`Removed manifest: ${file}`);
+	return true;
+}
+
+/**
+ * Remove a partial (`partial remove <Name>`).
+ **/
+export async function remove(args) {
+
+	const themeDir = await resolveThemeDir(args);
+	if (!themeDir) {
+		return false;
+	}
+
+	const name = args._ && args._[2] ? args._[2] : args['--name'];
+	if (!name) {
+		log.error('No name provided. Usage: wonderpress partial remove <Name>.');
+		return false;
+	}
+
+	return removePartial(themeDir, name, { withBlock: !!args['--with-block'] });
 }
 
 /**
@@ -348,6 +637,16 @@ async function runWizard(themeDir) {
 					log.info('Here\'s an example: my-template-name.php');
 				}
 				return valid;
+			}
+		},
+		{
+			type: 'confirm',
+			name: 'emit_script',
+			message: 'Also scaffold a JS behavior class for this partial?',
+			suffix: '\nMost partials have no behavior; say "N" unless this one needs client-side JS:',
+			default: false,
+			when: function (answers) {
+				return answers.has_partial_template;
 			}
 		},
 		{
@@ -434,6 +733,6 @@ async function runWizard(themeDir) {
 		has_partial_template: step1.has_partial_template,
 		partial_template_name: step1.has_partial_template ? step1.partial_template_name : defaultTemplateName(step1.class_name),
 		properties,
-		emit: { block: !!step1.emit_block, manifest: true, style: true },
+		emit: { block: !!step1.emit_block, manifest: true, style: true, script: !!step1.emit_script },
 	};
 }
