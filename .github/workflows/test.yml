@@ -57,8 +57,13 @@ jobs:
 
   e2e:
     name: full lifecycle (init → partial → lint)
-    # Heavy + clones external repos — run nightly and on demand, not every push.
-    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    # Heavy + clones external repos, so not on every push. Nightly and on demand,
+    # plus every push to master: this job is the only thing that exercises a real
+    # `init`, and waiting up to a day to learn master is broken is too long.
+    if: >-
+      github.event_name == 'schedule' ||
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'push' && github.ref == 'refs/heads/master')
     runs-on: ubuntu-latest
     services:
       mysql:

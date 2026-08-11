@@ -4,7 +4,7 @@ import fs from 'fs-extra';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { execFileSync, execSync } from 'node:child_process';
+import { execFileSync, execSync, spawnSync } from 'node:child_process';
 import mysql2 from 'mysql2/promise';
 
 // Full-lifecycle end-to-end: spin up a real environment with headless `init`,
@@ -38,18 +38,52 @@ test('lifecycle: init -> create partial -> lint -> teardown', { skip: !RUN, time
 
 	try {
 		// 1. Spin up a real environment, fully headless.
-		execFileSync('node', [
+		//
+		// Captured rather than inherited so step 2 can inspect it. `init` drives
+		// sub-tools (Static Kit, WP-CLI, Composer) that log their own failures and
+		// carry on, so a zero exit says only "the CLI reached the end" — not "the
+		// environment it built is sound". Echo it so CI logs stay as readable as
+		// they were when this was stdio:'inherit'.
+		const initRun = spawnSync('node', [
 			BIN, 'init',
 			'--dir', dir, '--yes',
 			'--db-host', DB_HOST, '--db-user', DB_USER, '--db-name', DB_NAME,
 			'--wp-url', 'example.test', '--wp-title', 'E2E', '--admin-user', 'admin',
 			'--admin-email', 'admin@example.com', '--theme', 'wonderpress', '--skip-readme',
-		], { stdio: 'inherit', env: childEnv });
+		], { encoding: 'utf8', env: childEnv });
+
+		const initOutput = (initRun.stdout || '') + (initRun.stderr || '');
+		process.stdout.write(initOutput);
+		assert.equal(initRun.status, 0, 'init should exit cleanly');
 
 		// 2. WordPress is installed and the wonderpress theme is active.
 		execSync('wp core is-installed', { cwd: dir });
 		const active = execSync('wp theme list --status=active --field=name', { cwd: dir, encoding: 'utf8' }).trim();
 		assert.equal(active, 'wonderpress', 'wonderpress theme should be active');
+
+		// 2b. The theme `init` produced is actually usable.
+		//
+		// Regression guard for a real escape: a sass/static-kit version pairing
+		// left `sass.compileAsync` undefined, so every stylesheet failed to
+		// compile. Static Kit logged it and returned, `init` exited 0, and every
+		// assertion here still passed — a themeless theme, shipped green. Asserting
+		// on the artifact rather than the exit code is what closes that gap.
+		const distCssDir = path.join(dir, 'wp-content/themes/wonderpress/static/dist/css');
+		const compiledCss = fs.existsSync(distCssDir)
+			? fs.readdirSync(distCssDir).filter((f) => f.endsWith('.css'))
+			: [];
+		assert.ok(
+			compiledCss.length > 0,
+			`init should leave compiled CSS in static/dist/css (found none in ${distCssDir})`
+		);
+
+		// Sub-tools that log-and-continue are invisible to the exit code, so scan
+		// for the shapes those failures take. Deliberately narrow: broad patterns
+		// like /Error/ match benign WP-CLI chatter and make the nightly flaky.
+		const swallowed = initOutput
+			.split('\n')
+			.filter((line) => /Static ERROR|Error when compiling|TypeError:|is not a function/.test(line));
+		assert.deepEqual(swallowed, [], `init logged failures it did not exit on:\n${swallowed.join('\n')}`);
 
 		// 3. Create a real partial in the installed theme.
 		execFileSync('node', [
