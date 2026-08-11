@@ -128,12 +128,23 @@ export async function init(dir, initConfig) {
   }
 
   // Anything the backend needs on disk before it can provision.
-  await backend.prepare(initConfig);
+  const prepared = await backend.prepare(initConfig);
+  if (! reportBackendStep(prepared)) {
+    return false;
+  }
 
   // Download, configure and install WordPress. The backend owns the order:
   // the host downloads then configures then installs, where a container-based
   // backend provisions along a different graph entirely.
-  await backend.provision(initConfig);
+  //
+  // Stop here on failure rather than carrying on. An environment with no
+  // database is not an environment: the remaining steps would install the
+  // mu-plugin and Composer packages into it, fail again at theme activation,
+  // and then print "The Wonderpress environment has been initialized!"
+  const provisioned = await backend.provision(initConfig);
+  if (! reportBackendStep(provisioned)) {
+    return false;
+  }
 
   // Install the Wonderpress Core as an MU (must use) plugin
   await wordpress.installMuPlugin('https://github.com/wndrfl/wonderpress-core.git');
@@ -199,6 +210,25 @@ export async function init(dir, initConfig) {
   log.success(`The Wonderpress environment has been initialized!`);
 
   return true;
+}
+
+/**
+ * Log a backend lifecycle step's errors and flag the process as failed.
+ *
+ * Returns whether the step succeeded, so callers can stop. A step that returns
+ * nothing counts as success — backends are free to leave a lifecycle hook
+ * as a no-op.
+ **/
+function reportBackendStep(result) {
+
+  if (!result || result.ok !== false) {
+    return true;
+  }
+
+  (result.errors || []).forEach((error) => log.error(error));
+  process.exitCode = 1;
+
+  return false;
 }
 
 /**
