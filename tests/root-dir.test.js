@@ -63,6 +63,38 @@ test('honors the legacy .wonderpress marker', async () => {
 	}
 });
 
+test("a theme's .wonderpress manifest directory is not an environment root", async () => {
+	// The CLI writes `.wonderpress/manifest/` into every theme it touches. The
+	// legacy marker is a *file* also named `.wonderpress`, and existsSync() is
+	// true for both — so before the marker check required a file, a walk up
+	// from inside a theme stopped at the theme.
+	const root = tmpTree();
+	try {
+		fs.writeFileSync(path.join(root, '.wonderpressrc'), '{}');
+
+		const theme = path.join(root, 'wp-content', 'themes', 'wonderpress');
+		fs.ensureDirSync(path.join(theme, '.wonderpress', 'manifest'));
+		fs.ensureDirSync(path.join(theme, 'partials'));
+
+		assert.equal(await core.getRootDir(path.join(theme, 'partials')), root);
+		assert.equal(await core.getRootDir(theme), root);
+	} finally {
+		fs.removeSync(root);
+	}
+});
+
+test('the legacy .wonderpress marker is honored as a file', async () => {
+	const root = tmpTree();
+	try {
+		fs.writeFileSync(path.join(root, '.wonderpress'), '{}');
+		const sub = path.join(root, 'wp-content');
+		fs.ensureDirSync(sub);
+		assert.equal(await core.getRootDir(sub), root);
+	} finally {
+		fs.removeSync(root);
+	}
+});
+
 test('returns the nearest root when markers nest', async () => {
 	const outer = tmpTree();
 	try {
