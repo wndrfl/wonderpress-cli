@@ -4,6 +4,8 @@ import * as env from './env/index.js';
 import fs from 'fs-extra';
 import inquirer from 'inquirer';
 import * as log from './log.js';
+import os from 'os';
+import path from 'path';
 import * as readme from './readme.js';
 import sh from 'shelljs';
 import * as staticCli from '@wndrfl/static-kit-cli';
@@ -201,22 +203,41 @@ export async function init(dir, initConfig) {
 
 /**
  * Get the root directory of the Wonderpress environment.
+ *
+ * Walks up from `startDir` (default: cwd) looking for the marker
+ * `config.exists()` recognises, and returns the first directory that has one.
+ *
+ * The walk used to build `../${path}` from an absolute path, which produced a
+ * nonexistent directory on every iteration — so it only ever succeeded when
+ * cwd was already the root, and otherwise spun 50 times and gave up. Commands
+ * run from a subdirectory (`server start` from inside the theme, say) reported
+ * "This does not appear to be a Wonderpress Development Environment."
+ *
+ * $HOME is deliberately never returned. `rc` conventions actively invite a
+ * `~/.wonderpressrc`, and with a working walk one would make every directory
+ * under the home dir look like an environment root — which would point `lint`
+ * at $HOME and run phpcs against it. `opts.home` overrides which directory
+ * that is, so a test can cover the rule without writing into a real one.
  **/
-export async function getRootDir() {
-  let path = process.cwd();
-  let seek = true;
-  let c = 0;
-  while (seek) {
-    if (c++ >= 50) break;
-    if (! await config.exists(path)) {
-      path = `../${path}`;
-    } else {
-      return path;
+export async function getRootDir(startDir, opts) {
+
+  const home = (opts && opts.home) || os.homedir();
+  let dir = path.resolve(startDir || process.cwd());
+
+  for (;;) {
+    if (dir !== home && await config.exists(dir)) {
+      return dir;
     }
+
+    // path.dirname is a fixpoint at the filesystem root ('/', or 'C:\'), which
+    // is the termination condition — no iteration cap needed.
+    const parent = path.dirname(dir);
+    if (parent === dir) {
+      return false;
+    }
+
+    dir = parent;
   }
-
-  return false;
-
 }
 
 /**
