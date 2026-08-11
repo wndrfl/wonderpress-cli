@@ -4,6 +4,7 @@ import * as log from './log.js';
 import sh from 'shelljs';
 import * as config from './config.js';
 import * as core from './core.js';
+import * as env from './env/index.js';
 import inquirer from 'inquirer';
 import mysql2 from 'mysql2/promise';
 import rc from 'rc';
@@ -18,7 +19,7 @@ export const pathToMuPluginsDir = './wp-content/mu-plugins';
  **/
 export async function activateTheme(themeName) {
 	log.info('Attempting to activate theme: ' + themeName);
-	sh.exec('wp theme activate ' + themeName);
+	env.getCurrent().wpCli(['theme', 'activate', themeName]);
 }
 
 /**
@@ -184,7 +185,8 @@ export async function getActiveTheme() {
 		return false;
 	}
 
-	let themes = JSON.parse(sh.exec('wp theme list --status=active --format=json', { silent: true }));
+	const activeResult = env.getCurrent().wpCli(['theme', 'list', '--status=active', '--format=json'], { silent: true });
+	let themes = JSON.parse(activeResult.stdout);
 
 	if (!themes.length) {
 		log.error('There are no active themes.');
@@ -205,7 +207,8 @@ export async function getActiveTheme() {
  **/
 export async function getAllThemes() {
 	try {
-		let themes = JSON.parse(sh.exec('wp theme list --format=json', { silent: true }));
+		const result = env.getCurrent().wpCli(['theme', 'list', '--format=json'], { silent: true });
+		let themes = JSON.parse(result.stdout);
 		return themes;
 	} catch (e) {
 		return [];
@@ -372,6 +375,6 @@ export async function installTheme(url, opts) {
  * Check whether WordPress Core is installed
  **/
 export async function isInstalled() {
-	let isInstalled = await sh.exec('wp core is-installed').code;
+	let isInstalled = env.getCurrent().wpCli(['core', 'is-installed']).code;
 	return (isInstalled === 0);
 }

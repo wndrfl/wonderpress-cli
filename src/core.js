@@ -1,5 +1,6 @@
 import * as composer from './composer.js';
 import * as config from './config.js';
+import * as env from './env/index.js';
 import fs from 'fs-extra';
 import inquirer from 'inquirer';
 import * as log from './log.js';
@@ -31,9 +32,13 @@ export async function command(subcommand, args) {
  **/
 export async function init(dir, initConfig) {
 
-  // Check for WP CLI
-  if (!sh.which('wp')) {
-    log.error(`Wonderpress leans heavily on the WP CLI. Please visit https://wp-cli.org/ and follow installation instructions before trying again.`);
+  // Whatever the backend needs before we write anything to disk. Failing here
+  // costs 200ms; failing after the scaffold clone and npm install costs
+  // minutes.
+  const backend = env.getCurrent();
+  const preflight = await backend.preflight();
+  if (!preflight.ok) {
+    preflight.errors.forEach((error) => log.error(error));
     return 0;
   }
 
@@ -120,14 +125,13 @@ export async function init(dir, initConfig) {
     process.chdir(saveCwd);
   }
 
-  // Download WordPress Core
-  await wordpress.downloadWordPress();
+  // Anything the backend needs on disk before it can provision.
+  await backend.prepare(initConfig);
 
-  // Configure WordPress Core
-  await wordpress.configureWordPress(initConfig);
-
-  // Install WordPress Core
-  await wordpress.installWordPress(initConfig);
+  // Download, configure and install WordPress. The backend owns the order:
+  // the host downloads then configures then installs, where a container-based
+  // backend provisions along a different graph entirely.
+  await backend.provision(initConfig);
 
   // Install the Wonderpress Core as an MU (must use) plugin
   await wordpress.installMuPlugin('https://github.com/wndrfl/wonderpress-core.git');
