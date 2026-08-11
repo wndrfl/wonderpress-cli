@@ -5,6 +5,8 @@
  * interactive wizard `validate` callbacks, so all three agree on what is valid.
  **/
 
+import path from 'path';
+
 // The property types Wonderpress can validate and render.
 export const PROP_TYPES = ['array', 'boolean', 'object', 'string'];
 
@@ -77,6 +79,64 @@ export function defaultTemplateName(className) {
  **/
 export function classNameToSlug(className) {
 	return className.toLowerCase().replaceAll('_', '-');
+}
+
+/**
+ * Coerce a user-supplied component name into its kebab slug.
+ * Accepts either a class name or a slug, so the CRUD commands take whichever
+ * form the user has in hand.
+ * e.g. Call_To_Action -> call-to-action, call-to-action -> call-to-action
+ **/
+export function nameToSlug(name) {
+	return String(name || '').trim().toLowerCase().replaceAll('_', '-');
+}
+
+/**
+ * Whether a slug is safe to build filesystem paths from.
+ *
+ * `nameToSlug` only lowercases and swaps underscores, so it happily returns
+ * `../../etc` for a crafted name. Every path the CRUD commands derive from a
+ * slug (block dir, manifest file, delegated static assets) must be built from a
+ * slug that passes this.
+ **/
+export function isSafeSlug(slug) {
+	return /^[a-z0-9-]+$/.test(String(slug || ''));
+}
+
+/**
+ * Resolve `relPath` inside `rootDir`, or return null when it escapes.
+ *
+ * The manifest is a file on disk that the CLI deletes from, so a crafted (or
+ * corrupted) artifact path like `../../../../.ssh/id_rsa` must never resolve to
+ * a real removal target. Returns the absolute path when it is strictly beneath
+ * `rootDir`, and null for anything else — including `rootDir` itself, which
+ * would be a recursive delete of the whole theme.
+ **/
+export function resolveWithin(rootDir, relPath) {
+	const root = path.resolve(rootDir);
+	const resolved = path.resolve(root, String(relPath || ''));
+	const rel = path.relative(root, resolved);
+
+	if (!rel || rel.startsWith('..') || path.isAbsolute(rel)) {
+		return null;
+	}
+
+	return resolved;
+}
+
+/**
+ * PascalCase name for a slug, matching how Static Kit names a component's JS
+ * behavior class file (`<src js>/lib/partials/<Pascal>.js`). Kept in lockstep
+ * with `staticCli.component.create` so the manifest can record the path of a
+ * file that Static Kit actually wrote.
+ * e.g. call-to-action -> CallToAction
+ **/
+export function slugToPascal(slug) {
+	return String(slug || '')
+		.split('-')
+		.filter(Boolean)
+		.map((word) => word[0].toUpperCase() + word.slice(1))
+		.join('');
 }
 
 /**

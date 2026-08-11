@@ -26,6 +26,20 @@ export function raw(msg) {
   console.log(`${msg.info}`);
 }
 
+/**
+ * Print a simple left-aligned table of strings (a header row + data rows).
+ * Used by the `list` commands so their output stays scannable.
+ **/
+export function table(headers, rows) {
+	const widths = headers.map((header, i) => Math.max(String(header).length, ...rows.map((row) => String(row[i] ?? '').length)));
+	const line = (cells) => cells.map((cell, i) => String(cell ?? '').padEnd(widths[i])).join('  ').trimEnd();
+
+	raw(line(headers));
+	for (const row of rows) {
+		raw(line(row));
+	}
+}
+
 export function success(msg) {
   console.log(`Wonderpress ${'SUCCESS'.meta}: ${msg.success}`);
 }

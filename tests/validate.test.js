@@ -7,6 +7,8 @@ import {
 	parsePropFlag,
 	classNameToFileSlug,
 	defaultTemplateName,
+	isSafeSlug,
+	resolveWithin,
 	PROP_TYPES,
 } from '../src/validate.js';
 
@@ -53,4 +55,24 @@ test('classNameToFileSlug converts EVERY underscore (regression)', () => {
 test('defaultTemplateName', () => {
 	assert.equal(defaultTemplateName('My_Cool_Thing'), 'my-cool-thing.php');
 	assert.equal(defaultTemplateName('Testimonial'), 'testimonial.php');
+});
+
+test('isSafeSlug accepts only what a path may be built from', () => {
+	for (const slug of ['hero', 'call-to-action', 'grid-2up']) {
+		assert.ok(isSafeSlug(slug), slug);
+	}
+	for (const slug of ['', '../foo', 'a/b', '.', 'Hero', 'hero.json', 'hero_x', null, undefined]) {
+		assert.ok(!isSafeSlug(slug), String(slug));
+	}
+});
+
+test('resolveWithin keeps a path inside its root, or returns null', () => {
+	assert.equal(resolveWithin('/theme', 'partials/hero.php'), '/theme/partials/hero.php');
+	assert.equal(resolveWithin('/theme', './a/../b.txt'), '/theme/b.txt');
+
+	// Escapes, absolute paths, and the root itself are all refused.
+	assert.equal(resolveWithin('/theme', '../../../../.ssh/id_rsa'), null);
+	assert.equal(resolveWithin('/theme', '/etc/passwd'), null);
+	assert.equal(resolveWithin('/theme', '.'), null);
+	assert.equal(resolveWithin('/theme', ''), null);
 });

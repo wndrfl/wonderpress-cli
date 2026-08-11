@@ -36,7 +36,39 @@ enforced by the `node_modules` rule in the shipped
 | `block.json` + `render.php` (opt-in Gutenberg wrapper — `--block`) | **WonderPress CLI** | `.../blocks/<slug>/` |
 | The `static/` tree (layout, `.staticrc`) | **Static Kit** | `wp-content/themes/wonderpress/static` |
 | Component **style stubs** (token-only SCSS) | **Static Kit** | `static/` (created via delegation) |
+| Component **behavior classes** (opt-in JS — `--js`) | **Static Kit** | `static/` (created via delegation) |
 | `src/` → `dist/` asset compilation | **Static Kit** | `static/src`, `static/dist` |
+
+### The manifest is the index
+
+`.wonderpress/manifest/<slug>.json` is the CLI's record of what a component is
+and what was written for it. `partial list`, `partial remove`, `block create`,
+`block list`, and `block remove` all read it rather than scanning (and guessing
+at) source files — so the manifest is authoritative, and the deletion list for a
+removal is exactly what creation recorded.
+
+```json
+{
+  "name": "Call_To_Action",
+  "slug": "call-to-action",
+  "block": "wonderpress/call-to-action",
+  "acf_compatible": false,
+  "properties": [{ "name": "body", "type": "string", "required": true, "description": "" }],
+  "artifacts": {
+    "class": "src/partials/class-call-to-action.php",
+    "view": "partials/call-to-action.php",
+    "block": "blocks/call-to-action/block.json",
+    "render": "blocks/call-to-action/render.php",
+    "style": "static/src/scss/partials/_call-to-action.scss",
+    "script": "static/src/js/lib/partials/CallToAction.js"
+  }
+}
+```
+
+`block`, `artifacts.block`, `artifacts.render` appear only with `--block`;
+`artifacts.script` only with `--js`; and the two delegated artifacts (`style`,
+`script`) are recorded **only when Static Kit actually wrote them** — the
+manifest never advertises a file that does not exist.
 
 ### Delegate, don't scaffold
 
@@ -46,11 +78,25 @@ format:
 
 - `template create` → `staticCli.template.create()`
   ([`src/template.js`](src/template.js))
-- `partial create` (style half) → `staticCli.component.create()`
-  ([`src/partial.js`](src/partial.js))
+- `partial create` (style half, plus the opt-in `--js` behavior half) →
+  `staticCli.component.create()` ([`src/partial.js`](src/partial.js))
 
 This keeps a single source of truth for anything under `static/`: if the Static
 Kit layout changes, WonderPress inherits it for free instead of drifting.
+
+#### The known asymmetry: removal
+
+Creation is delegated; **removal currently is not**. Static Kit exposes no
+`component.remove`, so `partial remove` deletes the delegated outputs (the style
+stub and the JS behavior class) from `static/` directly, using the paths its
+manifest recorded at creation time. This is a deliberate, documented exception
+to "the CLI never writes into `static/`" — a partial you removed should not
+leave its assets behind. It is slated to move behind Static Kit as soon as a
+removal API exists. Relatedly, `component.create` does not report the paths it
+wrote, so the CLI can only confirm Static Kit's **default** layout; under a
+custom `.staticrc` src layout the delegated artifacts are recorded as not
+written (and a removal warns about the file it cannot name) rather than
+recording a path that may be wrong.
 
 ### Versioning
 

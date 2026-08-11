@@ -214,10 +214,15 @@ export async function getAllThemes() {
 
 /**
  * Check for the existense of a wp-config.php
+ *
+ * Silent because a miss is the expected case on a fresh install: `wp config
+ * path` exits non-zero and prints "Error: 'wp-config.php' not found", which
+ * shelljs would otherwise echo, making a routine probe look like a failure
+ * moments before `init` goes on to write the file.
  **/
 export async function hasConfig() {
-	const path = sh.exec('wp config path');
-	return path.length > 0 ? true : false;
+	const result = sh.exec('wp config path', { silent: true });
+	return result.code === 0;
 }
 
 /**
