@@ -25,6 +25,15 @@ $ npm install -g @wndrfl/wonderpress-cli
 
 The Wonderpress CLI provides different commands for many common tasks.
 
+The CLI documents itself, so this list is a reference rather than the only way
+to find a command:
+
+```bash
+wonderpress                  # what commands exist
+wonderpress partial help     # detail on one of them
+wonderpress block help       # ...including how blocks relate to partials
+```
+
 #### `wonderpress init`
 
 Sets up (or initializes) a "Wonderpress" flavored WordPress Development Environment, configures and installs WordPress, installs various developer tools, and optionally installs a blank Wonderpress boilerplate theme.

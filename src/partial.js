@@ -1,5 +1,6 @@
 import fs from 'fs-extra';
 import path from 'path';
+import * as help from './help.js';
 import * as log from './log.js';
 import * as core from './core.js';
 import inquirer from 'inquirer';
@@ -36,6 +37,15 @@ export async function command(subcommand, args) {
 			break;
 		case 'remove':
 			await remove(args);
+			break;
+		default:
+			// No subcommand (or an unrecognised one) means the user is looking for
+			// the shape of this command group, not silence.
+			if (subcommand) {
+				log.error(`Unknown partial subcommand: ${subcommand}`);
+				process.exitCode = 1;
+			}
+			help.show('partial');
 			break;
 	}
 

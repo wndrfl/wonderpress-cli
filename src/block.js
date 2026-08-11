@@ -1,4 +1,5 @@
 import fs from 'fs-extra';
+import * as help from './help.js';
 import * as log from './log.js';
 import * as partial from './partial.js';
 import { isSafeSlug, nameToSlug, resolveWithin } from './validate.js';
@@ -26,6 +27,13 @@ export async function command(subcommand, args) {
 			break;
 		case 'remove':
 			await remove(args);
+			break;
+		default:
+			if (subcommand) {
+				log.error(`Unknown block subcommand: ${subcommand}`);
+				process.exitCode = 1;
+			}
+			help.show('block');
 			break;
 	}
 

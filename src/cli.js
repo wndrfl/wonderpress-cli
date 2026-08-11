@@ -1,7 +1,9 @@
 import arg from 'arg';
 import * as block from './block.js';
 import * as core from './core.js';
+import * as help from './help.js';
 import * as lint from './lint.js';
+import * as log from './log.js';
 import * as partial from './partial.js';
 import * as readme from './readme.js';
 import * as server from './server.js';
@@ -14,6 +16,7 @@ export async function cli() {
     '--fix': Boolean,
     '--init': Boolean,
     '--name': String,
+    '--help': Boolean,
     '--version': Boolean,
 
     // partial create
@@ -57,6 +60,7 @@ export async function cli() {
     '-d': '--dir',
     '-f': '--fix',
     '-i': '--init',
+    '-h': '--help',
     '-n': '--name',
     '-v': '--version',
     '-y': '--yes',
@@ -77,6 +81,18 @@ export async function cli() {
     if (args['--version']) {
       cmd = 'version';
     }
+  }
+
+  // `wonderpress`, `wonderpress help`, `wonderpress --help`: orient, don't sit
+  // silently. Bare invocation used to print nothing at all and exit 0, which
+  // reads as "worked" rather than "you have not said what you want yet".
+  if (cmd === undefined || cmd === 'help') {
+    return help.show(args._[1]);
+  }
+
+  // `wonderpress <command> --help` / `<command> help` -> that command's screen.
+  if (help.requested(args) && help.has(cmd)) {
+    return help.show(cmd);
   }
 
   switch (cmd) {
@@ -103,6 +119,13 @@ export async function cli() {
       break;
     case 'version':
       await core.command('version', args);
+      break;
+    default:
+      // Unknown commands used to fall through to nothing at all: no message, no
+      // non-zero exit. A typo looked exactly like success.
+      log.error(`Unknown command: ${cmd}`);
+      help.show();
+      process.exitCode = 1;
       break;
   }
 }
