@@ -1,4 +1,5 @@
 import * as host from './host.js';
+import * as wpEnv from './wp-env.js';
 
 /**
  * The environment backend registry.
@@ -14,6 +15,7 @@ import * as host from './host.js';
  **/
 const BACKENDS = {
 	host: host.create,
+	'wp-env': wpEnv.create,
 };
 
 let current = null;

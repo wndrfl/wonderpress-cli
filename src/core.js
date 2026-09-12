@@ -41,7 +41,10 @@ export async function init(dir, initConfig) {
   const preflight = await backend.preflight();
   if (!preflight.ok) {
     preflight.errors.forEach((error) => log.error(error));
-    return 0;
+    // Exit non-zero. This used to `return 0`, so an init that refused to run
+    // for want of WP-CLI still told the shell it had succeeded.
+    process.exitCode = 1;
+    return false;
   }
 
   initConfig = initConfig || {};

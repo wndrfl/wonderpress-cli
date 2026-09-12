@@ -1,6 +1,7 @@
 import arg from 'arg';
 import * as block from './block.js';
 import * as core from './core.js';
+import * as env from './env/index.js';
 import * as help from './help.js';
 import * as lint from './lint.js';
 import * as log from './log.js';
@@ -13,6 +14,7 @@ export async function cli() {
   const options = {
     '--clean-slate': Boolean,
     '--dir': String,
+    '--env': String,
     '--fix': Boolean,
     '--init': Boolean,
     '--name': String,
@@ -93,6 +95,38 @@ export async function cli() {
   // `wonderpress <command> --help` / `<command> help` -> that command's screen.
   if (help.requested(args) && help.has(cmd)) {
     return help.show(cmd);
+  }
+
+  // Select the environment backend before dispatching. Explicit --env wins;
+  // otherwise the host backend, which is what the CLI has always done.
+  // Persisting the choice per-environment comes later — for now a wp-env
+  // project passes the flag every time.
+  if (args['--env']) {
+    try {
+      env.activate(args['--env']);
+    } catch (e) {
+      log.error(e.message);
+      process.exitCode = 1;
+      return;
+    }
+
+    // Refuse flags the backend cannot honor rather than accepting and ignoring
+    // them. wp-env fixes its database at root/password/wordpress and serves on
+    // localhost:<port from .wp-env.json>, so a --db-name it silently dropped is
+    // how someone loses a day.
+    const backend = env.getCurrent();
+    const unsupported = [];
+    if (!backend.capabilities.honorsDbFlags) {
+      unsupported.push(...['--db-host', '--db-user', '--db-password', '--db-name'].filter((f) => args[f] !== undefined));
+    }
+    if (!backend.capabilities.honorsSiteHostname && args['--wp-url'] !== undefined) {
+      unsupported.push('--wp-url');
+    }
+    if (unsupported.length) {
+      log.error(`The ${backend.name} backend cannot honor ${unsupported.join(', ')}.\nIts database and site URL are fixed by the container. Drop the flag, or use the host backend (omit --env).`);
+      process.exitCode = 1;
+      return;
+    }
   }
 
   switch (cmd) {
