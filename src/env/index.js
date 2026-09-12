@@ -1,3 +1,6 @@
+import fs from 'fs-extra';
+import path from 'path';
+import * as config from '../config.js';
 import * as host from './host.js';
 import * as wpEnv from './wp-env.js';
 
@@ -65,4 +68,78 @@ export function getCurrent() {
  **/
 export function reset() {
 	current = null;
+}
+
+export const DEFAULT_BACKEND = 'host';
+
+/**
+ * Decide which backend an invocation should use. Pure — the caller does the I/O
+ * and hands the answers in.
+ *
+ * Highest wins:
+ *   1. --env flag
+ *   2. WONDERPRESS_ENV          (same tier as the flag: a per-invocation
+ *                                override for CI and per-developer preference)
+ *   3. the backend recorded in .wonderpressrc
+ *   4. a .wp-env.json at the environment root
+ *   5. host
+ *
+ * Tier 4 is what keeps an environment working after a `git checkout` reverts
+ * the recorded key. Tier 5 is why this is safe to ship: every WonderPress site
+ * built to date has no marker of any kind, and resolves to the backend it has
+ * always used.
+ *
+ * `mismatch` is set when an explicit choice contradicts what the environment
+ * was built with — running `wp server` against a Docker-provisioned tree fails
+ * bewilderingly otherwise.
+ **/
+export function resolveBackendName({ flag, envVar, persisted, detected } = {}) {
+
+	const known = (value) => (value && names().includes(value) ? value : null);
+
+	const explicit = known(flag) ? 'flag' : (known(envVar) ? 'env' : null);
+	const chosen =
+		explicit === 'flag' ? flag :
+		explicit === 'env' ? envVar :
+		known(persisted) ? persisted :
+		known(detected) ? detected :
+		DEFAULT_BACKEND;
+
+	const source =
+		explicit ||
+		(known(persisted) ? 'persisted' : (known(detected) ? 'detected' : 'default'));
+
+	return {
+		name: chosen,
+		source,
+		persisted: known(persisted),
+		mismatch: !!(explicit && known(persisted) && persisted !== chosen),
+		// An unrecognised value is not silently ignored — the caller reports it.
+		unknown: (flag && !known(flag)) ? flag : ((envVar && !known(envVar)) ? envVar : null),
+	};
+}
+
+/**
+ * Resolve and activate the backend for an environment rooted at `root`.
+ *
+ * Does the I/O that resolveBackendName() deliberately does not: reads the
+ * recorded backend and looks for a .wp-env.json. Returns the resolution so the
+ * caller can report an unknown name or a mismatch.
+ **/
+export function resolve({ flag, envVar, root } = {}) {
+
+	const dir = root || process.cwd();
+
+	const resolution = resolveBackendName({
+		flag,
+		envVar,
+		persisted: config.getBackend(dir),
+		detected: fs.existsSync(path.join(dir, '.wp-env.json')) ? 'wp-env' : null,
+	});
+
+	if (!resolution.unknown) {
+		activate(resolution.name);
+	}
+
+	return resolution;
 }

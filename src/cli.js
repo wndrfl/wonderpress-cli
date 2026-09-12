@@ -97,19 +97,33 @@ export async function cli() {
     return help.show(cmd);
   }
 
-  // Select the environment backend before dispatching. Explicit --env wins;
-  // otherwise the host backend, which is what the CLI has always done.
-  // Persisting the choice per-environment comes later — for now a wp-env
-  // project passes the flag every time.
-  if (args['--env']) {
-    try {
-      env.activate(args['--env']);
-    } catch (e) {
-      log.error(e.message);
-      process.exitCode = 1;
-      return;
-    }
+  // Select the environment backend before dispatching: --env, then
+  // WONDERPRESS_ENV, then what this environment was built with, then a
+  // .wp-env.json sitting at its root, then the host backend.
+  //
+  // `init` may be creating an environment that does not exist yet, so it
+  // resolves against its target directory rather than an existing root.
+  const envRoot = cmd === 'init'
+    ? (args['--dir'] || process.cwd())
+    : ((await core.getRootDir()) || process.cwd());
 
+  const resolution = env.resolve({
+    flag: args['--env'],
+    envVar: process.env.WONDERPRESS_ENV,
+    root: envRoot,
+  });
+
+  if (resolution.unknown) {
+    log.error(`Unknown environment backend: ${resolution.unknown} (expected one of: ${env.names().join(', ')})`);
+    process.exitCode = 1;
+    return;
+  }
+
+  if (resolution.mismatch) {
+    log.warn(`This environment was built with the ${resolution.persisted} backend, but you asked for ${resolution.name}.`);
+  }
+
+  {
     // Refuse flags the backend cannot honor rather than accepting and ignoring
     // them. wp-env fixes its database at root/password/wordpress and serves on
     // localhost:<port from .wp-env.json>, so a --db-name it silently dropped is
