@@ -1,8 +1,11 @@
 import * as composer from './composer.js';
 import * as config from './config.js';
+import * as env from './env/index.js';
 import fs from 'fs-extra';
 import inquirer from 'inquirer';
 import * as log from './log.js';
+import os from 'os';
+import path from 'path';
 import * as readme from './readme.js';
 import sh from 'shelljs';
 import * as staticCli from '@wndrfl/static-kit-cli';
@@ -31,9 +34,13 @@ export async function command(subcommand, args) {
  **/
 export async function init(dir, initConfig) {
 
-  // Check for WP CLI
-  if (!sh.which('wp')) {
-    log.error(`Wonderpress leans heavily on the WP CLI. Please visit https://wp-cli.org/ and follow installation instructions before trying again.`);
+  // Whatever the backend needs before we write anything to disk. Failing here
+  // costs 200ms; failing after the scaffold clone and npm install costs
+  // minutes.
+  const backend = env.getCurrent();
+  const preflight = await backend.preflight();
+  if (!preflight.ok) {
+    preflight.errors.forEach((error) => log.error(error));
     return 0;
   }
 
@@ -120,14 +127,24 @@ export async function init(dir, initConfig) {
     process.chdir(saveCwd);
   }
 
-  // Download WordPress Core
-  await wordpress.downloadWordPress();
+  // Anything the backend needs on disk before it can provision.
+  const prepared = await backend.prepare(initConfig);
+  if (! reportBackendStep(prepared)) {
+    return false;
+  }
 
-  // Configure WordPress Core
-  await wordpress.configureWordPress(initConfig);
-
-  // Install WordPress Core
-  await wordpress.installWordPress(initConfig);
+  // Download, configure and install WordPress. The backend owns the order:
+  // the host downloads then configures then installs, where a container-based
+  // backend provisions along a different graph entirely.
+  //
+  // Stop here on failure rather than carrying on. An environment with no
+  // database is not an environment: the remaining steps would install the
+  // mu-plugin and Composer packages into it, fail again at theme activation,
+  // and then print "The Wonderpress environment has been initialized!"
+  const provisioned = await backend.provision(initConfig);
+  if (! reportBackendStep(provisioned)) {
+    return false;
+  }
 
   // Install the Wonderpress Core as an MU (must use) plugin
   await wordpress.installMuPlugin('https://github.com/wndrfl/wonderpress-core.git');
@@ -196,23 +213,61 @@ export async function init(dir, initConfig) {
 }
 
 /**
- * Get the root directory of the Wonderpress environment.
+ * Log a backend lifecycle step's errors and flag the process as failed.
+ *
+ * Returns whether the step succeeded, so callers can stop. A step that returns
+ * nothing counts as success — backends are free to leave a lifecycle hook
+ * as a no-op.
  **/
-export async function getRootDir() {
-  let path = process.cwd();
-  let seek = true;
-  let c = 0;
-  while (seek) {
-    if (c++ >= 50) break;
-    if (! await config.exists(path)) {
-      path = `../${path}`;
-    } else {
-      return path;
-    }
+function reportBackendStep(result) {
+
+  if (!result || result.ok !== false) {
+    return true;
   }
 
-  return false;
+  (result.errors || []).forEach((error) => log.error(error));
+  process.exitCode = 1;
 
+  return false;
+}
+
+/**
+ * Get the root directory of the Wonderpress environment.
+ *
+ * Walks up from `startDir` (default: cwd) looking for the marker
+ * `config.exists()` recognises, and returns the first directory that has one.
+ *
+ * The walk used to build `../${path}` from an absolute path, which produced a
+ * nonexistent directory on every iteration — so it only ever succeeded when
+ * cwd was already the root, and otherwise spun 50 times and gave up. Commands
+ * run from a subdirectory (`server start` from inside the theme, say) reported
+ * "This does not appear to be a Wonderpress Development Environment."
+ *
+ * $HOME is deliberately never returned. `rc` conventions actively invite a
+ * `~/.wonderpressrc`, and with a working walk one would make every directory
+ * under the home dir look like an environment root — which would point `lint`
+ * at $HOME and run phpcs against it. `opts.home` overrides which directory
+ * that is, so a test can cover the rule without writing into a real one.
+ **/
+export async function getRootDir(startDir, opts) {
+
+  const home = (opts && opts.home) || os.homedir();
+  let dir = path.resolve(startDir || process.cwd());
+
+  for (;;) {
+    if (dir !== home && await config.exists(dir)) {
+      return dir;
+    }
+
+    // path.dirname is a fixpoint at the filesystem root ('/', or 'C:\'), which
+    // is the termination condition — no iteration cap needed.
+    const parent = path.dirname(dir);
+    if (parent === dir) {
+      return false;
+    }
+
+    dir = parent;
+  }
 }
 
 /**

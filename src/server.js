@@ -1,7 +1,6 @@
-import sh from 'shelljs';
 import * as log from './log.js';
-import { execSync } from 'child_process';
 import * as core from './core.js';
+import * as env from './env/index.js';
 
 /**
  * Accept and route a command.
@@ -17,7 +16,11 @@ export async function command(subcommand, args) {
 }
 
 /**
- * Start a server with `wp server`.
+ * Start the development server for whichever backend this environment uses.
+ *
+ * How that happens is the backend's business: the host blocks in the
+ * foreground until Ctrl-C, where a container-based backend brings the
+ * environment up and returns.
  **/
 export async function start(dir) {
 
@@ -30,9 +33,13 @@ export async function start(dir) {
 		return false;
 	}
 
-	log.info('Starting development server...');
+	const result = await env.getCurrent().start();
 
-	execSync('wp server', {
-		stdio: [0, 1, 2], // we need this so node will print the command output
-	});
+	// A detached backend has returned with the site still up, so say where it
+	// is. A foreground one never reaches this line.
+	if (result && result.detached && result.url) {
+		log.success(`The development environment is running at ${result.url}`);
+	}
+
+	return true;
 }
