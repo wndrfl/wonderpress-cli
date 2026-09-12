@@ -189,9 +189,11 @@ export function create() {
 				}
 			}
 
-			if (!bin()) {
-				errors.push(`wp-env was not found.\n  In this project:  npm install --save-dev @wordpress/env\n  Or globally:      npm i -g @wordpress/env\nOr build the host environment instead: wonderpress init`);
-			}
+			// Deliberately NOT checking for the wp-env binary here. Preflight
+			// runs before init has changed into the target directory, so a
+			// project-local lookup would examine the wrong one — and the
+			// binary is a devDependency this backend installs itself during
+			// prepare(). Docker and WP-CLI are the things the user must supply.
 
 			// Still required: `wp core download` runs on the HOST and must
 			// happen before wp-env starts. wp-env replaces MySQL, not the PHP
@@ -209,15 +211,40 @@ export function create() {
 		 **/
 		async prepare(initConfig) {
 
-			const configPath = path.join(root(), '.wp-env.json');
+			const cwd = root();
+			const configPath = path.join(cwd, '.wp-env.json');
 
-			if (fs.existsSync(configPath)) {
+			if (! fs.existsSync(configPath)) {
+				const port = portFromUrl((initConfig && initConfig.wp && initConfig.wp.url)) || DEFAULT_PORT;
+				fs.writeFileSync(configPath, JSON.stringify(buildWpEnvConfig({ port }), null, '\t') + '\n');
+				log.info(`Wrote .wp-env.json (WordPress in Docker, port ${port}).`);
+			}
+
+			// wp-env is the project's own devDependency, so this backend
+			// installs it rather than demanding the user do it first. It has to
+			// happen here: preflight runs before init changes into the target
+			// directory, so there is nothing project-local to find yet.
+			if (bin()) {
 				return { ok: true, errors: [] };
 			}
 
-			const port = portFromUrl((initConfig && initConfig.wp && initConfig.wp.url)) || DEFAULT_PORT;
-			fs.writeFileSync(configPath, JSON.stringify(buildWpEnvConfig({ port }), null, '\t') + '\n');
-			log.info(`Wrote .wp-env.json (WordPress in Docker, port ${port}).`);
+			if (! fs.existsSync(path.join(cwd, 'package.json'))) {
+				return {
+					ok: false,
+					errors: [`wp-env is not available and this environment has no package.json to install it from.\n  In this project:  npm install --save-dev @wordpress/env\n  Or globally:      npm i -g @wordpress/env\nOr build the host environment instead: wonderpress init`],
+				};
+			}
+
+			log.info('Installing project tooling (wp-env)...');
+			const installed = sh.exec('npm install', { silent: true });
+
+			if (installed.code !== 0) {
+				return { ok: false, errors: [`npm install failed at the environment root.\n${installed.stderr}`.trim()] };
+			}
+
+			if (! bin()) {
+				return { ok: false, errors: [`npm install ran, but wp-env is still not present. Does this project's package.json declare @wordpress/env?`] };
+			}
 
 			return { ok: true, errors: [] };
 		},

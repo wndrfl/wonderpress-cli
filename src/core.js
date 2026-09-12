@@ -136,11 +136,6 @@ export async function init(dir, initConfig) {
   // the wrong backend and does something incoherent.
   config.write(process.cwd(), { environment: { backend: backend.name } });
 
-  // Project-level npm tooling, if the scaffold declares any. This is what
-  // installs wp-env for a Docker environment; the host backend's scaffold
-  // simply has nothing to do here.
-  await installProjectTooling(backend);
-
   // Anything the backend needs on disk before it can provision.
   const prepared = await backend.prepare(initConfig);
   if (! reportBackendStep(prepared)) {
@@ -222,37 +217,6 @@ export async function init(dir, initConfig) {
   }
 
   log.success(`The Wonderpress environment has been initialized!`);
-
-  return true;
-}
-
-/**
- * Install the project's own npm tooling, when the scaffold ships a
- * package.json and the backend needs it.
- *
- * The environment root gained a package.json so `@wordpress/env` can live with
- * the project rather than in the globally-installed CLI — wp-env's own binary
- * prefers a project-local copy, and per-project pinning is what lets client
- * projects of different ages hold different versions.
- **/
-async function installProjectTooling(backend) {
-
-  if (backend.name === 'host') return true;
-
-  if (! fs.existsSync('./package.json')) {
-    log.warn('No package.json at the environment root, so project tooling was not installed. An older scaffold? Run `npm install --save-dev @wordpress/env` here.');
-    return false;
-  }
-
-  if (fs.existsSync('./node_modules/.bin/wp-env')) return true;
-
-  log.info('Installing project tooling (wp-env)...');
-  const result = sh.exec('npm install', { silent: true });
-
-  if (result.code !== 0) {
-    log.error(`npm install failed at the environment root.\n${result.stderr}`.trim());
-    return false;
-  }
 
   return true;
 }
