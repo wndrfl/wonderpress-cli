@@ -97,3 +97,51 @@ jobs:
           WP_DB_USER: root
           WP_DB_PASSWORD: root
         run: npm run test:e2e
+
+  e2e-wp-env:
+    name: full lifecycle (wp-env / Docker backend)
+    # Same gate as the host lifecycle, for the same reason: it runs a real
+    # `init`, clones external repos, and pulls Docker images.
+    if: >-
+      github.event_name == 'schedule' ||
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'push' && github.ref == 'refs/heads/master')
+    runs-on: ubuntu-latest
+    # No `services:` block. wp-env brings up its own mariadb, which is the whole
+    # point of this job — it proves the backend needs no host database.
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+      # Still required, despite the containers: `wp core download` runs on the
+      # HOST and must precede `wp-env start` (wp-env reads wp-includes/version.php
+      # before booting anything), and `composer update` produces the
+      # vendor/bin/phpcs that lint uses. Pinning the host PHP here is what keeps
+      # it in agreement with the phpVersion in .wp-env.json.
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.2'
+      - name: Install WP-CLI
+        run: |
+          curl -sL https://raw.githubusercontent.com/wp-cli/builds/gh-pages/phar/wp-cli.phar -o wp-cli.phar
+          chmod +x wp-cli.phar
+          sudo mv wp-cli.phar /usr/local/bin/wp
+      - name: Confirm Docker is usable
+        run: |
+          docker info
+          docker compose version
+      # Caches the WordPress-PHPUnit clone wp-env makes on first start.
+      # Deliberately NOT caching the built images: wp-env drives plain
+      # `docker compose build`, not buildx, so a half-cached image set is worse
+      # than a cold pull.
+      - uses: actions/cache@v4
+        with:
+          path: ~/.wp-env
+          key: wp-env-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+      - run: npm ci
+      - name: Run the lifecycle against the wp-env backend
+        run: npm run test:e2e:wp-env
+      - name: Tear down any surviving environment
+        if: always()
+        run: docker ps -aq | xargs -r docker rm -f

@@ -19,6 +19,12 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const BIN = path.join(__dirname, '..', 'bin', 'wonderpress.js');
 
 const RUN = !!process.env.WP_E2E;
+// The same lifecycle, against either local environment. Parameterised rather
+// than forked: only four lines here are backend-specific, and everything else
+// is the regression guard this file exists for — the compiled-CSS assertion,
+// the swallowed-failure scan, the artifact checks. A fork would duplicate those
+// and the copies would drift.
+const BACKEND = process.env.WP_BACKEND || 'host';
 const DB_HOST = process.env.WP_DB_HOST || '127.0.0.1';
 const DB_USER = process.env.WP_DB_USER || 'root';
 const DB_PASSWORD = process.env.WP_DB_PASSWORD || '';
@@ -30,11 +36,56 @@ async function dropDb() {
 	await admin.end();
 }
 
-test('lifecycle: init -> create partial -> lint -> teardown', { skip: !RUN, timeout: 600000 }, async () => {
+/** The wp-env binary the environment installed for itself. */
+function wpEnvBin(dir) {
+	return path.join(dir, 'node_modules', '.bin', 'wp-env');
+}
+
+/** Run a WP-CLI command against whichever backend is under test. */
+function wpCli(args, dir) {
+	if (BACKEND === 'wp-env') {
+		// `--` keeps flags away from wp-env's own option parser. stdout is
+		// clean: the spinner and progress go to stderr.
+		const i = args.findIndex((a) => a.startsWith('-'));
+		const passed = i === -1 ? args : [...args.slice(0, i), '--', ...args.slice(i)];
+		return execFileSync(wpEnvBin(dir), ['run', 'cli', 'wp', ...passed], { cwd: dir, encoding: 'utf8' });
+	}
+	return execFileSync('wp', args, { cwd: dir, encoding: 'utf8' });
+}
+
+/** Backend-specific init flags. */
+function initFlags() {
+	if (BACKEND === 'wp-env') {
+		// No --db-* or --wp-url: the container fixes both, and the CLI refuses
+		// them rather than ignoring them.
+		return ['--env', 'wp-env'];
+	}
+	return ['--db-host', DB_HOST, '--db-user', DB_USER, '--db-name', DB_NAME, '--wp-url', 'example.test'];
+}
+
+/**
+ * Tear the environment down.
+ *
+ * For wp-env this MUST run before the directory is removed: wp-env does not
+ * need .wp-env.json to destroy, but it does need the directory to still exist —
+ * recreate it later and you get "Environment not initialized" with the
+ * containers, volumes and images stranded.
+ */
+async function teardown(dir) {
+	if (BACKEND !== 'wp-env') return dropDb();
+	if (! fs.existsSync(wpEnvBin(dir))) return;
+	try {
+		execFileSync(wpEnvBin(dir), ['destroy', '--force'], { cwd: dir, stdio: 'inherit' });
+	} catch (e) {
+		// Best effort: a failed teardown must not mask the test's own result.
+	}
+}
+
+test('lifecycle: init -> create partial -> lint -> teardown', { skip: !RUN, timeout: BACKEND === 'wp-env' ? 900000 : 600000 }, async () => {
 	const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'wp-e2e-'));
 	const cwd = process.cwd();
 	const childEnv = { ...process.env, WP_DB_PASSWORD: DB_PASSWORD, WP_ADMIN_PASSWORD: 'pw' };
-	await dropDb();
+	await teardown(dir);
 
 	try {
 		// 1. Spin up a real environment, fully headless.
@@ -47,8 +98,8 @@ test('lifecycle: init -> create partial -> lint -> teardown', { skip: !RUN, time
 		const initRun = spawnSync('node', [
 			BIN, 'init',
 			'--dir', dir, '--yes',
-			'--db-host', DB_HOST, '--db-user', DB_USER, '--db-name', DB_NAME,
-			'--wp-url', 'example.test', '--wp-title', 'E2E', '--admin-user', 'admin',
+			...initFlags(),
+			'--wp-title', 'E2E', '--admin-user', 'admin',
 			'--admin-email', 'admin@example.com', '--theme', 'wonderpress', '--skip-readme',
 		], { encoding: 'utf8', env: childEnv });
 
@@ -57,8 +108,8 @@ test('lifecycle: init -> create partial -> lint -> teardown', { skip: !RUN, time
 		assert.equal(initRun.status, 0, 'init should exit cleanly');
 
 		// 2. WordPress is installed and the wonderpress theme is active.
-		execSync('wp core is-installed', { cwd: dir });
-		const active = execSync('wp theme list --status=active --field=name', { cwd: dir, encoding: 'utf8' }).trim();
+		wpCli(['core', 'is-installed'], dir);
+		const active = wpCli(['theme', 'list', '--status=active', '--field=name'], dir).replace(/\r/g, '').trim().split('\n').pop();
 		assert.equal(active, 'wonderpress', 'wonderpress theme should be active');
 
 		// 2b. The theme `init` produced is actually usable.
@@ -111,9 +162,11 @@ test('lifecycle: init -> create partial -> lint -> teardown', { skip: !RUN, time
 			console.warn('[e2e] phpcs unavailable (boilerplate composer could not resolve WPCS) — skipping the lint assertion; see the WPCS 2.x -> 3.x upgrade.');
 		}
 	} finally {
-		// 5. Spin down.
+		// 5. Spin down. Teardown BEFORE the directory goes: wp-env resolves the
+		// environment from the directory, and removing it first strands the
+		// containers, volumes and images.
 		process.chdir(cwd);
-		await dropDb();
+		await teardown(dir);
 		fs.removeSync(dir);
 	}
 });
