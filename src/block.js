@@ -79,6 +79,10 @@ export function addBlock(themeDir, name) {
 		return false;
 	}
 
+	// Resolved from the project, not the manifest being rewrapped — so a block
+	// added later lands in the same namespace as the ones already placed.
+	params.namespace = partial.resolveNamespace(themeDir);
+
 	partial.writeBlock(params, themeDir);
 	partial.writeManifest(params, themeDir, {
 		style: !!artifacts.style,

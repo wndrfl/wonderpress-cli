@@ -57,6 +57,11 @@ export function resolveInitConfig(args, env) {
 		cleanSlate: !!args['--clean-slate'],
 		yes: !!args['--yes'],
 		theme: args['--theme'] || null,
+		// Pinned into .wonderpressrc and thereafter written into client content
+		// as `<!-- wp:<namespace>/hero -->`, so it is resolved once at init and
+		// never re-derived. Not prompted: a sensible default that a project can
+		// edit beats a question most people would answer with the default.
+		namespace: args['--namespace'] || null,
 		skipReadme: !!args['--skip-readme'],
 		readme: !!args['--readme'],
 		db: {

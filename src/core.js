@@ -11,6 +11,7 @@ import sh from 'shelljs';
 import * as staticCli from '@wndrfl/static-kit-cli';
 import * as wordpress from './wordpress.js';
 import { resolveInitConfig } from './init-config.js';
+import { isValidNamespace, LEGACY_NAMESPACE } from './validate.js';
 import pkg from '../package.json' with { type: 'json' };
 
 /**
@@ -134,7 +135,15 @@ export async function init(dir, initConfig) {
   // record it in — not at the end. A provision that fails halfway must still be
   // discoverable as the kind of environment it is, or the next command resolves
   // the wrong backend and does something incoherent.
-  config.write(process.cwd(), { environment: { backend: backend.name } });
+  //
+  // The block namespace is pinned at the same moment and for a stronger
+  // reason: it is written into the client's content as `<!-- wp:acme/hero -->`,
+  // so it must be decided once and never drift. Recording it here means a
+  // later theme rename cannot silently re-namespace content already placed.
+  config.write(process.cwd(), {
+    environment: { backend: backend.name },
+    namespace: isValidNamespace(initConfig.namespace) ? initConfig.namespace : LEGACY_NAMESPACE,
+  });
 
   // Anything the backend needs on disk before it can provision.
   const prepared = await backend.prepare(initConfig);

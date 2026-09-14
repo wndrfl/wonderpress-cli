@@ -8,6 +8,7 @@ import {
 	paramsFromJson,
 	writePartial,
 	validateParams,
+	resolveNamespace,
 } from '../src/partial.js';
 
 function tmpTheme() {
@@ -162,5 +163,84 @@ test('block + manifest are identical across flag and json paths', async () => {
 	} finally {
 		fs.removeSync(t1);
 		fs.removeSync(t2);
+	}
+});
+
+// ── Namespace resolution ────────────────────────────────────────────────────
+//
+// A block's namespace is written into the client's content as
+// `<!-- wp:acme/testimonial -->`, so it belongs to the project and must never
+// drift once chosen. These cover the precedence that guarantees it.
+
+function tmpProject(themeSlug, rc) {
+	const root = fs.mkdtempSync(path.join(os.tmpdir(), 'wp-ns-'));
+	const themeDir = path.join(root, 'wp-content/themes', themeSlug);
+	fs.ensureDirSync(path.join(themeDir, 'src/partials'));
+	fs.ensureDirSync(path.join(themeDir, 'partials'));
+	if (rc !== undefined) {
+		fs.writeFileSync(path.join(root, '.wonderpressrc'), JSON.stringify(rc));
+	}
+	return { root, themeDir };
+}
+
+test('namespace: .wonderpressrc wins over everything', () => {
+	const { root, themeDir } = tmpProject('some-theme', { namespace: 'acme' });
+	try {
+		assert.equal(resolveNamespace(themeDir, root), 'acme');
+	} finally {
+		fs.removeSync(root);
+	}
+});
+
+test('namespace: an existing project keeps the namespace its blocks already use', async () => {
+	// The upgrade path that matters. A project created before this setting has
+	// `wonderpress/*` blocks placed in content; resolving from the theme slug
+	// would re-namespace every NEW block and split the project in two.
+	const { root, themeDir } = tmpProject('acme', {});
+	try {
+		await writePartial(
+			{ ...paramsFromFlags({ '--name': 'Legacy', '--block': true }), namespace: 'wonderpress' },
+			themeDir
+		);
+		assert.equal(resolveNamespace(themeDir, root), 'wonderpress');
+	} finally {
+		fs.removeSync(root);
+	}
+});
+
+test('namespace: a fresh project names itself after its theme', () => {
+	const { root, themeDir } = tmpProject('acme', {});
+	try {
+		assert.equal(resolveNamespace(themeDir, root), 'acme');
+	} finally {
+		fs.removeSync(root);
+	}
+});
+
+test('namespace: an unusable theme slug falls back rather than emitting an invalid block name', () => {
+	// mkdtemp suffixes are mixed-case, which is not a legal block namespace.
+	const { root, themeDir } = tmpProject('Not_A_Slug', {});
+	try {
+		assert.equal(resolveNamespace(themeDir, root), 'wonderpress');
+	} finally {
+		fs.removeSync(root);
+	}
+});
+
+test('namespace: it reaches block.json, its category, and the manifest together', async () => {
+	const dir = tmpTheme();
+	try {
+		await writePartial(
+			{ ...paramsFromFlags({ '--name': 'Testimonial', '--block': true }), namespace: 'acme' },
+			dir
+		);
+		const block = JSON.parse(fs.readFileSync(path.join(dir, 'blocks/testimonial/block.json'), 'utf8'));
+		assert.equal(block.name, 'acme/testimonial');
+		assert.equal(block.category, 'acme', 'the inserter groups a project under the project');
+
+		const m = JSON.parse(fs.readFileSync(path.join(dir, '.wonderpress/manifest/testimonial.json'), 'utf8'));
+		assert.equal(m.block, 'acme/testimonial', 'the manifest records it, so it can be read back');
+	} finally {
+		fs.removeSync(dir);
 	}
 });

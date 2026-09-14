@@ -11,6 +11,26 @@ import path from 'path';
 export const PROP_TYPES = ['array', 'boolean', 'object', 'string'];
 
 /**
+ * The namespace used when a project has not recorded one of its own.
+ *
+ * Only a fallback. A block's namespace is written into the client's content
+ * (`<!-- wp:acme/testimonial -->`), so it belongs to the project, not to the
+ * tool that generated it — see resolveNamespace() in partial.js.
+ **/
+export const LEGACY_NAMESPACE = 'wonderpress';
+
+/**
+ * Validate a block namespace.
+ *
+ * WordPress requires block names to be `namespace/name`, both matching
+ * /^[a-z][a-z0-9-]*$/. An invalid namespace produces a block that silently
+ * fails to register, so this is checked before anything is written.
+ **/
+export function isValidNamespace(namespace) {
+	return typeof namespace === 'string' && /^[a-z][a-z0-9-]*$/.test(namespace);
+}
+
+/**
  * Validate a partial class name (WordPress-style capitalized snake case).
  * e.g. Example_Class
  **/

@@ -20,9 +20,12 @@ import {
 	nameToSlug,
 	resolveWithin,
 	slugToPascal,
+	isValidNamespace,
 	PROP_TYPES,
 	PROP_TYPE_TO_BLOCK,
+	LEGACY_NAMESPACE,
 } from './validate.js';
+import * as config from './config.js';
 
 /**
  * Accept and route a command.
@@ -85,6 +88,47 @@ export async function resolveThemeDir(args) {
 }
 
 /**
+ * Determine the block namespace this project publishes under.
+ *
+ * A block's namespace is not cosmetic: WordPress writes it into the client's
+ * content as `<!-- wp:acme/testimonial -->`, so changing it later orphans every
+ * block already placed on every page. It therefore belongs to the *project*,
+ * not to the tool that generated it, and once a project has one it must never
+ * drift.
+ *
+ * Precedence, most authoritative first:
+ *
+ *   1. `namespace` in .wonderpressrc — an explicit decision, recorded at init.
+ *   2. The namespace already used by this theme's blocks, read off the
+ *      manifest index. A project that predates this setting self-describes,
+ *      so upgrading the CLI cannot silently re-namespace its content.
+ *   3. The theme slug — a project that has neither is naming itself.
+ *
+ * Only if all three are unavailable does it fall back to the tool's own name.
+ **/
+export function resolveNamespace(themeDir, root = process.cwd()) {
+
+	const recorded = config.read(root).data.namespace;
+	if (isValidNamespace(recorded)) {
+		return recorded;
+	}
+
+	for (const manifest of readManifests(themeDir)) {
+		const existing = (manifest.block || '').split('/')[0];
+		if (isValidNamespace(existing)) {
+			return existing;
+		}
+	}
+
+	const themeSlug = path.basename(themeDir || '');
+	if (isValidNamespace(themeSlug)) {
+		return themeSlug;
+	}
+
+	return LEGACY_NAMESPACE;
+}
+
+/**
  * Create a new "partial".
  *
  * Flag-driven first: if --json or --name is provided the partial is created
@@ -113,6 +157,10 @@ export async function create(args) {
 		log.error(err.message);
 		return false;
 	}
+
+	// The namespace is a property of the project, not of this invocation, so it
+	// is resolved from the project rather than gathered with the other params.
+	params.namespace = resolveNamespace(themeDir);
 
 	await writePartial(params, themeDir);
 	return true;
@@ -400,12 +448,17 @@ export function writeBlock(params, themeDir) {
 	for (const p of params.properties) {
 		attributes[p.name] = { type: PROP_TYPE_TO_BLOCK[p.type] || 'string' };
 	}
+	// The project's namespace, not the tool's — see resolveNamespace(). The
+	// category rides along with it so the inserter groups a project's blocks
+	// under the project rather than under WonderPress.
+	const namespace = isValidNamespace(params.namespace) ? params.namespace : LEGACY_NAMESPACE;
+
 	const block = {
 		$schema: 'https://schemas.wp.org/trunk/block.json',
 		apiVersion: 3,
-		name: `wonderpress/${slug}`,
+		name: `${namespace}/${slug}`,
 		title: humanizeClassName(params.class_name),
-		category: 'wonderpress',
+		category: namespace,
 		attributes,
 		render: 'file:./render.php',
 	};
@@ -461,8 +514,10 @@ export function writeManifest(params, themeDir, written = {}) {
 	const manifest = {
 		name: params.class_name,
 		slug,
-		// Only a partial that opted in to being a block advertises one.
-		...(emit.block ? { block: `wonderpress/${slug}` } : {}),
+		// Only a partial that opted in to being a block advertises one. The
+		// namespace recorded here is what resolveNamespace() later reads back,
+		// so a project's first block fixes the namespace for all of them.
+		...(emit.block ? { block: `${isValidNamespace(params.namespace) ? params.namespace : LEGACY_NAMESPACE}/${slug}` } : {}),
 		acf_compatible: params.is_acf_compatible,
 		properties: params.properties,
 		artifacts,

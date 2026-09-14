@@ -138,6 +138,11 @@ OPTIONS
                            The first admin account. Password may also come from
                            WP_ADMIN_PASSWORD.
   --theme <name>           Theme to activate (default: wonderpress)
+  --namespace <slug>       Block namespace for this project, recorded in
+                           .wonderpressrc. Blocks are emitted as
+                           <namespace>/<slug> and WordPress writes that into
+                           page content, so it is set once and never changed.
+                           Defaults to the theme slug.
   --skip-readme            Do not generate a README
 
 EXAMPLES
