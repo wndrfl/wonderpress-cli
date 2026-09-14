@@ -39,6 +39,26 @@ enforced by the `node_modules` rule in the shipped
 | Component **behavior classes** (opt-in JS — `--js`) | **Static Kit** | `static/` (created via delegation) |
 | `src/` → `dist/` asset compilation | **Static Kit** | `static/src`, `static/dist` |
 
+### A partial is not a block
+
+A **partial** is a WonderPress rendering primitive — a button, a section, a
+link. It turns properties into HTML (`Abstract_Partial`), is often composed
+inside other partials, and has no inherent relationship to the editor.
+
+A **block** is a formal WordPress notion: `block.json` plus
+`register_block_type()` is what surfaces something in the Gutenberg inserter.
+Its whole reason to exist is editor availability.
+
+The two are orthogonal, so the spine treats them that way. The partial and its
+manifest entry are the always-on output; the block is an **opt-in editor
+wrapper** (`--block`) whose `render.php` delegates straight back to the partial.
+"A block is a partial I also chose to expose in Gutenberg" — never the reverse.
+Emitting `block.json` for every low-level partial would hand editor-registration
+metadata to things that have no business carrying it.
+
+Blocks are dynamic and server-rendered: `render.php` news up the partial class
+and echoes `->render()`. There is no `edit.js` and no editor bundle.
+
 ### The manifest is the index
 
 `.wonderpress/manifest/<slug>.json` is the CLI's record of what a component is
