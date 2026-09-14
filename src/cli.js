@@ -1,6 +1,7 @@
 import arg from 'arg';
 import * as block from './block.js';
 import * as core from './core.js';
+import * as env from './env/index.js';
 import * as help from './help.js';
 import * as lint from './lint.js';
 import * as log from './log.js';
@@ -13,6 +14,7 @@ export async function cli() {
   const options = {
     '--clean-slate': Boolean,
     '--dir': String,
+    '--env': String,
     '--fix': Boolean,
     '--init': Boolean,
     '--name': String,
@@ -93,6 +95,52 @@ export async function cli() {
   // `wonderpress <command> --help` / `<command> help` -> that command's screen.
   if (help.requested(args) && help.has(cmd)) {
     return help.show(cmd);
+  }
+
+  // Select the environment backend before dispatching: --env, then
+  // WONDERPRESS_ENV, then what this environment was built with, then a
+  // .wp-env.json sitting at its root, then the host backend.
+  //
+  // `init` may be creating an environment that does not exist yet, so it
+  // resolves against its target directory rather than an existing root.
+  const envRoot = cmd === 'init'
+    ? (args['--dir'] || process.cwd())
+    : ((await core.getRootDir()) || process.cwd());
+
+  const resolution = env.resolve({
+    flag: args['--env'],
+    envVar: process.env.WONDERPRESS_ENV,
+    root: envRoot,
+  });
+
+  if (resolution.unknown) {
+    log.error(`Unknown environment backend: ${resolution.unknown} (expected one of: ${env.names().join(', ')})`);
+    process.exitCode = 1;
+    return;
+  }
+
+  if (resolution.mismatch) {
+    log.warn(`This environment was built with the ${resolution.persisted} backend, but you asked for ${resolution.name}.`);
+  }
+
+  {
+    // Refuse flags the backend cannot honor rather than accepting and ignoring
+    // them. wp-env fixes its database at root/password/wordpress and serves on
+    // localhost:<port from .wp-env.json>, so a --db-name it silently dropped is
+    // how someone loses a day.
+    const backend = env.getCurrent();
+    const unsupported = [];
+    if (!backend.capabilities.honorsDbFlags) {
+      unsupported.push(...['--db-host', '--db-user', '--db-password', '--db-name'].filter((f) => args[f] !== undefined));
+    }
+    if (!backend.capabilities.honorsSiteHostname && args['--wp-url'] !== undefined) {
+      unsupported.push('--wp-url');
+    }
+    if (unsupported.length) {
+      log.error(`The ${backend.name} backend cannot honor ${unsupported.join(', ')}.\nIts database and site URL are fixed by the container. Drop the flag, or use the host backend (omit --env).`);
+      process.exitCode = 1;
+      return;
+    }
   }
 
   switch (cmd) {

@@ -41,7 +41,10 @@ export async function init(dir, initConfig) {
   const preflight = await backend.preflight();
   if (!preflight.ok) {
     preflight.errors.forEach((error) => log.error(error));
-    return 0;
+    // Exit non-zero. This used to `return 0`, so an init that refused to run
+    // for want of WP-CLI still told the shell it had succeeded.
+    process.exitCode = 1;
+    return false;
   }
 
   initConfig = initConfig || {};
@@ -126,6 +129,12 @@ export async function init(dir, initConfig) {
     });
     process.chdir(saveCwd);
   }
+
+  // Record which backend built this environment, as soon as there is a root to
+  // record it in — not at the end. A provision that fails halfway must still be
+  // discoverable as the kind of environment it is, or the next command resolves
+  // the wrong backend and does something incoherent.
+  config.write(process.cwd(), { environment: { backend: backend.name } });
 
   // Anything the backend needs on disk before it can provision.
   const prepared = await backend.prepare(initConfig);

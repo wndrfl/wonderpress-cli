@@ -176,12 +176,17 @@ export async function downloadWordPress() {
 /**
  * Get the active theme
  **/
-export async function getActiveTheme() {
+export async function getActiveTheme(opts) {
 
-	log.info('Grabbing the currently active theme...');
+	// `quiet` is for callers that have a sensible fallback when WordPress
+	// cannot answer — lint can still analyse files on disk — and should not
+	// print "install WordPress" on the way to succeeding.
+	const quiet = !!(opts && opts.quiet);
+
+	if (!quiet) log.info('Grabbing the currently active theme...');
 
 	if (! await this.isInstalled()) {
-		log.error('WordPress is not installed. Please install WordPress, first.');
+		if (!quiet) log.error('WordPress is not installed. Please install WordPress, first.');
 		return false;
 	}
 

@@ -124,3 +124,18 @@ test('a lifecycle hook that returns nothing counts as success', async () => {
 		assert.deepEqual(backend.calls, ['preflight', 'prepare', 'provision']);
 	});
 });
+
+test('a failing preflight exits non-zero', async () => {
+	// It used to `return 0` — an init that refused to run still told the shell
+	// it had succeeded, which is the same class of lie as claiming success over
+	// a failed provision.
+	const backend = fakeBackend({ preflight: { ok: false, errors: ['no tooling here'] } });
+
+	await withFixture(backend, async (dir) => {
+		process.exitCode = 0;
+		const result = await core.init(dir, { interactive: false, yes: true });
+
+		assert.equal(result, false);
+		assert.equal(process.exitCode, 1);
+	});
+});

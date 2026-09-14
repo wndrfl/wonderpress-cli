@@ -1,3 +1,4 @@
+import fs from 'fs-extra';
 import sh from 'shelljs';
 import * as log from './log.js';
 import * as composer from './composer.js';
@@ -22,6 +23,19 @@ export async function command(subcommand, args) {
 }
 
 /**
+ * Theme directories on disk, identified the way WordPress identifies a theme:
+ * a style.css in the directory root.
+ **/
+function themesOnDisk() {
+
+	if (! fs.existsSync(wordpress.pathToThemesDir)) return [];
+
+	return fs.readdirSync(wordpress.pathToThemesDir).filter((entry) => {
+		return fs.existsSync(`${wordpress.pathToThemesDir}/${entry}/style.css`);
+	});
+}
+
+/**
  * Codesniff a specific theme (or the active theme).
  **/
 export async function theme(dir, opts) {
@@ -37,33 +51,41 @@ export async function theme(dir, opts) {
 		return false;
 	}
 
-	if (! await wordpress.isInstalled()) {
-		log.error('WordPress is not installed. Please install WordPress first.');
-		return false;
-	}
-
 	if (! await composer.installComposer()) {
-		return;
-	}
-
-	if (! await wordpress.createThemesDirectory()) {
 		return;
 	}
 
 	const fix = opts.fix ? opts.fix : false;
 	let themeName = opts.name ? opts.name : null;
 
+	// phpcs is a static pass over files on disk: it never boots WordPress and
+	// never opens a socket. The only thing it needed WordPress for was deciding
+	// WHICH theme to lint, so that is the only thing gated now.
+	//
+	// This used to require a running, database-connected install — two round
+	// trips through the backend before any analysis, which under a container
+	// backend means the environment has to be up to run a static check.
 	if (!themeName) {
-		let theme = await wordpress.getActiveTheme();
+		const theme = await wordpress.getActiveTheme({ quiet: true });
 
-		// If there is no active theme, we need to stop.
-		// The linter will only lint an active theme.
-		if (!theme) {
-			log.error('There is no active theme. Please fully install WordPress and activate a theme before trying again.');
-			return false;
+		if (theme) {
+			themeName = theme.name;
+		} else {
+			// Nothing running to ask. One theme on disk is not ambiguous, so
+			// lint it and say so rather than refusing.
+			const candidates = themesOnDisk();
+
+			if (candidates.length === 1) {
+				themeName = candidates[0];
+				log.info(`Could not ask WordPress which theme is active, so linting the only one present: ${themeName}`);
+			} else if (candidates.length === 0) {
+				log.error(`No themes found in ${wordpress.pathToThemesDir}.`);
+				return false;
+			} else {
+				log.error(`Cannot tell which theme to lint: WordPress is not answering, and there is more than one theme.\nName one: wonderpress lint --name <theme>`);
+				return false;
+			}
 		}
-
-		themeName = theme.name;
 	}
 
 	let path = wordpress.pathToThemesDir + '/' + themeName;

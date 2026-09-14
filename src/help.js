@@ -112,13 +112,27 @@ installed in the environment.`,
 Clones the Wonderpress development environment, downloads WordPress, creates
 the database, installs wonderpress-core and Static Kit, and activates the theme.
 
+ENVIRONMENT BACKENDS
+  host (default)  WordPress and MySQL on this machine, served by \`wp server\`.
+                  Needs a running MySQL.
+  wp-env          WordPress, MariaDB and a pinned PHP 8.2 in Docker, with the
+                  project mounted in. Needs Docker running. Already serving
+                  when init finishes — there is no \`wp server\` step.
+
+  The backend is recorded in .wonderpressrc, so --env is only needed when
+  building. Both still need wp-cli, php and composer on PATH: wp-env replaces
+  MySQL, not the PHP toolchain. Set WONDERPRESS_ENV to override per-invocation.
+
 OPTIONS
   --dir <path>             Where to build it (default: current directory)
+  --env <backend>          host (default) or wp-env
   --yes, -y                Headless: take defaults and never prompt
   --db-host / --db-user / --db-name / --db-password
                            Database connection. Password may also come from the
-                           WP_DB_PASSWORD environment variable.
-  --wp-url <url>           Site URL, e.g. localhost:8080
+                           WP_DB_PASSWORD environment variable. Host backend
+                           only — wp-env fixes its own database.
+  --wp-url <url>           Site URL, e.g. localhost:8080. Host backend only —
+                           wp-env serves on the port in .wp-env.json.
   --wp-title <title>       Site title
   --admin-user / --admin-email / --admin-password
                            The first admin account. Password may also come from
@@ -126,10 +140,12 @@ OPTIONS
   --theme <name>           Theme to activate (default: wonderpress)
   --skip-readme            Do not generate a README
 
-EXAMPLE
+EXAMPLES
   wonderpress init --yes --db-user root --db-name my_site \\
     --wp-url localhost:8080 --wp-title "My Site" \\
-    --admin-user admin --admin-email me@example.com`,
+    --admin-user admin --admin-email me@example.com
+
+  wonderpress init --env wp-env --yes --wp-title "My Site"`,
 };
 
 /**
