@@ -1,0 +1,4 @@
+# The disposable environment. Built by ./bootstrap.sh, destroyed on a whim.
+wp/
+
+.DS_Store
