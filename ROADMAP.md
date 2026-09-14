@@ -23,11 +23,13 @@ someone else for. Owning an implementation decays. Owning an interface compounds
 |---|---|
 | 0 — Re-home the plumbing | **Mostly done** — one item left (Vite) |
 | 1 — Formalize core + contract | **Mostly done** — one item left (core as a versioned package) |
-| 2 — Fire the spine + ship the slate | **Half done** — the spine fires; the slate does not exist |
+| 2 — Fire the spine + constrain the editor | **Half done** — the spine fires; the editor surface does not exist |
+| 2b — Editor JavaScript | Not started — newly forced, see below |
 | 3 — The AI layer | Not started |
 | 4 — Optional Figma | Not started |
 
 Last verified: 2026-09-14, against CLI 2.6.0 / Static Kit 2.13.0.
+Phase 2 re-scoped 2026-09-14: block theme → hybrid theme.
 
 ---
 
@@ -41,10 +43,13 @@ Last verified: 2026-09-14, against CLI 2.6.0 / Static Kit 2.13.0.
 | Local environment → wp-env / DDEV | ✅ **CLI 2.6.0** — `init --env wp-env`, opt-in |
 | Static Kit engine → Vite | ❌ still esbuild + sass directly |
 
-**Remaining: Vite.** Deliberately deferred. It buys maintenance posture rather
-than capability, and the moment it actually pays off is when we take on
-`edit.js` / editor bundles — which the block work explicitly left to a later
-arc. Re-home it when that question forces it, not before.
+**Remaining: Vite.** Deferred on the rule "re-home it when something forces the
+question, not before" — the forcing function being `edit.js` / editor bundles.
+**As of Sep 2026 that has arrived**: visual fidelity in the editor requires an
+editor bundle (Phase 2b), and that bundle is a genuinely different job from
+Static Kit's site bundles — it resolves `@wordpress/*` against WordPress's own
+script registry as externals. Settle Vite deliberately as part of that arc
+rather than bolting another esbuild invocation on.
 
 ### On the environment backend (shipped 2.6.0)
 
@@ -94,37 +99,69 @@ wp-env run cli wp eval \
   'var_dump( WP_Block_Type_Registry::get_instance()->is_registered("wonderpress/testimonial") );'
 ```
 
-### The slate does not exist ❌ — this is the next arc
+### The editor surface does not exist ❌ — this is the next arc
 
-The shipped theme is still a classic PHP theme. There is **no `theme.json`, no
-`templates/`, no `parts/`, no lock dial**. We emit blocks into a theme that is
-not block-first, so the brief's headline claim is currently half true.
+The shipped theme is a classic PHP theme with **no `theme.json`, no curated
+block suite, and no lock dial**. We emit blocks into an editor we have never
+constrained.
 
-What it needs:
+> **Superseded, Sep 2026.** This arc was framed as "the slate": `theme.json`
+> *plus* `templates/` *plus* `parts/` — becoming a block theme, on the premise
+> that we could "adopt the block theme file format and refuse the Site Editor
+> workflow." Those turn out not to be cleanly separable, and the framing is
+> withdrawn. See [docs/hybrid-theme-plan.md](docs/hybrid-theme-plan.md).
+
+`templates/index.html` is the single switch that makes WordPress treat a theme
+as a block theme, and it brings three things with it: the Site Editor appears,
+the Menus and Widgets screens are removed from wp-admin, and the Styles panel
+starts writing a `wp_global_styles` **database** record that outranks
+`theme.json`. That last one is not a taste objection — it is a source-of-truth
+leak in a toolkit whose organizing idea is that the repo tells the whole story.
+
+Meanwhile the requirement that looked like it needed a block theme — *clients
+compose the page body, but not the header or footer* — is precisely what a
+classic theme does by default. `get_header()`, `the_content()`, `get_footer()`.
+
+**The position now: take `theme.json`, stay classic.** A hybrid theme.
 
 - **`theme.json`, constrained not empty.** An empty one is *permissive* — any
   color, any size — and makes WP emit a bloated global-styles blob. Define token
-  slots and switch off freeform choices, so everything routes through tokens.
-  Unopinionated about what the brand is; opinionated that it arrives via tokens.
-- **Block templates as files** — `index/single/page/archive/404/search`, present
-  but empty. WordPress requires them; shipping them empty is structure, shipping
-  them styled would be opinion. The line is exactly there.
-- **`parts/`** — header and footer, structural only.
-- **The lock dial** — `templateLock: 'all'` for bespoke code-rendered pages,
-  `'contentOnly'` for client-editable content in a frozen layout (the sweet spot
-  most agencies skip), `false` for open composition. The default lock level
-  rides in the component manifest, so editability is set at the contract rather
-  than rediscovered per page.
+  slots and switch off freeform choices. Unopinionated about what the brand is;
+  opinionated that it arrives via tokens. It is also the **source of truth** for
+  tokens, with Static Kit's SCSS subscribing to the generated custom properties
+  rather than declaring them a second time.
+- **The curated suite** — `allowed_block_types_all`, generated from the
+  manifests, is what turns "the block editor" into "our suite."
+- **The lock dial** — `block_editor_settings_all` varies `templateLock` per page
+  template, so bespoke and open composition coexist in one theme: `'all'` for
+  code-rendered pages, `'contentOnly'` for client-editable content in a frozen
+  layout (the sweet spot most agencies skip), `false` for open composition. The
+  default rides in the component manifest, so editability is set at the contract
+  rather than rediscovered per page.
+- **Wrapper attributes** — `render.php` must emit
+  `get_block_wrapper_attributes()`, or our blocks carry no standard block class
+  and any support we ever enable is inert.
 
-**Adopt the block theme file format; refuse the Site Editor workflow.** Templates
-are authored as files and reviewed in PRs. Editing templates by clicking in
-wp-admin is page-builder-adjacent and violates "code is the source of truth."
-Those two things are separable — take the format, refuse the workflow.
+`templates/` and `parts/` are **dropped, not deferred**. The burden of proof is
+on anything that wants to reintroduce them.
 
 **Why the environment work came first:** none of this can be verified by
 asserting on emitted files. "Does `contentOnly` actually freeze layout" is
 load-and-click work, so this arc's cost is dominated by manual verification
 cycles. `./sandbox/bootstrap.sh --env wp-env --fresh` is now the loop.
+
+### Editor JavaScript ❌ — newly forced
+
+A block registered only on the server has **no editor preview**: the client sees
+a placeholder, not the design. So "be as visual as possible in the editor, while
+still supporting full bespoke" cannot be met by the arc above, and it ends the
+"no `edit.js`, no editor bundle" deferral that the block work took on
+deliberately.
+
+The approach — `ServerSideRender` for an accurate preview, locked `InnerBlocks`
+for in-place text editing, neither of which duplicates the partial's markup — is
+planned in [docs/editor-js-plan.md](docs/editor-js-plan.md). This is also the
+thing that forces the Vite question in Phase 0.
 
 ### Correctness primitives ⚠️ — seeded, not built
 
@@ -196,13 +233,20 @@ front end is the point.
 
 ## Recommended order
 
-1. **The slate** (Phase 2) — the gap that makes "block-first, classic-capable"
-   true, and the direct sequel to the block work already shipped.
-2. **Correctness primitives** into `[core]` — small, boring, high leverage, and
+1. **`theme.json`** (Phase 2) — cheap, reversible, and an immediate win on the
+   core blocks clients actually use. It cannot break "classic-capable," because
+   it does not change the theme's type.
+2. **Wrapper attributes in `render.php`** — small, self-contained, and it
+   unblocks everything downstream.
+3. **The curated suite and the lock dial** — the pieces that make the editor
+   ours rather than WordPress's.
+4. **Correctness primitives** into `[core]` — small, boring, high leverage, and
    the guardrail Phase 3 depends on.
-3. **Package wonderpress-core** — best done alongside the slate, since that arc
+5. **Package wonderpress-core** — best done alongside the arc above, since it
    changes `[core]` and `[base]` together and drift is the named risk.
-4. **Phase 3**, then Phase 4.
+6. **Editor JavaScript** (Phase 2b) — the large one, and the one that takes the
+   Vite question with it.
+7. **Phase 3**, then Phase 4.
 
-Vite and the wp-env default flip are opportunistic: take them when something
-forces the question.
+The wp-env default flip stays opportunistic: take it when something forces the
+question.
