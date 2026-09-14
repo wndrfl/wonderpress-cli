@@ -124,12 +124,22 @@ classic theme does by default. `get_header()`, `the_content()`, `get_footer()`.
 
 **The position now: take `theme.json`, stay classic.** A hybrid theme.
 
-- **`theme.json`, constrained not empty.** An empty one is *permissive* — any
-  color, any size — and makes WP emit a bloated global-styles blob. Define token
-  slots and switch off freeform choices. Unopinionated about what the brand is;
-  opinionated that it arrives via tokens. It is also the **source of truth** for
-  tokens, with Static Kit's SCSS subscribing to the generated custom properties
-  rather than declaring them a second time.
+- **`theme.json`, constrained not empty.** ✅ **Shipped** —
+  wonderpress-development-environment#11. An empty one is *permissive* — any
+  color, any size. Define token slots and switch off freeform choices.
+  Unopinionated about what the brand is; opinionated that it arrives via tokens.
+  It is also the **source of truth** for tokens, with Static Kit's SCSS
+  subscribing to the generated custom properties rather than declaring them a
+  second time. Verified in the sandbox: `wp_is_block_theme()` stays `false`, the
+  editor offers our eight colors and nothing else, and the custom pickers are
+  gone.
+
+  **Measured correction to the brief:** constraining `theme.json` does *not*
+  shrink the global-styles payload — it grows it, 10,190 → 14,319 bytes. Core's
+  preset variables are emitted regardless of `defaultPalette` /
+  `defaultSpacingSizes`; those flags govern what the **editor offers**, not what
+  CSS is generated. The win is constraint, not bytes. Trimming the emitted CSS
+  is a separate problem with a separate mechanism, and is not yet planned.
 - **The curated suite** — `allowed_block_types_all`, generated from the
   manifests, is what turns "the block editor" into "our suite."
 - **The lock dial** — `block_editor_settings_all` varies `templateLock` per page

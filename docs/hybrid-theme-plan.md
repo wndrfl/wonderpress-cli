@@ -37,28 +37,46 @@ any of the above.
 
 Four pieces. Every one of them is PHP-side and classic-compatible.
 
-### 1. `theme.json` — constrained, not empty
+### 1. `theme.json` — constrained, not empty ✅ SHIPPED
+
+wonderpress-development-environment#11.
 
 An empty `theme.json` is not neutral, it is *permissive*. WordPress core ships
 its own, generous, and ours merges over it: ship `{}` and we have opted into a
-full default palette, freeform color pickers, arbitrary font sizes, arbitrary
-spacing, plus CSS variables for presets nobody uses.
+full default palette, freeform color pickers, arbitrary font sizes and
+arbitrary spacing.
 
 - `settings.color.custom: false`, `customGradient: false`, `defaultPalette:
   false`, `defaultGradients: false`.
-- `settings.typography.customFontSize: false`, `fluid: true`.
-- `settings.spacing.customSpacingSize: false`, plus an explicit `spacingSizes`
-  and `spacingScale: { "steps": 0 }` — without the latter we get WordPress's
-  generated ladder *and* ours, side by side.
+- `settings.typography.customFontSize: false`, `defaultFontSizes: false`,
+  `fluid: true`.
+- `settings.spacing.customSpacingSize: false`, `defaultSpacingSizes: false`,
+  plus an explicit `spacingSizes` ladder.
 - `settings.appearanceTools: true`.
 - Token **slots** defined with neutral placeholder values. Slots are structure;
   the values belong to the project.
 - `styles` stays near-empty. That half encodes a look, and the look is not ours
   to ship.
 
+`defaultFontSizes` / `defaultSpacingSizes` are the **v3** opt-outs and are
+cleaner than the v2 `spacingScale: { "steps": 0 }` trick, but they landed in WP
+6.6 — so `"version": 3` means the theme requires 6.6.
+
 This is worth doing on its own merits even if nothing else here lands: it
 constrains the **core** blocks — paragraph, heading, image, group, columns,
 buttons — which clients use constantly and which are wide open today.
+
+**Verified in the sandbox**, not asserted: `wp_is_block_theme()` returns
+`false`, the editor palette is our eight slugs with core's defaults absent, and
+`disableCustomColors` / `disableCustomFontSizes` are both `true`.
+
+**Measured correction.** The brief claimed an unconstrained `theme.json` makes
+WordPress emit a bloated global-styles blob, implying constraint trims it. It
+does not — the payload *grows*, 10,190 → 14,319 bytes, because core's preset
+variables are emitted regardless of `defaultPalette` and `defaultSpacingSizes`.
+Those flags govern what the **editor offers**, not what CSS is generated. The
+win here is constraint, not bytes; trimming the emitted CSS is a separate
+problem with a separate mechanism, and is not yet planned.
 
 **Token source of truth.** `theme.json` publishes CSS custom properties
 (`--wp--preset--color--accent`); it has no knowledge of Static Kit's SCSS in
@@ -68,6 +86,15 @@ The honest cost: a custom property is a runtime value, so Sass cannot compute
 with it and `darken()` is no longer available — `color-mix()` covers most of
 what that was for. The alternative (generate `theme.json` from SCSS tokens)
 keeps the Sass math but buys a build step and a file nobody may hand-edit.
+
+**This is not one migration, it is two.** Static Kit's only real token file is
+`_pallette.scss`, so **color** is a straight swap — the slugs shipped in #11
+mirror it exactly. **Type and spacing have no counterpart to mirror**: the SCSS
+bakes sizes directly into `%h1` / `%title` / `%paragraph` placeholders rather
+than exposing a named scale. Those slots therefore *introduce* a scale, and
+adopting them is a change to Static Kit's model rather than a subscription to
+an existing one. Sequence the color swap first; treat type and spacing as their
+own decision.
 
 ### 2. The curated suite — `allowed_block_types_all`
 
