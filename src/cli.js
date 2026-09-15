@@ -26,6 +26,7 @@ export async function cli() {
     '--no-template': Boolean,
     '--template-name': String,
     '--theme': String,
+    '--namespace': String,
     '--prop': [String],
     '--json': String,
     '--block': Boolean,

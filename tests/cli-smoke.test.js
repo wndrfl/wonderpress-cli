@@ -65,12 +65,15 @@ test('partial/block list + remove route through the CLI against a fixture', () =
 
 		run('partial', 'create', '--name', 'Smoke_Test', '--block');
 
+		// The namespace is the project's, not the tool's: this fixture's theme is
+		// `smoke`, and .wonderpressrc records nothing, so the blocks are
+		// `smoke/*`. Nothing here says "wonderpress".
 		const partials = run('partial', 'list');
-		assert.match(partials, /Smoke_Test\s+smoke-test\s+wonderpress\/smoke-test/);
-		assert.match(run('block', 'list'), /wonderpress\/smoke-test\s+Smoke_Test/);
+		assert.match(partials, /Smoke_Test\s+smoke-test\s+smoke\/smoke-test/);
+		assert.match(run('block', 'list'), /smoke\/smoke-test\s+Smoke_Test/);
 
 		// A block wraps a partial, so the partial cannot be removed out from under it.
-		assert.match(run('partial', 'remove', 'Smoke_Test'), /wrapped by block wonderpress\/smoke-test/);
+		assert.match(run('partial', 'remove', 'Smoke_Test'), /wrapped by block smoke\/smoke-test/);
 		assert.ok(fs.existsSync(path.join(dir, 'wp-content/themes/smoke/src/partials/class-smoke-test.php')));
 
 		run('block', 'remove', 'Smoke_Test');
