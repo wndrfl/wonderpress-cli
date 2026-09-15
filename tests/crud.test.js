@@ -21,10 +21,17 @@ import {
 } from '../src/partial.js';
 import { addBlock, listBlocks, removeBlock } from '../src/block.js';
 
+// The theme directory is deliberately given a STABLE name inside the random
+// temp parent. The block namespace derives from the theme slug when nothing
+// else records one, so a random basename made emitted block names depend on
+// mkdtemp — which passed on macOS (mixed-case suffix, rejected as a namespace)
+// and failed on Linux (lowercase, accepted). A fixture should not be the thing
+// that decides what a block is called.
 // A theme fixture that also carries a minimal Static Kit tree, so the delegated
 // style/script halves actually land instead of being skipped for want of config.
 function tmpTheme() {
-	const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'wp-crud-'));
+	const dir = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'wp-crud-')), 'wonderpress');
+	fs.ensureDirSync(dir);
 	fs.ensureDirSync(path.join(dir, 'src/partials'));
 	fs.ensureDirSync(path.join(dir, 'partials'));
 	fs.ensureDirSync(path.join(dir, 'static'));
@@ -40,7 +47,8 @@ function tmpTheme() {
 // The same theme fixture WITHOUT a Static Kit tree — the common real-world case
 // where `component.create` no-ops and nothing delegated can be recorded.
 function tmpThemeNoStatic() {
-	const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'wp-crud-'));
+	const dir = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'wp-crud-')), 'wonderpress');
+	fs.ensureDirSync(dir);
 	fs.ensureDirSync(path.join(dir, 'src/partials'));
 	fs.ensureDirSync(path.join(dir, 'partials'));
 	return dir;
