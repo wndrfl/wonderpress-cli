@@ -23,13 +23,14 @@ someone else for. Owning an implementation decays. Owning an interface compounds
 |---|---|
 | 0 — Re-home the plumbing | **Mostly done** — one item left (Vite) |
 | 1 — Formalize core + contract | **Mostly done** — one item left (core as a versioned package) |
-| 2 — Fire the spine + constrain the editor | **Half done** — the spine fires; the editor surface does not exist |
+| 2 — Fire the spine + constrain the editor | **Mostly done** — theme.json, wrapper attributes and the curated suite shipped; the page lock dial is left |
 | 2b — Editor JavaScript | Not started — newly forced, see below |
 | 3 — The AI layer | Not started |
 | 4 — Optional Figma | Not started |
 
-Last verified: 2026-09-14, against CLI 2.6.0 / Static Kit 2.13.0.
+Last verified: 2026-09-15, against CLI 2.6.0 / Static Kit 2.13.0.
 Phase 2 re-scoped 2026-09-14: block theme → hybrid theme.
+Lock dial split into page-lock and block-lock 2026-09-15.
 
 ---
 
@@ -99,11 +100,13 @@ wp-env run cli wp eval \
   'var_dump( WP_Block_Type_Registry::get_instance()->is_registered("wonderpress/testimonial") );'
 ```
 
-### The editor surface does not exist ❌ — this is the next arc
+### Constraining the editor ⚠️ — mostly shipped, one piece left
 
-The shipped theme is a classic PHP theme with **no `theme.json`, no curated
-block suite, and no lock dial**. We emit blocks into an editor we have never
-constrained.
+The shipped theme was a classic PHP theme emitting blocks into an editor we had
+never constrained. As of Sep 2026 it has a constrained `theme.json`, blocks that
+carry their wrapper attributes, blocks published under the **project's**
+namespace rather than WonderPress's, and an opt-in curated suite. **The page
+lock dial is what remains.**
 
 > **Superseded, Sep 2026.** This arc was framed as "the slate": `theme.json`
 > *plus* `templates/` *plus* `parts/` — becoming a block theme, on the premise
@@ -140,14 +143,22 @@ classic theme does by default. `get_header()`, `the_content()`, `get_footer()`.
   `defaultSpacingSizes`; those flags govern what the **editor offers**, not what
   CSS is generated. The win is constraint, not bytes. Trimming the emitted CSS
   is a separate problem with a separate mechanism, and is not yet planned.
-- **The curated suite** — `allowed_block_types_all`, generated from the
-  manifests, is what turns "the block editor" into "our suite."
-- **The lock dial** — `block_editor_settings_all` varies `templateLock` per page
-  template, so bespoke and open composition coexist in one theme: `'all'` for
-  code-rendered pages, `'contentOnly'` for client-editable content in a frozen
-  layout (the sweet spot most agencies skip), `false` for open composition. The
-  default rides in the component manifest, so editability is set at the contract
-  rather than rediscovered per page.
+- **The curated suite** — ✅ **Shipped**, wonderpress-core#7. Opt-in via
+  `WONDERPRESS_CURATE_BLOCKS`; 117 blocks become 6. The list comes from what
+  core actually registered, **not** from the manifests as originally planned:
+  the manifest indexes partials, the allowed list wants blocks, and core already
+  has them. That also keeps hand-written blocks working, which a
+  manifest-derived list would have left registered but un-insertable.
+- **The lock dial** — two dials, not one. *Page* lock (can this page be composed
+  at all) is a fact about the page and rides on the page template, via
+  `block_editor_settings_all`: `'all'` for code-rendered pages, `'contentOnly'`
+  for client-editable content in a frozen layout (the sweet spot most agencies
+  skip), `false` for open composition. *Block* lock (can this block's inner
+  content be rearranged) is a fact about the component and rides in the
+  manifest — but it governs `InnerBlocks`, which our blocks do not yet have, so
+  it waits on Phase 2b. The earlier framing put the page decision in the
+  component manifest; a page has one lock level and its components would each
+  claim one, with no rule to resolve the conflict.
 - **Wrapper attributes** — `render.php` must emit
   `get_block_wrapper_attributes()`, or our blocks carry no standard block class
   and any support we ever enable is inert.
