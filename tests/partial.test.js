@@ -109,6 +109,10 @@ test('--block opts in: block.json (with render binding) + render.php delegate to
 		const render = fs.readFileSync(path.join(dir, 'blocks/testimonial/render.php'), 'utf8');
 		assert.match(render, /use Wonderpress\\Partials\\Testimonial;/);
 		assert.match(render, /new Testimonial\( \$attributes \)/);
+
+		// The wrapper is what makes the output a block WordPress can recognise
+		// and target — without it there is no wp-block-* class on the markup.
+		assert.match(render, /get_block_wrapper_attributes\(\)/);
 	} finally {
 		fs.removeSync(dir);
 	}

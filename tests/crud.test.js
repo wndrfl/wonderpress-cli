@@ -137,10 +137,12 @@ test('block create retrofits a block onto an existing partial and updates the ma
 		assert.equal(block.name, 'wonderpress/testimonial');
 		assert.equal(block.attributes.quote.type, 'string');
 
-		// A block is only a wrapper: its render delegates back to the partial.
+		// A block is only a wrapper: its render delegates back to the partial,
+		// inside an element carrying WordPress's generated block attributes.
 		const render = fs.readFileSync(path.join(dir, 'blocks/testimonial/render.php'), 'utf8');
 		assert.match(render, /use Wonderpress\\Partials\\Testimonial;/);
 		assert.match(render, /new Testimonial\( \$attributes \)/);
+		assert.match(render, /get_block_wrapper_attributes\(\)/);
 
 		const m = manifestOf(dir, 'testimonial');
 		assert.equal(m.block, 'wonderpress/testimonial');
