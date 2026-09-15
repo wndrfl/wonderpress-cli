@@ -115,13 +115,67 @@ export async function create(args) {
  * Rows for `block list`: every manifest that advertises a block.
  **/
 export function listBlocks(themeDir) {
-	return partial.readManifests(themeDir)
+
+	const rows = partial.readManifests(themeDir)
 		.filter((manifest) => !!manifest.block)
 		.map((manifest) => ({
 			block: manifest.block,
 			partial: manifest.name,
 			slug: manifest.slug,
+			managed: true,
 		}));
+
+	// WordPress registers every `blocks/<slug>/block.json` it finds, whether or
+	// not the CLI wrote it — so a hand-made block is a real, working block that
+	// the manifest knows nothing about. Reporting only what we wrote would make
+	// `block list` answer a question it was not asked ("what did the CLI make?")
+	// while appearing to answer "what is in this theme?". List those too, marked,
+	// rather than quietly under-reporting.
+	const known = new Set(rows.map((row) => row.slug));
+
+	for (const found of scanBlockDirs(themeDir)) {
+		if (!known.has(found.slug)) {
+			rows.push({ ...found, managed: false });
+		}
+	}
+
+	return rows.sort((a, b) => a.slug.localeCompare(b.slug));
+}
+
+/**
+ * Every block directory physically present in the theme, read the way
+ * WordPress reads them: a subdirectory of `blocks/` holding a `block.json`.
+ *
+ * This deliberately does not consult the manifest — its whole purpose is to
+ * see what the manifest cannot.
+ **/
+export function scanBlockDirs(themeDir) {
+
+	const dir = `${themeDir}/blocks`;
+	if (!fs.existsSync(dir)) {
+		return [];
+	}
+
+	const found = [];
+
+	for (const slug of fs.readdirSync(dir).sort()) {
+		const metadata = `${dir}/${slug}/block.json`;
+		if (!fs.existsSync(metadata)) {
+			continue;
+		}
+
+		let name;
+		try {
+			name = JSON.parse(fs.readFileSync(metadata, 'utf8')).name;
+		} catch (e) {
+			log.warn(`Skipping unreadable block metadata ${slug}/block.json: ${e.message}`);
+			continue;
+		}
+
+		found.push({ block: name || `(no name in block.json)`, partial: null, slug });
+	}
+
+	return found;
 }
 
 /**
@@ -140,8 +194,25 @@ export async function list(args) {
 		return true;
 	}
 
-	log.table(['BLOCK', 'PARTIAL', 'SLUG'], rows.map((row) => [row.block, row.partial, row.slug]));
+	log.table(
+		['BLOCK', 'PARTIAL', 'SLUG'],
+		rows.map((row) => [row.block, row.managed ? row.partial : '(no manifest)', row.slug])
+	);
 	log.info(`${rows.length} block${rows.length === 1 ? '' : 's'}.`);
+
+	// An unmanaged block works — WordPress registers it — but the CLI cannot
+	// remove it or tell you what it takes, so say so rather than letting the
+	// blank column be read as a formatting quirk.
+	const unmanaged = rows.filter((row) => !row.managed);
+	if (unmanaged.length) {
+		log.warn(
+			`${unmanaged.length} block${unmanaged.length === 1 ? ' was' : 's were'} not created by the CLI ` +
+			`(${unmanaged.map((row) => row.slug).join(', ')}). WordPress registers ${unmanaged.length === 1 ? 'it' : 'them'} ` +
+			`normally, but ${unmanaged.length === 1 ? 'it has' : 'they have'} no manifest, so \`block remove\` cannot manage ` +
+			`${unmanaged.length === 1 ? 'it' : 'them'} and nothing records what ${unmanaged.length === 1 ? 'it takes' : 'they take'}.`
+		);
+	}
+
 	return true;
 }
 
