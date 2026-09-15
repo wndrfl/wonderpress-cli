@@ -286,7 +286,7 @@ test('listPartials and listBlocks read the manifest index', async () => {
 			{ name: 'Hero', slug: 'hero', block: 'wonderpress/hero' },
 		]);
 		assert.deepEqual(listBlocks(dir), [
-			{ block: 'wonderpress/hero', partial: 'Hero', slug: 'hero' },
+			{ block: 'wonderpress/hero', partial: 'Hero', slug: 'hero', managed: true },
 		]);
 	} finally {
 		fs.removeSync(dir);
@@ -421,4 +421,70 @@ test('a block without the manifest is refused: the index is what makes it manage
 	// Either half alone is still fine.
 	validateParams(paramsFromFlags({ '--name': 'Hero', '--no-manifest': true }));
 	validateParams(paramsFromFlags({ '--name': 'Hero', '--block': true }));
+});
+
+// --- blocks the CLI did not write ---
+//
+// WordPress registers every `blocks/<slug>/block.json` it finds, so a
+// hand-made block is a real, working block with no manifest behind it. `list`
+// must not under-report the theme just because the manifest cannot see it.
+
+function handMadeBlock(dir, slug, name) {
+	fs.ensureDirSync(path.join(dir, 'blocks', slug));
+	fs.writeFileSync(
+		path.join(dir, 'blocks', slug, 'block.json'),
+		JSON.stringify({ apiVersion: 3, name, title: slug, category: 'wonderpress' })
+	);
+}
+
+test('listBlocks reports hand-made blocks, marked as unmanaged', async () => {
+	const dir = tmpTheme();
+	try {
+		await writePartial(paramsFromFlags({ '--name': 'Hero', '--block': true }), dir);
+		handMadeBlock(dir, 'handmade', 'wonderpress/handmade');
+
+		assert.deepEqual(listBlocks(dir), [
+			{ block: 'wonderpress/handmade', partial: null, slug: 'handmade', managed: false },
+			{ block: 'wonderpress/hero', partial: 'Hero', slug: 'hero', managed: true },
+		]);
+	} finally {
+		fs.removeSync(dir);
+	}
+});
+
+test('a block the CLI wrote is never double-counted as unmanaged', async () => {
+	const dir = tmpTheme();
+	try {
+		await writePartial(paramsFromFlags({ '--name': 'Hero', '--block': true }), dir);
+		const rows = listBlocks(dir);
+		assert.equal(rows.length, 1, 'the manifest row and the directory are the same block');
+		assert.equal(rows[0].managed, true);
+	} finally {
+		fs.removeSync(dir);
+	}
+});
+
+test('a block directory without block.json is not a block', async () => {
+	const dir = tmpTheme();
+	try {
+		fs.ensureDirSync(path.join(dir, 'blocks/not-a-block'));
+		fs.writeFileSync(path.join(dir, 'blocks/not-a-block/notes.txt'), 'scratch');
+		assert.deepEqual(listBlocks(dir), [], 'WordPress would ignore it, and so do we');
+	} finally {
+		fs.removeSync(dir);
+	}
+});
+
+test('unreadable block.json is skipped rather than crashing the listing', async () => {
+	const dir = tmpTheme();
+	try {
+		await writePartial(paramsFromFlags({ '--name': 'Hero', '--block': true }), dir);
+		fs.ensureDirSync(path.join(dir, 'blocks/broken'));
+		fs.writeFileSync(path.join(dir, 'blocks/broken/block.json'), '{ not json');
+
+		const rows = listBlocks(dir);
+		assert.deepEqual(rows.map((r) => r.slug), ['hero'], 'the good row still lists');
+	} finally {
+		fs.removeSync(dir);
+	}
 });
