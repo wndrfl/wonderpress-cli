@@ -11,8 +11,15 @@ import {
 	resolveNamespace,
 } from '../src/partial.js';
 
+// The theme directory is deliberately given a STABLE name inside the random
+// temp parent. The block namespace derives from the theme slug when nothing
+// else records one, so a random basename made emitted block names depend on
+// mkdtemp — which passed on macOS (mixed-case suffix, rejected as a namespace)
+// and failed on Linux (lowercase, accepted). A fixture should not be the thing
+// that decides what a block is called.
 function tmpTheme() {
-	const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'wp-partial-'));
+	const dir = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'wp-partial-')), 'wonderpress');
+	fs.ensureDirSync(dir);
 	fs.ensureDirSync(path.join(dir, 'src/partials'));
 	fs.ensureDirSync(path.join(dir, 'partials'));
 	return dir;
@@ -244,6 +251,46 @@ test('namespace: it reaches block.json, its category, and the manifest together'
 
 		const m = JSON.parse(fs.readFileSync(path.join(dir, '.wonderpress/manifest/testimonial.json'), 'utf8'));
 		assert.equal(m.block, 'acme/testimonial', 'the manifest records it, so it can be read back');
+	} finally {
+		fs.removeSync(dir);
+	}
+});
+
+test('namespace: a writer called without one resolves it, rather than defaulting to wonderpress', async () => {
+	// The regression behind the CI failure. writeBlock/writeManifest used to fall
+	// straight back to LEGACY_NAMESPACE when params.namespace was unset, so any
+	// caller that forgot would quietly write `wonderpress/hero` into a project
+	// whose blocks are `acme/hero` — splitting the namespace of live content,
+	// which is the one failure this machinery exists to prevent.
+	const { root, themeDir } = tmpProject('acme', {});
+	try {
+		const params = paramsFromFlags({ '--name': 'Hero', '--block': true });
+		assert.equal(params.namespace, undefined, 'the writer is being called cold, on purpose');
+
+		await writePartial(params, themeDir);
+
+		const block = JSON.parse(fs.readFileSync(path.join(themeDir, 'blocks/hero/block.json'), 'utf8'));
+		assert.equal(block.name, 'acme/hero');
+		assert.equal(block.category, 'acme');
+
+		const m = JSON.parse(fs.readFileSync(path.join(themeDir, '.wonderpress/manifest/hero.json'), 'utf8'));
+		assert.equal(m.block, 'acme/hero', 'block.json and the manifest must never disagree');
+	} finally {
+		fs.removeSync(root);
+	}
+});
+
+test('namespace: an emitted block never inherits the temp/parent directory name', async () => {
+	// Guards the fixture shape itself: the theme slug decides the namespace, so a
+	// randomly-named theme directory made emitted block names platform-dependent
+	// (lowercase mkdtemp suffixes on Linux were accepted as namespaces, mixed-case
+	// ones on macOS were not). Any fixture must pin the theme's own name.
+	const dir = tmpTheme();
+	try {
+		await writePartial(paramsFromFlags({ '--name': 'Hero', '--block': true }), dir);
+		const block = JSON.parse(fs.readFileSync(path.join(dir, 'blocks/hero/block.json'), 'utf8'));
+		assert.equal(block.name, 'wonderpress/hero');
+		assert.doesNotMatch(block.name, /wp-partial-/, 'the temp directory must never leak into a block name');
 	} finally {
 		fs.removeSync(dir);
 	}

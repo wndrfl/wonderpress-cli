@@ -129,6 +129,22 @@ export function resolveNamespace(themeDir, root = process.cwd()) {
 }
 
 /**
+ * The namespace a write should use.
+ *
+ * Falls back to resolving from the project rather than to a constant. An
+ * earlier version defaulted straight to LEGACY_NAMESPACE, which meant any
+ * caller that forgot to set params.namespace silently wrote `wonderpress/foo`
+ * into a project whose blocks are `acme/foo` — the exact split-namespace
+ * failure this machinery exists to prevent, delivered quietly.
+ *
+ * resolveNamespace() ends at LEGACY_NAMESPACE itself, so the last resort is
+ * unchanged; it is just no longer reachable by accident.
+ **/
+function namespaceFor(params, themeDir) {
+	return isValidNamespace(params.namespace) ? params.namespace : resolveNamespace(themeDir);
+}
+
+/**
  * Create a new "partial".
  *
  * Flag-driven first: if --json or --name is provided the partial is created
@@ -451,7 +467,7 @@ export function writeBlock(params, themeDir) {
 	// The project's namespace, not the tool's — see resolveNamespace(). The
 	// category rides along with it so the inserter groups a project's blocks
 	// under the project rather than under WonderPress.
-	const namespace = isValidNamespace(params.namespace) ? params.namespace : LEGACY_NAMESPACE;
+	const namespace = namespaceFor(params, themeDir);
 
 	const block = {
 		$schema: 'https://schemas.wp.org/trunk/block.json',
@@ -517,7 +533,7 @@ export function writeManifest(params, themeDir, written = {}) {
 		// Only a partial that opted in to being a block advertises one. The
 		// namespace recorded here is what resolveNamespace() later reads back,
 		// so a project's first block fixes the namespace for all of them.
-		...(emit.block ? { block: `${isValidNamespace(params.namespace) ? params.namespace : LEGACY_NAMESPACE}/${slug}` } : {}),
+		...(emit.block ? { block: `${namespaceFor(params, themeDir)}/${slug}` } : {}),
 		acf_compatible: params.is_acf_compatible,
 		properties: params.properties,
 		artifacts,
