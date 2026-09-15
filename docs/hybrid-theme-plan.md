@@ -96,23 +96,65 @@ adopting them is a change to Static Kit's model rather than a subscription to
 an existing one. Sequence the color swap first; treat type and spacing as their
 own decision.
 
-### 2. The curated suite — `allowed_block_types_all`
+### 2. The curated suite — `allowed_block_types_all` ✅ SHIPPED
 
-This PHP filter replaces WordPress's ~90 core blocks with the list we curate.
-It is what turns "the block editor" into "our suite," and it is the direct
-answer to clients asking for a kit they can build pages from.
+wonderpress-core#7. This PHP filter replaces WordPress's 117 registered blocks
+with the list we curate — what turns "the block editor" into "our suite," and
+the direct answer to clients asking for a kit they can build pages from.
 
-The list should be **generated from `.wonderpress/manifest/`** plus a small
-hand-picked set of core blocks (paragraph, heading, image, list), so the suite
-is defined by what the spine has emitted rather than maintained by hand in a
-second place. Same principle the manifest already runs on.
+**Corrected during the build: the list does not come from the manifest.** The
+plan said to generate it from `.wonderpress/manifest/`, on the principle that
+the manifest is the index. But the manifest indexes *partials*, most of which
+are not blocks, while the allowed list wants *block names* — and core already
+registers those blocks itself, so it can simply keep what it registered rather
+than re-deriving the list from files afterwards.
 
-### 3. The lock dial — `block_editor_settings_all`
+That is also more truthful. A block whose metadata WordPress rejected never
+enters the list, so it cannot be offered in the inserter as though it exists.
+And it is what makes a **hand-written** block work: WordPress registers any
+`blocks/<slug>/block.json` it finds, manifest or no manifest, so a
+manifest-derived list would have left such a block registered, rendering, and
+silently un-insertable. (See wonderpress-cli#37, which fixed the matching blind
+spot in `block list`.)
 
-Bespoke and open composition are not a global setting; they are per page. The
-`block_editor_settings_all` filter receives the post being edited, so
-`templateLock` and `allowedBlockTypes` can vary per page template — one fully
-locked, another wide open, decided in code.
+Recording what was registered also let the category lookup drop its redundant
+second scan — `blocks.php` no longer touches the filesystem outside
+registration.
+
+**Opt-in**, via `WONDERPRESS_CURATE_BLOCKS` / the `wonderpress_curate_blocks`
+filter, matching the theme's existing `WONDERPRESS_DEQUEUE_BLOCK_CSS`
+convention. On by default would strip most of the block library from existing
+client sites on update, and which blocks a client gets is a project decision
+rather than a framework one.
+
+Verified in the sandbox: 117 blocks → 6 with curation on; and a curated-out
+block (`core/quote`) stays registered and keeps rendering in content that
+already uses it, so curating a live site does not break its existing pages.
+
+### 3. The lock dial — two dials, not one
+
+**Corrected Sep 2026.** This section previously said both "bespoke and open
+composition are per *page*" and "the default lock level rides in the component
+*manifest*". Those cannot both describe one setting, and the second is wrong.
+
+Picture an About page carrying a hero, a testimonial and a call-to-action, each
+with a lock level from its own manifest. What is the page's lock level? There is
+no answer — the page has exactly one, and three components are each claiming it.
+Underneath that: a component does not know what page it is on. The same
+testimonial may sit on a locked bespoke landing page and on an open blog post,
+so "the testimonial's lock level" cannot answer "can this page be rearranged."
+It is not a fact about the testimonial.
+
+There are two real settings. Both are wanted. They live in different places.
+
+#### 3a. Page lock — can this page be composed at all?
+
+Whether the client may add, remove and reorder the **top-level** blocks on a
+page. A fact about the page, so it belongs to the page template: a bespoke
+landing page is locked, a standard content page is not.
+
+`block_editor_settings_all` receives the post being edited, so this is a small
+mapping in PHP from page template to lock level, declared once:
 
 - `templateLock: 'all'` — bespoke, code-rendered. Nothing moves.
 - `templateLock: 'contentOnly'` — client-editable content in a frozen layout.
@@ -122,16 +164,36 @@ locked, another wide open, decided in code.
 Coarser structural locking, where a whole post type must have a fixed shape,
 uses `register_post_type`'s `template` and `template_lock` arguments.
 
-The default lock level **rides in the component manifest**, so editability is
-set at the contract rather than rediscovered per page: a `lock` field in the
-manifest schema (defaulting to `contentOnly`), a `--lock` flag on `partial
-create` / `block create`, carried through to `block.json`. Manifest changes are
-additive — existing manifests without `lock` read as the default, and
-`static-kit-contract.test.js` stays untouched.
+This still meets the goal the original section was reaching for — editability
+set at the contract rather than rediscovered per page. The contract for *page*
+editability is simply the page template, not the component. Declare it once, and
+every page on that template inherits it.
 
 **To verify, not assume:** `contentOnly` is well-established at the
 container/`InnerBlocks` level. Whether it behaves as wanted at post-type level
 needs a real editor session, not a reading of the docs.
+
+#### 3b. Block lock — can this block's insides be rearranged?
+
+Whether the client may restructure a block's **inner** content: in a testimonial
+holding a quote and a citation, can the citation move above the quote, or only
+its words change. That genuinely is a fact about the component, and it genuinely
+does belong in the manifest — a `lock` field, a `--lock` flag on `partial
+create` / `block create`, carried through to `block.json`. Additive, so existing
+manifests without it read as the default and `static-kit-contract.test.js` stays
+untouched.
+
+**But it has nothing to act on yet.** A block's `templateLock` governs its
+`InnerBlocks`, and our blocks have none — they are server-rendered from the
+partial, with no inner content for a client to rearrange. So this half waits on
+the `InnerBlocks` work in [editor-js-plan.md](editor-js-plan.md); shipping a
+`--lock` flag before then would write a field nothing reads.
+
+#### Sequencing
+
+Build **3a now** — it is self-contained, PHP-side, and the piece that actually
+answers "bespoke pages and client-composed pages in one theme". Build **3b with
+`InnerBlocks`**, not before.
 
 ### 4. Wrapper attributes — the prerequisite
 
