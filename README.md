@@ -21,6 +21,14 @@ Using npm:
 $ npm install -g @wndrfl/wonderpress-cli
 ```
 
+### Starting a project
+
+Installing the CLI is not the same as knowing what order to do things in.
+**[docs/getting-started.md](docs/getting-started.md)** walks through building an
+environment, setting up design tokens, curating the editor and locking pages —
+and flags the one decision (the block namespace) that cannot be taken back once
+a client has pages.
+
 ### [Commands](#commands)
 
 The Wonderpress CLI provides different commands for many common tasks.
