@@ -201,6 +201,11 @@ export function create() {
 			honorsSiteHostname: false,
 			// `wp-env start` returns with the site still up.
 			detachedServer: true,
+			// wp-env creates the first user itself, always called `admin`. A
+			// different --admin-user cannot rename it; it would only add a SECOND
+			// administrator, leaving the requested account and the working one as
+			// different users.
+			honorsAdminUser: false,
 		},
 
 		/**
@@ -347,14 +352,17 @@ export function create() {
 				run(args);
 			}
 
-			// wp-env's admin is always called `admin`; a different requested
-			// name becomes an additional administrator rather than a rename.
+			// wp-env's admin is always called `admin` and cannot be renamed. This
+			// used to create an additional administrator instead, which left the
+			// user with two accounts — the one they asked for, and the one that
+			// actually had a password they knew. Refuse rather than half-oblige.
+			//
+			// --admin-user is rejected outright before init runs; reaching here
+			// means WP_ADMIN_USER was set in the environment, which bypasses the
+			// flag check.
 			if (wp.adminUser && wp.adminUser !== 'admin') {
-				run([
-					'user', 'create', wp.adminUser, wp.adminEmail || `${wp.adminUser}@example.com`,
-					'--role=administrator',
-					...(wp.adminPassword ? [`--user_pass=${wp.adminPassword}`] : []),
-				]);
+				log.warn(`wp-env's administrator is always \`admin\`, so "${wp.adminUser}" was not created.`);
+				log.warn(`Log in as \`admin\`. Rename it afterwards if you need to: wp user update admin --user_login=...`);
 			}
 		},
 

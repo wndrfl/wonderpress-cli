@@ -5,6 +5,7 @@ import os from 'os';
 import path from 'path';
 import * as core from '../src/core.js';
 import * as env from '../src/env/index.js';
+import * as server from '../src/server.js';
 
 /**
  * `init`'s orchestration, driven by a recording fake backend.
@@ -194,5 +195,28 @@ test('a backend with nothing to tear down is not an error', async () => {
 	await withFixture(backend, async (dir) => {
 		process.chdir(dir);
 		assert.equal(await core.destroy({ '--yes': true }), true);
+	});
+});
+
+// --- stopping ---
+//
+// Both backends have always had a stop(); nothing ever called it. A wp-env
+// environment could be started by the CLI and only stopped by reaching past it
+// to `wp-env stop`.
+
+test('`server stop` reaches the backend', async () => {
+	const backend = fakeBackend();
+	await withFixture(backend, async (dir) => {
+		await server.command('stop', { '--dir': dir });
+		assert.ok(backend.calls.includes('stop'), 'the backend was asked to stop');
+		assert.ok(!backend.calls.includes('start'), 'and was not started on the way past');
+	});
+});
+
+test('`server` with no subcommand still starts, as it always has', async () => {
+	const backend = fakeBackend();
+	await withFixture(backend, async (dir) => {
+		await server.command(undefined, { '--dir': dir });
+		assert.ok(backend.calls.includes('start'));
 	});
 });

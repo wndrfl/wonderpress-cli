@@ -50,6 +50,8 @@ export function create() {
 			honorsSiteHostname: true,
 			// `wp server` blocks until Ctrl-C, so start() never returns.
 			detachedServer: false,
+			// `wp core install --admin_user` names the first user, as asked.
+			honorsAdminUser: true,
 		},
 
 		/**

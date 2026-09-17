@@ -137,8 +137,23 @@ export async function cli() {
     if (!backend.capabilities.honorsSiteHostname && args['--wp-url'] !== undefined) {
       unsupported.push('--wp-url');
     }
+    // Accepting this one was worse than ignoring it: wp-env's admin is always
+    // `admin`, so a different --admin-user quietly created a SECOND account and
+    // left the user with two administrators, only one of which had a password
+    // they knew.
+    if (backend.capabilities.honorsAdminUser === false && args['--admin-user'] !== undefined) {
+      unsupported.push('--admin-user');
+    }
     if (unsupported.length) {
-      log.error(`The ${backend.name} backend cannot honor ${unsupported.join(', ')}.\nIts database and site URL are fixed by the container. Drop the flag, or use the host backend (omit --env).`);
+      // Say WHY per flag rather than one blanket sentence about the database:
+      // the reasons genuinely differ, and "fixed by the container" explains
+      // nothing about a username.
+      const why = {
+        '--admin-user': 'its first user is created by wp-env and is always `admin`',
+        '--wp-url': 'it serves on localhost:<port from .wp-env.json>',
+      };
+      const reasons = unsupported.map((f) => why[f] || 'its database is fixed at root/password/wordpress');
+      log.error(`The ${backend.name} backend cannot honor ${unsupported.join(', ')} — ${[...new Set(reasons)].join('; ')}.\nDrop the flag, or use the host backend (omit --env).`);
       process.exitCode = 1;
       return;
     }
@@ -158,7 +173,7 @@ export async function cli() {
       await core.destroy(args);
       break;
     case 'server':
-      await server.command('start', args);
+      await server.command(args._[1] || 'start', args);
       break;
     case 'lint':
       await lint.command('theme', args);

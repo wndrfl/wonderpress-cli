@@ -21,7 +21,7 @@ USAGE
 
 ENVIRONMENT
   init          Build a new environment: WordPress, the theme, and Static Kit
-  server        Start a local development server
+  server        Start (or \`server stop\`) the local development environment
   destroy       Tear the environment down, keeping the theme and its files
   lint          Run phpcs over the theme
   version       Print the installed version

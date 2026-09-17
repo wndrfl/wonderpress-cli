@@ -7,7 +7,13 @@ import * as env from './env/index.js';
  **/
 export async function command(subcommand, args) {
 	switch (subcommand) {
+		case 'stop':
+			await stop(args['--dir'] || null);
+			break;
+		// `wonderpress server` with no subcommand has always meant start, and
+		// people type it that way.
 		case 'start':
+		default:
 			await start(args['--dir'] || null);
 			break;
 	}
@@ -42,4 +48,28 @@ export async function start(dir) {
 	}
 
 	return true;
+}
+
+/**
+ * Stop the development environment.
+ *
+ * Both backends have always had a stop(), and nothing ever called it — so a
+ * wp-env environment could be started by the CLI and only stopped by reaching
+ * past it to `wp-env stop`. Backends differ in whether there is anything to do:
+ * the host server blocks in the foreground and is stopped with Ctrl-C, where a
+ * container backend has to be told.
+ *
+ * Distinct from `destroy`, and the difference is the data. Stopping frees the
+ * port and leaves the database intact; destroying removes it.
+ **/
+export async function stop(dir) {
+
+	dir = dir || process.cwd();
+	process.chdir(dir);
+
+	if (! await core.setCwdToEnvironmentRoot()) {
+		return false;
+	}
+
+	return await env.getCurrent().stop();
 }
