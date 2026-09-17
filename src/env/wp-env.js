@@ -131,9 +131,13 @@ function runWpEnv(bin, args, opts = {}) {
 			cwd: opts.cwd || process.cwd(),
 			encoding: 'utf8',
 			// `input` replaces the inherited stdin, which is how wp-env's own
-			// confirmation prompt gets answered without a human present.
+			// confirmation prompt gets answered without a human present. Its
+			// stderr is CAPTURED rather than inherited in that case: wp-env
+			// collapses every non-zero exit to 1, so the message is the only way
+			// to tell "already gone" from "could not be removed", and an
+			// inherited stream reaches the terminal without reaching us.
 			stdio: opts.input !== undefined
-				? ['pipe', 'pipe', 'inherit']
+				? ['pipe', 'pipe', 'pipe']
 				: (opts.silent === false ? ['ignore', 'pipe', 'inherit'] : ['ignore', 'pipe', 'pipe']),
 			input: opts.input,
 			maxBuffer: 32 * 1024 * 1024,
@@ -421,6 +425,22 @@ export function create() {
 			});
 
 			if (result.code !== 0) {
+
+				// An environment that was never started, or already destroyed, is
+				// the state this was asked to produce. Reporting failure meant a
+				// torn-down project could never finish being torn down — the
+				// config cleanup that follows was skipped, so it stayed pinned to
+				// a backend whose containers were already gone.
+				//
+				// Matched on the message because wp-env collapses every non-zero
+				// exit to 1, so the code cannot tell these apart. If the wording
+				// ever changes this falls back to reporting a failure, which is
+				// the safe direction to be wrong in.
+				if (/not initialized/i.test(`${result.stderr} ${result.stdout}`)) {
+					log.info('There was no running environment to destroy.');
+					return { ok: true, errors: [] };
+				}
+
 				return { ok: false, errors: [`wp-env could not destroy this environment.\n${result.stderr || result.stdout}`] };
 			}
 

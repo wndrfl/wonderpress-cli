@@ -98,6 +98,35 @@ export function write(root, patch) {
 }
 
 /**
+ * Drop a top-level key from an environment's config file.
+ *
+ * Explicit rather than writing `{ key: undefined }` and relying on
+ * JSON.stringify to omit it — that works, and it is exactly the kind of
+ * implicit behaviour that stops working when someone reaches for a different
+ * serializer.
+ **/
+export function remove(root, key) {
+
+	const existing = read(root);
+
+	if (existing.format === 'unparseable') {
+		log.warn(`Could not update ${existing.file} — it is not JSON, so it has been left alone.`);
+		return false;
+	}
+
+	if (!existing.file || !(key in existing.data)) {
+		return true;
+	}
+
+	const remaining = { ...existing.data };
+	delete remaining[key];
+
+	fs.writeFileSync(existing.file, JSON.stringify(remaining, null, 2) + '\n');
+
+	return true;
+}
+
+/**
  * The environment backend this project was built with, or null.
  **/
 export function getBackend(root) {

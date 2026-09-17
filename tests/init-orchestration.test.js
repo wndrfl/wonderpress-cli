@@ -220,3 +220,45 @@ test('`server` with no subcommand still starts, as it always has', async () => {
 		assert.ok(backend.calls.includes('start'));
 	});
 });
+
+// --- init must not re-namespace a project that already has one ---
+//
+// `init` is not only run on empty directories. It rebuilds, it repairs, and
+// after `destroy` it is how a project comes back — and it used to reset the
+// namespace to the default every time. Blocks created afterwards would land in
+// a different namespace than the blocks already on the client's pages.
+
+test('a rebuild keeps the namespace the project already uses', async () => {
+	const backend = fakeBackend();
+	await withFixture(backend, async (dir) => {
+		fs.writeFileSync(path.join(dir, '.wonderpressrc'), JSON.stringify({ namespace: 'acme' }));
+		process.chdir(dir);
+
+		await core.init(dir, { interactive: false, yes: true, wp: {}, db: {} });
+
+		const rc = JSON.parse(fs.readFileSync(path.join(dir, '.wonderpressrc'), 'utf8'));
+		assert.equal(rc.namespace, 'acme', 'the default must not overwrite a recorded namespace');
+	});
+});
+
+test('an explicit --namespace still wins, on a project that has none', async () => {
+	const backend = fakeBackend();
+	await withFixture(backend, async (dir) => {
+		process.chdir(dir);
+		await core.init(dir, { interactive: false, yes: true, namespace: 'acme', wp: {}, db: {} });
+
+		const rc = JSON.parse(fs.readFileSync(path.join(dir, '.wonderpressrc'), 'utf8'));
+		assert.equal(rc.namespace, 'acme');
+	});
+});
+
+test('a project with no namespace at all falls back to the default', async () => {
+	const backend = fakeBackend();
+	await withFixture(backend, async (dir) => {
+		process.chdir(dir);
+		await core.init(dir, { interactive: false, yes: true, wp: {}, db: {} });
+
+		const rc = JSON.parse(fs.readFileSync(path.join(dir, '.wonderpressrc'), 'utf8'));
+		assert.equal(rc.namespace, 'wonderpress');
+	});
+});
