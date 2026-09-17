@@ -154,3 +154,55 @@ the PHP partial stays the only source of markup.
 - **wonderpress-core is installed from a pinned git tag**, not a Composer
   package. `.wonderpressrc` records which version a project got. Upgrading means
   bumping the CLI.
+
+## Testing changes to the toolkit itself
+
+Two different jobs, and conflating them is how you end up publishing a release
+per bug fix.
+
+### Iterating on the CLI
+
+```bash
+cd wonderpress-cli && npm link
+```
+
+`wonderpress` anywhere now runs your working tree, uncommitted changes and all.
+Undo it with `npm rm -g @wndrfl/wonderpress-cli`, then reinstall the published
+one when you want to be a user again.
+
+### Iterating on wonderpress-core
+
+`init` installs core from a **pinned tag**, so a core change is invisible to a
+new project until someone tags it. That would make every experiment a release,
+so the source is overridable:
+
+```bash
+WONDERPRESS_CORE_REPO=../wonderpress-core WONDERPRESS_CORE_REF=my-branch wonderpress init --dir ~/tmp/probe --env wp-env
+```
+
+Either half works alone — a branch of the real repo, or a local checkout at its
+pinned tag. It warns every time, and records the ref it actually installed in
+`.wonderpressrc`, so a project built this way never claims to be running a
+released version.
+
+### Before publishing
+
+`npm link` tests your working tree, which is *not* what a user gets. The gap
+between them is real: 2.7.0 went out having been hand-tested green, because
+everything had been verified against a local checkout while npm carried
+something older.
+
+So check the artifact, not the tree:
+
+```bash
+cd wonderpress-cli && npm install -g "$(npm pack | tail -1)"
+```
+
+That installs exactly what would be published — `files` in package.json, and
+nothing that happens to be lying around your working directory.
+
+### Testing the CLI's own behaviour
+
+`wonderpress-cli/sandbox/` builds a throwaway environment against the **local**
+checkout. Good for the development loop; useless for verifying a release, for
+the reason above.
