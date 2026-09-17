@@ -21,7 +21,7 @@ import pkg from '../package.json' with { type: 'json' };
  * version contract between the two repos until core becomes a real Composer
  * package (ROADMAP Phase 1).
  */
-export const CORE_VERSION = 'v1.2.0';
+export const CORE_VERSION = 'v1.3.0';
 
 /**
  * Accept and route a command.
