@@ -37,7 +37,15 @@ export async function configureWordPress(config) {
 
 	if (await this.hasConfig()) {
 		log.info(`A wp-config.php already exists. Skipping WordPress configuration...`);
-		return true;
+
+		// Skipping the CONFIG is not the same as skipping the DATABASE. The two
+		// are independent facts, and `wonderpress destroy` produces exactly the
+		// state where they disagree: it drops the database and leaves the config
+		// behind, because the config may carry a project's own constants and is
+		// not ours to delete. Returning true here left that project unrebuildable
+		// — `init` reported success at this step, then failed to install against
+		// a database nobody had recreated.
+		return await ensureDatabaseFromConfig();
 	}
 
 	// Resolve DB credentials and open a connection.
@@ -231,6 +239,63 @@ export async function getAllThemes() {
 export async function hasConfig() {
 	const result = sh.exec('wp config path', { silent: true });
 	return result.code === 0;
+}
+
+/**
+ * Make sure the database an existing wp-config.php names actually exists.
+ *
+ * Credentials are read back OUT of the config rather than taken from flags or
+ * prompts. On a rebuild the answer is already written down, and asking again
+ * invites someone to type a different database name than the config points at
+ * — which would "succeed" and then fail to install, the same class of problem
+ * this is here to fix.
+ **/
+export async function ensureDatabaseFromConfig() {
+
+	const read = (key) => {
+		const result = sh.exec(`wp config get ${key}`, { silent: true });
+		return result.code === 0 ? result.stdout.trim() : null;
+	};
+
+	const name = read('DB_NAME');
+
+	if (!name) {
+		log.warn('Could not read DB_NAME out of wp-config.php, so the database could not be checked.');
+		return true;
+	}
+
+	const mysql2 = (await import('mysql2/promise')).default;
+	const sqlString = (await import('sqlstring')).default;
+
+	let connection;
+	try {
+		connection = await mysql2.createConnection({
+			host: read('DB_HOST') || 'localhost',
+			user: read('DB_USER') || 'root',
+			password: read('DB_PASSWORD') || '',
+		});
+	} catch (err) {
+		log.error(`Could not reach the database server to check for \`${name}\`: ${err.message}`);
+		return false;
+	}
+
+	try {
+		const [rows] = await connection.query('SHOW DATABASES LIKE ?', [name]);
+
+		if (rows.length) {
+			return true;
+		}
+
+		log.info(`The database \`${name}\` is named in wp-config.php but does not exist. Creating it...`);
+		await connection.execute('CREATE DATABASE ' + sqlString.escapeId(name));
+		log.success('The database `' + name + '` was created!');
+		return true;
+	} catch (err) {
+		log.error(`Could not create the database \`${name}\`: ${err.message}`);
+		return false;
+	} finally {
+		await connection.end();
+	}
 }
 
 /**
