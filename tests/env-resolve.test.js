@@ -143,3 +143,13 @@ test('the host backend never echoes a password, and uses the requested username'
 	assert.equal(login.password, null);
 	assert.match(login.note, /you set/);
 });
+
+// --- flags a backend cannot honor ---
+
+test('wp-env declares that it cannot honor a chosen admin username', () => {
+	assert.equal(wpEnv.create().capabilities.honorsAdminUser, false);
+});
+
+test('the host backend can, because `wp core install` names the first user', () => {
+	assert.equal(hostEnv.create().capabilities.honorsAdminUser, true);
+});
