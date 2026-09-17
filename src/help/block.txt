@@ -1,0 +1,33 @@
+wonderpress block — expose a partial in the WordPress editor
+
+A block is a thin Gutenberg wrapper around a partial. Its render.php delegates
+straight back to the partial, so there is only ever one source of markup.
+
+  A partial is fine on its own.
+  A block cannot exist without its partial.
+
+So there is no "create a block from scratch" — you either create the partial
+and its block together, or add a block to a partial you already have:
+
+  both at once        wonderpress partial create --name Testimonial --block
+  add to an existing  wonderpress block create Testimonial
+
+Both produce identical output; use whichever matches what already exists.
+
+COMMANDS
+  block create <Name>      Add a block wrapper to an existing partial
+  block list               List the partials currently exposed as blocks
+  block remove <Name>      Remove the wrapper. The partial survives — this is
+                           the safe way to take something out of the editor.
+
+OPTIONS
+  --theme <name>           Target a theme by name, skipping the active lookup
+
+EXAMPLES
+  wonderpress block create Testimonial
+  wonderpress block list
+  wonderpress block remove Testimonial
+
+Blocks appear in the editor under the "Wonderpress" category, registered by
+wonderpress-core. If a new block is missing there, check that the mu-plugin is
+installed in the environment.
