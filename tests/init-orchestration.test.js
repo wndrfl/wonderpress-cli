@@ -139,3 +139,17 @@ test('a failing preflight exits non-zero', async () => {
 		assert.equal(process.exitCode, 1);
 	});
 });
+
+// --- the core version pin ---
+//
+// The whole value of pinning is that it cannot move. A floated ref would put
+// the repos back where they started — two projects scaffolded a fortnight apart
+// silently running different code — while still looking pinned.
+
+test('the core version is a pinned tag, never a moving ref', () => {
+	assert.match(core.CORE_VERSION, /^v\d+\.\d+\.\d+$/, 'must be an exact vX.Y.Z tag');
+
+	for (const floating of ['master', 'main', 'HEAD', 'latest', 'trunk', 'develop']) {
+		assert.notEqual(core.CORE_VERSION, floating, `"${floating}" is a moving ref, not a version`);
+	}
+});

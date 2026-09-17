@@ -15,6 +15,15 @@ import { isValidNamespace, LEGACY_NAMESPACE } from './validate.js';
 import pkg from '../package.json' with { type: 'json' };
 
 /**
+ * The wonderpress-core tag this CLI scaffolds with.
+ *
+ * Bumped deliberately alongside a core release, never floated. The pair is the
+ * version contract between the two repos until core becomes a real Composer
+ * package (ROADMAP Phase 1).
+ */
+export const CORE_VERSION = 'v1.2.0';
+
+/**
  * Accept and route a command.
  **/
 export async function command(subcommand, args) {
@@ -165,7 +174,25 @@ export async function init(dir, initConfig) {
   }
 
   // Install the Wonderpress Core as an MU (must use) plugin
-  await wordpress.installMuPlugin('https://github.com/wndrfl/wonderpress-core.git');
+  // Pinned, not tracked. wonderpress-core is central IP and a moving branch
+  // would mean two projects scaffolded a fortnight apart silently get different
+  // code — with no way to say which one a client site runs, or to upgrade it on
+  // purpose. The version is recorded below so the site can answer that question
+  // without anyone reading its git history.
+  const coreInstalled = await wordpress.installMuPlugin(
+    'https://github.com/wndrfl/wonderpress-core.git',
+    CORE_VERSION
+  );
+
+  if (!coreInstalled) {
+    return false;
+  }
+
+  // Recorded only now, unlike the backend above: the backend is worth knowing
+  // even when a provision failed halfway, but a core version is a claim about
+  // what is on disk, and claiming one we failed to install would be worse than
+  // recording nothing.
+  config.write(process.cwd(), { core: CORE_VERSION });
 
   // Install Composer
   await composer.installComposer();

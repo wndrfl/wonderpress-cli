@@ -304,19 +304,34 @@ export async function installPlugin(url, activate) {
 }
 
 /**
- * Install an MU (Must Use) Plugin
+ * Install an MU (Must Use) Plugin.
+ *
+ * `ref` pins what gets installed. Cloning a moving branch means two projects
+ * scaffolded a fortnight apart silently get different code, and no way to say
+ * which one a client site is running or to upgrade it deliberately — so the
+ * caller names a tag, and `init` records it (see core.js).
+ *
+ * A ref that does not exist fails loudly rather than falling back to the
+ * default branch: silently installing something other than what was asked for
+ * is the failure this exists to prevent.
  **/
-export async function installMuPlugin(url) {
+export async function installMuPlugin(url, ref = null) {
 
-	log.info(`Installing MU Plugin: ${url}...`);
+	log.info(`Installing MU Plugin: ${url}${ref ? ` @ ${ref}` : ''}...`);
 
 	await fs.ensureDirSync(pathToMuPluginsDir);
 
 	const tmpDir = '.wonderpress-tmp';
 	await fs.emptyDirSync(tmpDir);
 
-	const cmd = `git clone ${url} ${tmpDir} --depth=1 --progress --verbose`;
-	sh.exec(cmd);
+	const refArg = ref ? ` --branch ${ref}` : '';
+	const cmd = `git clone ${url}${refArg} ${tmpDir} --depth=1 --progress --verbose`;
+	const cloned = sh.exec(cmd);
+
+	if (cloned.code !== 0) {
+		log.error(`Could not install ${url}${ref ? ` at ${ref}` : ''}. Refusing to continue with a different version than the one requested.`);
+		return false;
+	}
 
 	// Check to see if the plugin has a .wonderpressrc
 	const saveCwd = process.cwd();
@@ -341,6 +356,8 @@ export async function installMuPlugin(url) {
 		}
 	});
 	await fs.removeSync(tmpDir);
+
+	return true;
 }
 
 /**
