@@ -130,7 +130,12 @@ function runWpEnv(bin, args, opts = {}) {
 		const stdout = execFileSync(bin, args, {
 			cwd: opts.cwd || process.cwd(),
 			encoding: 'utf8',
-			stdio: opts.silent === false ? ['ignore', 'pipe', 'inherit'] : ['ignore', 'pipe', 'pipe'],
+			// `input` replaces the inherited stdin, which is how wp-env's own
+			// confirmation prompt gets answered without a human present.
+			stdio: opts.input !== undefined
+				? ['pipe', 'pipe', 'inherit']
+				: (opts.silent === false ? ['ignore', 'pipe', 'inherit'] : ['ignore', 'pipe', 'pipe']),
+			input: opts.input,
 			maxBuffer: 32 * 1024 * 1024,
 		});
 		return { code: 0, stdout: stdout || '', stderr: '', toString() { return stdout || ''; } };
@@ -362,6 +367,35 @@ export function create() {
 			log.info('Stopping the Docker environment...');
 			runWpEnv(bin(), ['stop'], { cwd: root(), silent: false });
 			return true;
+		},
+
+		/**
+		 * Remove the containers AND the volumes — the database goes with them.
+		 *
+		 * Must happen while the project directory still exists. wp-env derives
+		 * an environment's identity from the path it was started in, so once the
+		 * directory is gone there is nothing left to name the containers and
+		 * volumes by, and they persist invisibly forever. That is why
+		 * --clean-slate calls this before it wipes anything.
+		 *
+		 * `--scripts=false` because a destroyed environment has no scripts worth
+		 * running, and wp-env's own confirmation is answered here: the caller has
+		 * already asked.
+		 **/
+		async destroy() {
+			log.info('Destroying the Docker environment (containers and database)...');
+
+			const result = runWpEnv(bin(), ['destroy', '--scripts=false'], {
+				cwd: root(),
+				silent: false,
+				input: 'y\n',
+			});
+
+			if (result.code !== 0) {
+				return { ok: false, errors: [`wp-env could not destroy this environment.\n${result.stderr || result.stdout}`] };
+			}
+
+			return { ok: true, errors: [] };
 		},
 	};
 }

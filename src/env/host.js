@@ -125,5 +125,26 @@ export function create() {
 			log.info('The host development server runs in the foreground — stop it with Ctrl-C.');
 			return true;
 		},
+
+		/**
+		 * Drop the database. The files are the caller's to remove.
+		 *
+		 * The host backend owns nothing outside MySQL — no containers, no
+		 * volumes — so this is the whole of its teardown. It is also the only
+		 * part a `rm -rf` would leave behind.
+		 **/
+		async destroy() {
+			log.info('Dropping the database...');
+
+			const result = sh.exec('wp db drop --yes', { silent: true });
+
+			if (result.code !== 0) {
+				// A database that was never created, or already dropped, is the
+				// state we wanted anyway.
+				log.warn(`The database could not be dropped — it may already be gone.\n${(result.stderr || '').trim()}`);
+			}
+
+			return { ok: true, errors: [] };
+		},
 	};
 }

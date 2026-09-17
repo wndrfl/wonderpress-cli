@@ -88,6 +88,18 @@ export async function init(dir, initConfig) {
     }
 
     if (doWipe) {
+      // Tear the environment down BEFORE deleting the directory it lives in.
+      // wp-env derives an environment's identity from the path it was started
+      // in, so a directory removed first leaves its containers and volumes with
+      // nothing to name them by — running, holding the port, and invisible to
+      // every later `wp-env destroy`. Deleting the files is the easy half.
+      if (fs.existsSync(targetDir)) {
+        const saveCwd = process.cwd();
+        process.chdir(targetDir);
+        await teardown(backend, initConfig);
+        process.chdir(saveCwd);
+      }
+
       log.warn(`Clearing the entire directory (clean slate!)`);
       await sh.exec(`rm -rf ${targetDir}/*`);
       await sh.exec(`rm -rf ${targetDir}/.*`);
@@ -291,6 +303,65 @@ function reportWhereTheSiteIs(backend, initConfig) {
     ? `  Serving   already — this backend keeps running in the background`
     : `  Serving   not yet — run \`wonderpress server\``);
   log.raw('');
+}
+
+/**
+ * Tear an environment's services and data down, leaving the files alone.
+ *
+ * Backends differ in what they own — wp-env holds containers and volumes, the
+ * host backend holds a database — so each answers for itself. A backend with
+ * nothing to tear down is not an error.
+ **/
+async function teardown(backend, initConfig) {
+
+  if (typeof backend.destroy !== 'function') {
+    log.info(`The ${backend.name} environment has nothing to tear down.`);
+    return true;
+  }
+
+  return reportBackendStep(await backend.destroy(initConfig));
+}
+
+/**
+ * `wonderpress destroy` — remove the environment, keep the code.
+ *
+ * Deliberately does NOT delete files. The theme, the partials and the manifests
+ * are the work; the database and the containers are the scaffolding around it.
+ * Conflating the two is how someone loses an afternoon to a command they
+ * expected to free a port.
+ **/
+export async function destroy(args = {}) {
+
+  if (! await setCwdToEnvironmentRoot()) {
+    return false;
+  }
+
+  const backend = env.getCurrent();
+  const root = process.cwd();
+
+  if (!args['--yes']) {
+    const answer = await inquirer.prompt([
+      {
+        type: 'confirm',
+        name: 'confirm',
+        message: `Tear down the ${backend.name} environment in \`${root}\`? The database will be destroyed. Your theme and its files are left alone.`,
+        default: false,
+      }
+    ]);
+
+    if (answer.confirm !== true) {
+      log.success('Left alone.');
+      return true;
+    }
+  }
+
+  const ok = await teardown(backend, {});
+
+  if (ok) {
+    log.success('The environment is gone. Rebuild it with `wonderpress init`.');
+  }
+
+  return ok;
 }
 
 /**

@@ -154,6 +154,9 @@ export async function cli() {
     case 'init':
       await core.command('init', args);
       break;
+    case 'destroy':
+      await core.destroy(args);
+      break;
     case 'server':
       await server.command('start', args);
       break;
