@@ -157,8 +157,35 @@ the PHP partial stays the only source of markup.
 
 ## Testing changes to the toolkit itself
 
-Two different jobs, and conflating them is how you end up publishing a release
-per bug fix.
+Four steps, and each one catches a class of problem the others cannot. Skipping
+the third is how 2.7.0 shipped broken.
+
+| | Step | Catches |
+|---|---|---|
+| 1 | `npm link`, iterate | logic and UX, fast |
+| 2 | override the core ref, if core changed | core and CLI working together |
+| 3 | `npm install -g "$(npm pack \| tail -1)"` | **packaging** — what a user actually receives |
+| 4 | publish, reinstall, use it for real | everything else |
+
+Step 3 is the one people skip, because steps 1 and 2 were green and it feels
+redundant. It is not testing your code — it is testing the *parcel*. `files` in
+package.json, a path that only resolved because of where you were standing, a
+fix that never left your working tree.
+
+Step 4 is not ceremony either. Almost everything found in this toolkit's first
+week of real use — blocks erroring the moment they were inserted, `init` never
+saying where the site was, no way to tear an environment down — was invisible to
+all three steps above it, because nothing was *broken*. The tool simply did not
+say something it knew.
+
+**Before trusting any of it**, check what you are actually running:
+
+```bash
+which wonderpress && wonderpress version && npm ls -g @wndrfl/wonderpress-cli
+```
+
+A linked install shows an `->` and a path. Believing you are testing a release
+while still linked is the quiet version of every problem on this page.
 
 ### Iterating on the CLI
 
