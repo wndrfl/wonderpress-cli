@@ -31,6 +31,18 @@ export function create() {
 			return /^https?:\/\//.test(url) ? url : `http://${url}`;
 		},
 
+		/**
+		 * How to log in.
+		 *
+		 * The host backend prompts for these during install, so the password is
+		 * the user's own — theirs to remember, and not ours to echo back into a
+		 * scrollback buffer.
+		 **/
+		adminLogin(initConfig) {
+			const wp = (initConfig && initConfig.wp) || {};
+			return { user: wp.adminUser || 'admin', password: null, note: 'the password you set during install' };
+		},
+
 		capabilities: {
 			// --db-host / --db-user / --db-password / --db-name are meaningful.
 			honorsDbFlags: true,

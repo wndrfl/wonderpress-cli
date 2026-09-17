@@ -117,3 +117,29 @@ test('the host backend reports the url it was given, with a scheme', () => {
 	assert.equal(host.siteUrl({ wp: { url: 'acme.localhost:8080' } }), 'http://acme.localhost:8080');
 	assert.equal(host.siteUrl({ wp: { url: 'https://acme.test' } }), 'https://acme.test', 'an explicit scheme is left alone');
 });
+
+// --- who the admin is ---
+//
+// On wp-env, `wp-env start` installs WordPress and creates the first user, so
+// WonderPress never prompts for one and nothing the caller passed describes it.
+// Someone who just ran init has no way to guess the password.
+
+test('wp-env reports its own fixed default login', () => {
+	const login = wpEnv.create().adminLogin({ wp: {} });
+	assert.equal(login.user, 'admin');
+	assert.equal(login.password, 'password', "wp-env's documented default, which the user did not choose");
+	assert.match(login.note, /default/);
+});
+
+test('wp-env stops repeating the password once the user supplies one', () => {
+	const login = wpEnv.create().adminLogin({ wp: { adminPassword: 'hunter2' } });
+	assert.equal(login.password, null, 'a password the user chose is not ours to echo');
+	assert.equal(login.note, null);
+});
+
+test('the host backend never echoes a password, and uses the requested username', () => {
+	const login = hostEnv.create().adminLogin({ wp: { adminUser: 'johnnie', adminPassword: 'hunter2' } });
+	assert.equal(login.user, 'johnnie');
+	assert.equal(login.password, null);
+	assert.match(login.note, /you set/);
+});
