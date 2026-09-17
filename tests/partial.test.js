@@ -295,3 +295,43 @@ test('namespace: an emitted block never inherits the temp/parent directory name'
 		fs.removeSync(dir);
 	}
 });
+
+test('a block tolerates a partial that cannot render yet', async () => {
+	// Found by clicking, not by a test: a partial throws when a required
+	// property is missing, and a freshly inserted block has no values at all.
+	// Left to throw, the editor shows "Error loading block" before the author
+	// can type anything — so a required property made a block unusable.
+	const dir = tmpTheme();
+	try {
+		await writePartial(
+			paramsFromFlags({ '--name': 'Pull_Quote', '--block': true, '--prop': ['quote:string:required'] }),
+			dir
+		);
+		const render = fs.readFileSync(path.join(dir, 'blocks/pull-quote/render.php'), 'utf8');
+
+		assert.match(render, /try \{/, 'the render must not let the partial throw out of it');
+		assert.match(render, /catch \( \\Throwable \$e \)/);
+
+		// The two halves of the recovery, which differ on purpose.
+		assert.match(render, /REST_REQUEST/, 'the editor is told what is missing');
+		assert.match(render, /\$e->getMessage\(\)/);
+		assert.match(render, /return;/, 'the front end renders nothing rather than fataling the page');
+	} finally {
+		fs.removeSync(dir);
+	}
+});
+
+test('the render docblock names the project namespace, not the tool', async () => {
+	const dir = tmpTheme();
+	try {
+		await writePartial(
+			{ ...paramsFromFlags({ '--name': 'Hero', '--block': true }), namespace: 'acme' },
+			dir
+		);
+		const render = fs.readFileSync(path.join(dir, 'blocks/hero/render.php'), 'utf8');
+		assert.match(render, /acme\/hero/);
+		assert.doesNotMatch(render, /wonderpress\/hero/, 'stale since blocks became project-namespaced');
+	} finally {
+		fs.removeSync(dir);
+	}
+});

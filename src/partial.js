@@ -487,6 +487,7 @@ export function writeBlock(params, themeDir) {
 	const renderTemplate = fs.readFileSync(new URL('./templates/block.render.mustache', import.meta.url), 'utf8');
 	const renderOutput = mustache.render(renderTemplate, {
 		slug,
+		namespace,
 		class_name: params.class_name,
 	});
 	fs.writeFileSync(`${blockDir}/render.php`, renderOutput);
