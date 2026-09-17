@@ -291,11 +291,20 @@ function reportWhereTheSiteIs(backend, initConfig) {
     return;
   }
 
-  const adminUser = (initConfig && initConfig.wp && initConfig.wp.adminUser) || 'admin';
+  // Asked of the backend rather than assumed from the flags: on wp-env the
+  // first user is created by `wp-env start`, so nothing the caller passed
+  // describes it.
+  const login = typeof backend.adminLogin === 'function'
+    ? backend.adminLogin(initConfig)
+    : { user: (initConfig && initConfig.wp && initConfig.wp.adminUser) || 'admin', password: null, note: null };
+
+  const credentials = [login.user, login.password].filter(Boolean).join(' / ');
+  const note = login.note ? `  (${login.note})` : '';
 
   log.raw('');
   log.raw(`  Site      ${url}`);
-  log.raw(`  Admin     ${url}/wp-admin  (${adminUser})`);
+  log.raw(`  Admin     ${url}/wp-admin`);
+  log.raw(`  Login     ${credentials}${note}`);
 
   // The two backends differ on whether anything still has to be started, and
   // getting that wrong sends someone to a dead port.

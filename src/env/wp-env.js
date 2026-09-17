@@ -172,6 +172,27 @@ export function create() {
 			return `http://localhost:${readPort(root())}`;
 		},
 
+		/**
+		 * How to log in.
+		 *
+		 * wp-env installs WordPress itself during `wp-env start`, so it — not
+		 * WonderPress — creates the first user, and never prompts for it. The
+		 * credentials are wp-env's fixed, documented defaults: admin/password.
+		 *
+		 * Printing that password is not leaking a secret, it is quoting a
+		 * published default the user did not choose and has no way to guess. If
+		 * they DID supply one, it stops being ours to repeat.
+		 **/
+		adminLogin(initConfig) {
+			const wp = (initConfig && initConfig.wp) || {};
+
+			return {
+				user: 'admin',
+				password: wp.adminPassword ? null : 'password',
+				note: wp.adminPassword ? null : "wp-env's default",
+			};
+		},
+
 		capabilities: {
 			// wp-env's MySQL is fixed at root/password/wordpress.
 			honorsDbFlags: false,
