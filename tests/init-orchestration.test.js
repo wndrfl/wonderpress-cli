@@ -153,3 +153,46 @@ test('the core version is a pinned tag, never a moving ref', () => {
 		assert.notEqual(core.CORE_VERSION, floating, `"${floating}" is a moving ref, not a version`);
 	}
 });
+
+// --- teardown ---
+//
+// wp-env derives an environment's identity from the path it was started in. A
+// directory removed before its containers leaves them running, holding the
+// port, and unnameable by any later `wp-env destroy` — so --clean-slate must
+// tear down FIRST. There were already five orphaned volumes on the machine
+// this was found on.
+
+test('--clean-slate tears the environment down before deleting its directory', async () => {
+	const backend = fakeBackend();
+	backend.destroy = async function () { backend.calls.push('destroy'); return { ok: true, errors: [] }; };
+
+	const parent = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'wp-wipe-')));
+	const target = path.join(parent, 'env');
+	fs.ensureDirSync(target);
+	fs.writeFileSync(path.join(target, '.wonderpressrc'), '{}');
+
+	const cwd = process.cwd();
+	const exitCode = process.exitCode;
+	env.activate(backend);
+	try {
+		await core.init(target, { interactive: false, yes: true, cleanSlate: true, wp: {}, db: {} });
+
+		const order = backend.calls.filter((c) => c === 'destroy' || c === 'provision');
+		assert.equal(order[0], 'destroy', 'teardown must come before anything rebuilds');
+	} finally {
+		env.reset();
+		process.chdir(cwd);
+		process.exitCode = exitCode;
+		fs.removeSync(parent);
+	}
+});
+
+test('a backend with nothing to tear down is not an error', async () => {
+	const backend = fakeBackend();
+	delete backend.destroy;
+
+	await withFixture(backend, async (dir) => {
+		process.chdir(dir);
+		assert.equal(await core.destroy({ '--yes': true }), true);
+	});
+});
