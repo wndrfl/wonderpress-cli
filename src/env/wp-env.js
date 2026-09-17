@@ -154,6 +154,19 @@ export function create() {
 
 		name: 'wp-env',
 
+		/**
+		 * Where the site is, once provisioned.
+		 *
+		 * Read from the config actually written rather than recomputed from the
+		 * caller's flags, so it reports where the site IS and not where it was
+		 * asked to be. WP_SITEURL's port is force-replaced by wp-env and
+		 * *.localhost does not resolve everywhere, so the answer is always
+		 * http://localhost:<port>.
+		 **/
+		siteUrl() {
+			return `http://localhost:${readPort(root())}`;
+		},
+
 		capabilities: {
 			// wp-env's MySQL is fixed at root/password/wordpress.
 			honorsDbFlags: false,

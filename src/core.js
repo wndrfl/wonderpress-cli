@@ -254,7 +254,43 @@ export async function init(dir, initConfig) {
 
   log.success(`The Wonderpress environment has been initialized!`);
 
+  reportWhereTheSiteIs(backend, initConfig);
+
   return true;
+}
+
+/**
+ * Say where the site is, and how to reach it.
+ *
+ * `init` used to end on "initialized!" and nothing else, which left the one
+ * question everybody actually has — what do I open? — unanswered. It mattered
+ * most on the backend where there is no next command to infer it from: the host
+ * backend at least hands you `wonderpress server`, while wp-env finishes with
+ * the site already up at a port only its config knows.
+ *
+ * Deliberately no password. The admin name is a convenience; echoing a
+ * credential into a scrollback buffer is not this command's business.
+ **/
+function reportWhereTheSiteIs(backend, initConfig) {
+
+  const url = typeof backend.siteUrl === 'function' ? backend.siteUrl(initConfig) : null;
+
+  if (!url) {
+    return;
+  }
+
+  const adminUser = (initConfig && initConfig.wp && initConfig.wp.adminUser) || 'admin';
+
+  log.raw('');
+  log.raw(`  Site      ${url}`);
+  log.raw(`  Admin     ${url}/wp-admin  (${adminUser})`);
+
+  // The two backends differ on whether anything still has to be started, and
+  // getting that wrong sends someone to a dead port.
+  log.raw(backend.capabilities && backend.capabilities.detachedServer
+    ? `  Serving   already — this backend keeps running in the background`
+    : `  Serving   not yet — run \`wonderpress server\``);
+  log.raw('');
 }
 
 /**
