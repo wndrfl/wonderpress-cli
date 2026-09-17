@@ -1,6 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'fs-extra';
+import os from 'node:os';
+import path from 'node:path';
 import { resolveBackendName } from '../src/env/index.js';
+import * as wpEnv from '../src/env/wp-env.js';
+import * as hostEnv from '../src/env/host.js';
 
 /**
  * Backend resolution precedence. Pure, so the whole table is cheap to pin.
@@ -74,4 +79,41 @@ test('an unrecognised recorded value falls back instead of failing', () => {
 	const r = resolveBackendName({ persisted: 'future-backend' });
 	assert.equal(r.name, 'host');
 	assert.equal(r.unknown, null);
+});
+
+// --- where the site is ---
+//
+// `init` used to end on "initialized!" and leave the one question everybody has
+// unanswered. It bit hardest on wp-env, which finishes with the site already up
+// at a port only its own config knows.
+
+test('wp-env reports the port its config actually carries', () => {
+	const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'wp-url-'));
+	const cwd = process.cwd();
+	try {
+		fs.writeFileSync(path.join(dir, '.wp-env.json'), JSON.stringify({ port: 9123 }));
+		process.chdir(dir);
+		assert.equal(wpEnv.create().siteUrl(), 'http://localhost:9123');
+	} finally {
+		process.chdir(cwd);
+		fs.removeSync(dir);
+	}
+});
+
+test('wp-env falls back to the default port when there is no config yet', () => {
+	const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'wp-url-'));
+	const cwd = process.cwd();
+	try {
+		process.chdir(dir);
+		assert.equal(wpEnv.create().siteUrl(), 'http://localhost:8888');
+	} finally {
+		process.chdir(cwd);
+		fs.removeSync(dir);
+	}
+});
+
+test('the host backend reports the url it was given, with a scheme', () => {
+	const host = hostEnv.create();
+	assert.equal(host.siteUrl({ wp: { url: 'acme.localhost:8080' } }), 'http://acme.localhost:8080');
+	assert.equal(host.siteUrl({ wp: { url: 'https://acme.test' } }), 'https://acme.test', 'an explicit scheme is left alone');
 });

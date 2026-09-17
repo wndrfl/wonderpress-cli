@@ -20,6 +20,17 @@ export function create() {
 
 		name: 'host',
 
+		/**
+		 * Where the site will be, once `wonderpress server` is running.
+		 *
+		 * The host backend honors the hostname it was given, so this is the
+		 * --wp-url as supplied, with a scheme if it lacked one.
+		 **/
+		siteUrl(initConfig) {
+			const url = (initConfig && initConfig.wp && initConfig.wp.url) || 'localhost:8080';
+			return /^https?:\/\//.test(url) ? url : `http://${url}`;
+		},
+
 		capabilities: {
 			// --db-host / --db-user / --db-password / --db-name are meaningful.
 			honorsDbFlags: true,
