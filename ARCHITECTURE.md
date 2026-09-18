@@ -39,6 +39,9 @@ enforced by the `node_modules` rule in the shipped
 | Component **behavior classes** (opt-in JS — `--js`) | **Static Kit** | `static/` (created via delegation) |
 | `src/` → `dist/` asset compilation | **Static Kit** | `static/src`, `static/dist` |
 | Block registration, partial base classes, `wonder_*` helpers | **wonderpress-core** | `wp-content/themes/wonderpress/vendor/wndrfl/wonderpress-core` |
+| Static Kit asset convention (`static/dist/{css,js}/{body_id}`) | **wonderpress-core** | `.../vendor/.../inc/assets.php` |
+| Baseline theme supports (html5, align-wide, title-tag…) | **wonderpress-core** | `.../vendor/.../inc/setup.php` |
+| Menu locations, image sizes, text domain, `style.css` | **Theme** | `.../themes/wonderpress/inc/setup.php`, `inc/assets.php` |
 
 ### wonderpress-core is a dependency of the theme
 
@@ -65,6 +68,30 @@ Composer on the server — while `composer update` stays the upgrade lever. The
 `.gitignore` in wonderpress-development-environment carries a negation for the
 theme's lock file, because the root `composer.lock` rule is unanchored and would
 otherwise swallow it.
+
+#### What belongs in the package
+
+The test is whether a project edits it. Plumbing that shipped identically in
+every project — the Static Kit bundle convention, the baseline theme supports —
+is in the package, so changing the convention is a `composer update` rather than
+an edit to every site that ever shipped. The Vite migration in ROADMAP Phase 0
+is exactly that case.
+
+Design surface stays in the theme: templates, `theme.json`, the partial view
+files, `style.css`, and the per-project decisions inside `inc/setup.php`
+(navigation locations, image sizes, text domain).
+
+**Anything moved into the package ships with the filter that lets a project opt
+out.** `wonderpress_asset_candidates` replaces the bundle paths,
+`wonderpress_theme_supports` declines or adds a support,
+`wonderpress_disable_emojis` and `wonderpress_dequeue_block_css` toggle their
+behaviours. Without the filter, moving something in trades upgradability for
+the ability to change it at all, which is not a trade worth making.
+
+`style.css` is the deliberate exception: it is the theme's own file, it carries
+the accessibility baseline, and it is the one stylesheet that should still load
+when the package is absent — so the theme enqueues it itself, at priority 5 so
+it precedes the compiled bundle in the cascade.
 
 The version constraint lives in the theme's `composer.json` and nowhere else.
 The CLI names the package (`core.CORE_PACKAGE`) and deliberately does not
