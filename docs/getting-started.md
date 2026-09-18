@@ -173,9 +173,23 @@ composer update wndrfl/wonderpress-core
 Commit the resulting `composer.lock` and `vendor/` changes. Nothing needs to be
 installed into `wp-content/mu-plugins`, and nothing needs a CLI bump.
 
-Sites scaffolded before 2.0.0 carry core in `wp-content/mu-plugins/` instead.
-Those keep working — core stands down when it detects that a copy has already
-booted, so an mu-plugin install wins over the theme's until you delete it.
+### Upgrading a site that predates 2.0.0
+
+Sites scaffolded before 2.0.0 carry core in `wp-content/mu-plugins/`. WordPress
+loads mu-plugins long before any theme, so on those sites the old copy always
+wins — the theme's newer copy stands down, because by then the old one has
+declared its functions and PHP cannot redeclare them.
+
+That matters more than it sounds. The 2.0.0 theme no longer carries the asset
+pipeline or the baseline theme supports itself; it expects the package to
+provide them. An old copy winning therefore means no compiled CSS or JS and no
+supports — a site that breaks quietly, in a place nobody would think to look.
+
+So core detects it and says so: when the copy that won is older than the one
+that stood down, an admin notice names both versions and the path to delete.
+
+**To migrate a site, delete `wp-content/mu-plugins/wonderpress-core*`.** There
+is nothing to move — the theme already carries its own copy in `vendor/`.
 
 ## Testing changes to the toolkit itself
 
