@@ -113,7 +113,9 @@ Starts a web server to run WordPress locally. (uses [WP CLI](https://developer.w
 
 #### `wonderpress template create`
 
-Create a Wonderpress custom page template.
+Create a Wonderpress custom page template, a matching `.wonderpress/templates/*.json`
+manifest (`schemaVersion` 1), and Static Kit page assets. Optional `--lock` and
+repeatable `--section id:partial` seed composition.
 
 ## [Architecture](#architecture)
 

@@ -6,6 +6,9 @@ import {
 	isValidPropType,
 	parsePropFlag,
 	parseSubFlag,
+	parseSectionFlag,
+	buildDefaultTemplateManifest,
+	validateTemplateManifest,
 	phpFormatForType,
 	normalizeProperty,
 	classNameToFileSlug,
@@ -13,6 +16,7 @@ import {
 	isSafeSlug,
 	resolveWithin,
 	PROP_TYPES,
+	TEMPLATE_MANIFEST_SCHEMA_VERSION,
 } from '../src/validate.js';
 
 test('isValidClassName accepts WordPress snake-case, rejects the rest', () => {
@@ -105,6 +109,48 @@ test('isSafeSlug accepts only what a path may be built from', () => {
 	for (const slug of ['', '../foo', 'a/b', '.', 'Hero', 'hero.json', 'hero_x', null, undefined]) {
 		assert.ok(!isSafeSlug(slug), String(slug));
 	}
+});
+
+test('buildDefaultTemplateManifest includes schemaVersion and template filename', () => {
+	const data = buildDefaultTemplateManifest('template-landing.php', {
+		lock: 'all',
+		sections: [{ id: 'hero-main', partial: 'landing-hero' }],
+	});
+	assert.equal(data.schemaVersion, TEMPLATE_MANIFEST_SCHEMA_VERSION);
+	assert.equal(data.template, 'template-landing.php');
+	assert.equal(data.composition.length, 1);
+	assert.equal(data.editor.native.blockEditor, false);
+});
+
+test('validateTemplateManifest rejects bad schemaVersion and unknown partials', () => {
+	const good = validateTemplateManifest(
+		buildDefaultTemplateManifest('template-landing.php', {
+			sections: [{ id: 'hero-main', partial: 'landing-hero' }],
+		}),
+		{ partialSlugs: ['landing-hero'] }
+	);
+	assert.equal(good.ok, true);
+
+	const badVersion = validateTemplateManifest({ schemaVersion: 99, template: 'x.php' }, {});
+	assert.equal(badVersion.ok, false);
+
+	const dup = validateTemplateManifest(
+		{
+			schemaVersion: TEMPLATE_MANIFEST_SCHEMA_VERSION,
+			template: 'template-landing.php',
+			composition: [
+				{ id: 'a', partial: 'landing-hero' },
+				{ id: 'a', partial: 'landing-hero' },
+			],
+		},
+		{ partialSlugs: ['landing-hero'] }
+	);
+	assert.equal(dup.ok, false);
+});
+
+test('parseSectionFlag parses id:partial', () => {
+	assert.deepEqual(parseSectionFlag('hero-main:landing-hero'), { id: 'hero-main', partial: 'landing-hero' });
+	assert.throws(() => parseSectionFlag('bad id:hero'), /Invalid composition id/);
 });
 
 test('resolveWithin keeps a path inside its root, or returns null', () => {

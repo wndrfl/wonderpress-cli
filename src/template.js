@@ -6,6 +6,11 @@ import * as core from './core.js';
 import inquirer from 'inquirer';
 import * as staticCli from '@wndrfl/static-kit-cli';
 import * as wordpress from './wordpress.js';
+import {
+  buildDefaultTemplateManifest,
+  parseSectionFlag,
+  validateTemplateManifest,
+} from './validate.js';
 
 /**
  * Accept and route a command.
@@ -15,6 +20,8 @@ export async function command(subcommand, args) {
     case 'create':
       await create(args['--name'] || null, {
         dir: args['--dir'] || null,
+        lock: args['--lock'] ?? null,
+        sections: args['--section'] || [],
       });
       break;
   }
@@ -68,5 +75,62 @@ export async function create(templateName, opts) {
   fs.writeFileSync(filePath, templateOutput);
   log.success(`Template created: ${filePath}`);
 
+  const manifestDir = `${themeDir}/.wonderpress/templates`;
+  fs.ensureDirSync(manifestDir);
+
+  const sections = [];
+  for (const raw of opts.sections || []) {
+    try {
+      sections.push(parseSectionFlag(raw));
+    } catch (err) {
+      log.error(err.message);
+      return false;
+    }
+  }
+
+  let lock = opts.lock ?? 'all';
+  if (lock === 'false') {
+    lock = false;
+  }
+
+  const manifestPayload = buildDefaultTemplateManifest(fileName, { lock, sections });
+  const partialSlugs = await loadPartialSlugs(themeDir);
+  const validated = validateTemplateManifest(manifestPayload, { partialSlugs });
+  if (!validated.ok) {
+    for (const msg of validated.errors) {
+      log.error(msg);
+    }
+    return false;
+  }
+
+  const manifestPath = `${manifestDir}/${fileName.replace(/\.php$/, '.json')}`;
+  fs.writeFileSync(manifestPath, JSON.stringify(validated.data, null, 2) + '\n');
+  log.success(`Template manifest created: ${manifestPath}`);
+
   await staticCli.template.create(`${themeDir}/static`, templateNameFileFriendly);
+}
+
+/**
+ * Slugs from `.wonderpress/manifest/*.json` for validation.
+ **/
+async function loadPartialSlugs(themeDir) {
+  const manifestDir = `${themeDir}/.wonderpress/manifest`;
+  if (!fs.existsSync(manifestDir)) {
+    return [];
+  }
+  const slugs = [];
+  for (const file of fs.readdirSync(manifestDir)) {
+    if (!file.endsWith('.json')) {
+      continue;
+    }
+    try {
+      const data = JSON.parse(fs.readFileSync(`${manifestDir}/${file}`, 'utf8'));
+      if (data?.slug) {
+        slugs.push(data.slug);
+      }
+    } catch {
+      // skip unreadable manifests
+    }
+  }
+  return slugs;
 }

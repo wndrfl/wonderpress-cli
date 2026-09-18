@@ -137,6 +137,30 @@ ACF fields. `image` and `link` match the ingest already on the core Image and
 Link partials. Repeaters are one level deep (`--sub` or nested `properties`
 in `--json`). Flexible content is not generated.
 
+## 5c. Template manifests (composition + editor contract)
+
+`wonderpress template create` writes `.wonderpress/templates/template-{name}.json`
+with `"schemaVersion": 1`. That file declares:
+
+- **`editor.lock`** — same values as `wonderpress_template_locks` (manifest
+  defaults; your PHP filter still wins on the same template key).
+- **`editor.native`** — which classic editor panels appear (`blockEditor: false`
+  is typical for PHP-composed landings).
+- **`composition`** — ordered `{ "id", "partial" }` rows. The same partial may
+  appear twice with different ids (two heroes).
+
+When `composition` lists ACF-compatible partials, core registers **one** field
+group on that page template; each instance id is an ACF group field name. Hydrate
+with `wonder_partial_props( 'landing-hero', 'hero-main' )` or render the stack
+with `wonder_render_template_sections()` (already in the scaffolded PHP template).
+
+Seed sections at create time:
+
+```bash
+wonderpress template create --name Landing --lock all \
+  --section hero-main:landing-hero --section quotes:testimonials
+```
+
 ## 6. Build a component
 
 ```bash

@@ -134,6 +134,14 @@ registers `blocks/<slug>/block.json`. The CLI still owns the files; core never
 writes them. Optional `acf.location` on the manifest is the ACF location-rule
 shape; the theme filter is the usual way to locate groups.
 
+**Template manifests** (`.wonderpress/templates/<template>.json`, integer
+`schemaVersion`) declare the editor contract (`editor.lock`, `editor.native`) and
+an ordered `composition` of partial instances (`id` + `partial`). Core merges
+locks with `wonderpress_template_locks`, registers one ACF group per template
+when composition lists ACF-compatible partials (field names = instance ids), and
+renders via `wonder_render_template_sections()`. Partial manifests stay the
+component dictionary; template manifests are the page-template sentence.
+
 ```json
 {
   "name": "Call_To_Action",

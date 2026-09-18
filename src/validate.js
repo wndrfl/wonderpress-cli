@@ -231,3 +231,119 @@ export const PROP_TYPE_TO_BLOCK = {
 	link: 'object',
 	repeater: 'array',
 };
+
+/** Supported `.wonderpress/templates/*.json` schema version. */
+export const TEMPLATE_MANIFEST_SCHEMA_VERSION = 1;
+
+export const TEMPLATE_LOCK_LEVELS = ['all', 'insert', 'contentOnly', false];
+
+const COMPOSITION_ID_RE = /^[a-z0-9-]+$/;
+
+/**
+ * Parse `--section id:partial`.
+ **/
+export function parseSectionFlag(str) {
+	const parts = String(str).split(':');
+	const id = parts[0];
+	const partial = parts[1];
+	if (!id || !partial || parts.length > 2) {
+		throw new Error(`Invalid --section "${str}". Expected format: id:partial (e.g. hero-main:landing-hero).`);
+	}
+	if (!COMPOSITION_ID_RE.test(id)) {
+		throw new Error(`Invalid composition id "${id}" in --section. Use lowercase letters, numbers, and hyphens.`);
+	}
+	if (!isSafeSlug(partial)) {
+		throw new Error(`Invalid partial slug "${partial}" in --section.`);
+	}
+	return { id, partial };
+}
+
+/**
+ * Default template manifest emitted by `template create`.
+ **/
+export function buildDefaultTemplateManifest(templatePhpFile, opts = {}) {
+	const lock = opts.lock ?? 'all';
+	if (!TEMPLATE_LOCK_LEVELS.includes(lock)) {
+		throw new Error(`Invalid lock "${lock}". Use: all, insert, contentOnly, or false.`);
+	}
+
+	const composition = (opts.sections || []).map((row) => ({
+		id: row.id,
+		partial: row.partial,
+	}));
+
+	return {
+		schemaVersion: TEMPLATE_MANIFEST_SCHEMA_VERSION,
+		template: templatePhpFile,
+		editor: {
+			lock,
+			native: {
+				title: true,
+				excerpt: false,
+				featuredImage: false,
+				discussion: false,
+				blockEditor: false,
+			},
+		},
+		composition,
+	};
+}
+
+/**
+ * Validate a parsed template manifest object.
+ * @returns {{ ok: true, data: object } | { ok: false, errors: string[] }}
+ **/
+export function validateTemplateManifest(data, { partialSlugs = [] } = {}) {
+	const errors = [];
+
+	if (!data || typeof data !== 'object') {
+		return { ok: false, errors: ['Manifest must be a JSON object.'] };
+	}
+
+	if (data.schemaVersion !== TEMPLATE_MANIFEST_SCHEMA_VERSION) {
+		errors.push(`schemaVersion must be ${TEMPLATE_MANIFEST_SCHEMA_VERSION}.`);
+	}
+
+	if (!data.template || typeof data.template !== 'string') {
+		errors.push('template is required (WordPress page template filename, e.g. template-landing.php).');
+	}
+
+	if (data.editor?.lock !== undefined && !TEMPLATE_LOCK_LEVELS.includes(data.editor.lock)) {
+		errors.push('editor.lock must be all, insert, contentOnly, or false.');
+	}
+
+	const native = data.editor?.native;
+	if (native !== undefined && (typeof native !== 'object' || native === null)) {
+		errors.push('editor.native must be an object when present.');
+	}
+
+	const ids = new Set();
+	const composition = data.composition;
+	if (composition !== undefined) {
+		if (!Array.isArray(composition)) {
+			errors.push('composition must be an array.');
+		} else {
+			for (const row of composition) {
+				if (!row?.id || !COMPOSITION_ID_RE.test(row.id)) {
+					errors.push('Each composition row needs a valid id (a-z, 0-9, hyphen).');
+					continue;
+				}
+				if (ids.has(row.id)) {
+					errors.push(`Duplicate composition id "${row.id}".`);
+				}
+				ids.add(row.id);
+				if (!row.partial || !isSafeSlug(row.partial)) {
+					errors.push(`Composition row "${row.id}" needs a valid partial slug.`);
+				} else if (partialSlugs.length && !partialSlugs.includes(row.partial)) {
+					errors.push(`Composition row "${row.id}" references unknown partial "${row.partial}".`);
+				}
+			}
+		}
+	}
+
+	if (errors.length) {
+		return { ok: false, errors };
+	}
+
+	return { ok: true, data };
+}
