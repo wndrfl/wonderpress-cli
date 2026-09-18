@@ -135,7 +135,14 @@ async function installCore() {
   if (!themeDirs.length) {
     // Not fatal. A project can legitimately carry a theme that does not depend
     // on core, and failing an otherwise good init over it would be wrong.
+    //
+    // It is almost never that, though. In practice this means the scaffold that
+    // was cloned predates the move of core into the theme, so say so — the bare
+    // version of this warning sent people looking in the wrong place.
     log.warn(`No theme declares a composer.json, so ${CORE_PACKAGE} was not installed.`);
+    log.warn(`Blocks will not register and partials will run in reduced-functionality mode.`);
+    log.warn(`If the theme came from the released scaffold, it predates ${CORE_PACKAGE} moving into the theme.`);
+    log.warn(`Point init at a scaffold that has it: WONDERPRESS_ENV_REPO=<path-or-url> WONDERPRESS_ENV_REF=<branch>`);
     return true;
   }
 
