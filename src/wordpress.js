@@ -15,6 +15,26 @@ export const pathToThemesDir = './wp-content/themes';
 export const pathToMuPluginsDir = './wp-content/mu-plugins';
 
 /**
+ * Theme directories on disk, identified the way WordPress identifies a theme:
+ * a style.css in the directory root.
+ *
+ * On disk, not via WP-CLI, deliberately: callers need this before WordPress is
+ * necessarily bootable — `init` installs a theme's Composer dependencies before
+ * it activates anything, and `lint` is a static pass that never boots WordPress
+ * at all.
+ *
+ * @returns {String[]} Theme directory names, not paths.
+ **/
+export function themesOnDisk() {
+
+	if (! fs.existsSync(pathToThemesDir)) return [];
+
+	return fs.readdirSync(pathToThemesDir).filter((entry) => {
+		return fs.existsSync(`${pathToThemesDir}/${entry}/style.css`);
+	});
+}
+
+/**
  * Activate a specific theme.
  **/
 export async function activateTheme(themeName) {

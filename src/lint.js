@@ -23,19 +23,6 @@ export async function command(subcommand, args) {
 }
 
 /**
- * Theme directories on disk, identified the way WordPress identifies a theme:
- * a style.css in the directory root.
- **/
-function themesOnDisk() {
-
-	if (! fs.existsSync(wordpress.pathToThemesDir)) return [];
-
-	return fs.readdirSync(wordpress.pathToThemesDir).filter((entry) => {
-		return fs.existsSync(`${wordpress.pathToThemesDir}/${entry}/style.css`);
-	});
-}
-
-/**
  * Codesniff a specific theme (or the active theme).
  **/
 export async function theme(dir, opts) {
@@ -73,7 +60,7 @@ export async function theme(dir, opts) {
 		} else {
 			// Nothing running to ask. One theme on disk is not ambiguous, so
 			// lint it and say so rather than refusing.
-			const candidates = themesOnDisk();
+			const candidates = wordpress.themesOnDisk();
 
 			if (candidates.length === 1) {
 				themeName = candidates[0];

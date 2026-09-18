@@ -9,6 +9,16 @@ namespace Wonderpress\Partials;
 
 use Wonderpress_Core\Partials\Abstract_Partial;
 
+defined( 'ABSPATH' ) || exit;
+
+// The base class ships with the wndrfl/wonderpress-core package; without it
+// there is nothing to extend. Returning here leaves the class undefined,
+// which surfaces at the point of use — where a caller can handle it — rather
+// than fataling the whole request at autoload time on `extends`.
+if ( ! class_exists( 'Wonderpress_Core\Partials\Abstract_Partial' ) ) {
+	return;
+}
+
 /**
  * {{ class_name }}
  * Wonderpress\Partials\{{ class_name }}

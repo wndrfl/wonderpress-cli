@@ -38,6 +38,38 @@ enforced by the `node_modules` rule in the shipped
 | Component **style stubs** (token-only SCSS) | **Static Kit** | `static/` (created via delegation) |
 | Component **behavior classes** (opt-in JS — `--js`) | **Static Kit** | `static/` (created via delegation) |
 | `src/` → `dist/` asset compilation | **Static Kit** | `static/src`, `static/dist` |
+| Block registration, partial base classes, `wonder_*` helpers | **wonderpress-core** | `wp-content/themes/wonderpress/vendor/wndrfl/wonderpress-core` |
+
+### wonderpress-core is a dependency of the theme
+
+Core supplies the runtime the CLI's output is written against: `Abstract_Partial`,
+the `wonder_*` helpers, and the `init` pass that calls `register_block_type()` on
+every `block.json` the CLI emitted. The CLI writes the block; core registers it.
+
+It is a **Composer dependency of the theme**, declared in the theme's own
+`composer.json` and installed to `wp-content/themes/<theme>/vendor`. It was an
+mu-plugin until 2.0.0. Two things moved it:
+
+- **Nothing in it needs mu-plugin load order.** Its earliest hook is `init`.
+  mu-plugins bought "a client cannot deactivate it," not a hook window.
+- **It cannot function without a theme.** It registers the blocks in
+  `get_stylesheet_directory()/blocks` and resolves its partial views through
+  `locate_template()`. A dependency that cannot run without its dependent
+  belongs inside it.
+
+Unlike Static Kit's `node_modules`, **the theme's `vendor/` and `composer.lock`
+ARE committed.** The two cases differ in what they carry: `node_modules` is a
+build-time toolchain that never ships, while `vendor/` holds runtime PHP the site
+cannot serve a page without. Committing it keeps a deploy a file copy — no
+Composer on the server — while `composer update` stays the upgrade lever. The
+`.gitignore` in wonderpress-development-environment carries a negation for the
+theme's lock file, because the root `composer.lock` rule is unanchored and would
+otherwise swallow it.
+
+The version constraint lives in the theme's `composer.json` and nowhere else.
+The CLI names the package (`core.CORE_PACKAGE`) and deliberately does not
+restate a version, so the two cannot drift; `tests/init-orchestration.test.js`
+guards that.
 
 ### A partial is not a block
 

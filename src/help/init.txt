@@ -1,7 +1,8 @@
 wonderpress init — build a new environment
 
 Clones the Wonderpress development environment, downloads WordPress, creates
-the database, installs wonderpress-core and Static Kit, and activates the theme.
+the database, installs the theme's Composer dependencies (chiefly
+wonderpress-core) and Static Kit, and activates the theme.
 
 ENVIRONMENT BACKENDS
   host (default)  WordPress and MySQL on this machine, served by `wp server`.

@@ -140,9 +140,8 @@ Open any page and insert your block. You should see:
 - the block in the inserter, under a category named after your project
 - **the block's actual design**, not a grey placeholder
 
-If you get a placeholder, the editor script did not load — check that
-wonderpress-core is installed as an mu-plugin and that the browser console is
-clean. The preview works by asking WordPress to render the block over REST, so
+If you get a placeholder, the editor script did not load — check that the
+theme's `vendor/` directory exists and that the browser console is clean. The preview works by asking WordPress to render the block over REST, so
 the PHP partial stays the only source of markup.
 
 ## Known rough edges
@@ -151,9 +150,32 @@ the PHP partial stays the only source of markup.
 - **Blocks have no inner content.** They render from the partial and take their
   values from the sidebar; a client cannot type directly into one. Locking a
   block's *inner* structure therefore has nothing to act on yet.
-- **wonderpress-core is installed from a pinned git tag**, not a Composer
-  package. `.wonderpressrc` records which version a project got. Upgrading means
-  bumping the CLI.
+- **A theme switch takes the blocks with it.** wonderpress-core registers the
+  blocks in the *active* theme's `blocks/` directory, so switching themes leaves
+  already-published block content rendering as its raw HTML fallback. That is
+  ordinary WordPress behaviour for theme-provided blocks, but it is worth
+  knowing before you switch a live site.
+
+## Upgrading wonderpress-core
+
+wonderpress-core is a Composer dependency of the theme, declared in
+`wp-content/themes/<theme>/composer.json` and pinned by the lock file beside it.
+Both the lock file and `vendor/` are committed, so a deploy needs no Composer
+step and a checkout is reproducible without one.
+
+To take a new core:
+
+```bash
+cd wp-content/themes/<theme>
+composer update wndrfl/wonderpress-core
+```
+
+Commit the resulting `composer.lock` and `vendor/` changes. Nothing needs to be
+installed into `wp-content/mu-plugins`, and nothing needs a CLI bump.
+
+Sites scaffolded before 2.0.0 carry core in `wp-content/mu-plugins/` instead.
+Those keep working — core stands down when it detects that a copy has already
+booted, so an mu-plugin install wins over the theme's until you delete it.
 
 ## Testing changes to the toolkit itself
 
@@ -199,18 +221,46 @@ one when you want to be a user again.
 
 ### Iterating on wonderpress-core
 
-`init` installs core from a **pinned tag**, so a core change is invisible to a
-new project until someone tags it. That would make every experiment a release,
-so the source is overridable:
+`init` resolves core through the theme's Composer manifest, so a core change is
+invisible to a new project until someone tags it. That would make every
+experiment a release, so the source is overridable:
 
 ```bash
-WONDERPRESS_CORE_REPO=../wonderpress-core WONDERPRESS_CORE_REF=my-branch wonderpress init --dir ~/tmp/probe --env wp-env
+WONDERPRESS_CORE_REPO=../wonderpress-core wonderpress init --dir ~/tmp/probe --env wp-env
 ```
 
-Either half works alone — a branch of the real repo, or a local checkout at its
-pinned tag. It warns every time, and records the ref it actually installed in
-`.wonderpressrc`, so a project built this way never claims to be running a
-released version.
+A local path becomes a Composer `path` repository, which Composer symlinks —
+so edits in your checkout show up in the site with no reinstall. A URL becomes
+a `vcs` repository instead, and `WONDERPRESS_CORE_REF` sets the constraint
+(`dev-my-branch` for a branch). Either half works alone.
+
+> **The editor preview does not work against a symlinked checkout outside
+> `wp-content`.** PHP resolves symlinks in `__FILE__`, so core sees its real
+> location, and a file outside `wp-content` has no URL a browser can fetch —
+> core declines to enqueue the preview script rather than emit a 404. Blocks
+> still register server-side; they just will not render in the editor.
+>
+> If you need the editor while iterating, either keep the checkout inside
+> `wp-content`, or tell Composer to copy instead of symlink:
+>
+> ```bash
+> composer config repositories.wonderpress-core '{"type":"path","url":"../../../../wonderpress-core","options":{"symlink":false}}'
+> ```
+>
+> A copy means re-running `composer update` after each core edit.
+
+It warns every time, and records the version Composer actually resolved in
+`.wonderpressrc`, read back out of the lock file rather than restated — so a
+project built this way never claims to be running a released version.
+
+To point an *existing* project at a checkout, skip the environment variables
+and do it directly, which is all the CLI does on your behalf:
+
+```bash
+cd wp-content/themes/<theme>
+composer config repositories.wonderpress-core path ../../../../wonderpress-core
+composer require wndrfl/wonderpress-core:*@dev
+```
 
 ### Before publishing
 

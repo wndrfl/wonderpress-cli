@@ -15,47 +15,81 @@ import { isValidNamespace, LEGACY_NAMESPACE } from './validate.js';
 import pkg from '../package.json' with { type: 'json' };
 
 /**
- * The wonderpress-core tag this CLI scaffolds with.
+ * The Composer package that supplies the Wonderpress runtime.
  *
- * Bumped deliberately alongside a core release, never floated. The pair is the
- * version contract between the two repos until core becomes a real Composer
- * package (ROADMAP Phase 1).
- */
-export const CORE_VERSION = 'v1.3.0';
+ * The theme declares the version constraint in its own composer.json — the
+ * CLI deliberately does not restate it. One constraint in one place is what
+ * makes `composer update` in a project a meaningful, self-contained act rather
+ * than something the CLI has to agree to.
+ **/
+export const CORE_PACKAGE = 'wndrfl/wonderpress-core';
 
 /**
- * Where wonderpress-core is installed from, and at what ref.
- *
- * Pinned by default — see CORE_VERSION. Both halves can be overridden from the
- * environment, which exists for one reason: testing an unreleased core without
- * tagging one. Before this, the only way to try a core change through `init` was
- * to cut a tag for it, which turns every experiment into a release.
- *
- *   WONDERPRESS_CORE_REPO=../wonderpress-core   a local checkout, or any remote
- *   WONDERPRESS_CORE_REF=my-branch              any tag, branch or commit
- *
- * An override warns every time and is recorded as what it actually is, so a
- * project built from a branch never claims to be running a released version.
- * Reproducibility is the whole point of the pin, and a silent override would
- * hand it back.
+ * The canonical home of wonderpress-core.
  **/
-export function resolveCoreSource() {
+export const CORE_REPO = 'https://github.com/wndrfl/wonderpress-core.git';
 
-  const repo = process.env.WONDERPRESS_CORE_REPO || CORE_REPO;
-  const ref = process.env.WONDERPRESS_CORE_REF || CORE_VERSION;
+/**
+ * The canonical home of the environment scaffold.
+ **/
+export const ENV_REPO = 'https://github.com/wndrfl/wonderpress-development-environment.git';
 
-  if (repo !== CORE_REPO || ref !== CORE_VERSION) {
-    log.warn(`Installing wonderpress-core from ${repo} @ ${ref} instead of the pinned ${CORE_VERSION}.`);
-    log.warn(`This project will NOT be reproducible. Unset WONDERPRESS_CORE_REPO / WONDERPRESS_CORE_REF for a real build.`);
+/**
+ * Where the environment scaffold is cloned from, and at what ref.
+ *
+ * The same escape hatch as WONDERPRESS_CORE_REPO, for the same reason: the
+ * scaffold carries the theme, and the theme now carries the composer.json that
+ * resolves wonderpress-core. Without this, testing a theme change through
+ * `init` means publishing it first.
+ *
+ *   WONDERPRESS_ENV_REPO=../wonderpress-development-environment
+ *   WONDERPRESS_ENV_REF=my-branch
+ *
+ * Warns whenever either is set, for the same reason the core override does.
+ *
+ * @returns {{repo: String, ref: String|null}} The scaffold source.
+ **/
+export function resolveEnvSource() {
+
+  const repo = process.env.WONDERPRESS_ENV_REPO || ENV_REPO;
+  const ref = process.env.WONDERPRESS_ENV_REF || null;
+
+  if (repo !== ENV_REPO || ref) {
+    log.warn(`Cloning the environment scaffold from ${repo}${ref ? ` @ ${ref}` : ''} instead of the released one.`);
+    log.warn(`This project will NOT be reproducible. Unset WONDERPRESS_ENV_REPO / WONDERPRESS_ENV_REF for a real build.`);
   }
 
   return { repo, ref };
 }
 
 /**
- * The canonical home of wonderpress-core.
+ * An override of where wonderpress-core comes from, or null for the default.
+ *
+ * This exists for one reason: testing an unreleased core without tagging one.
+ * Without it, the only way to try a core change through `init` is to cut a tag
+ * for it, which turns every experiment into a release.
+ *
+ *   WONDERPRESS_CORE_REPO=../wonderpress-core   a local checkout, or any remote
+ *   WONDERPRESS_CORE_REF=dev-my-branch          any Composer version constraint
+ *
+ * An override warns every time, so a project built from a branch never quietly
+ * claims to be running a released version. Reproducibility is the whole point
+ * of the lock file, and a silent override would hand it back.
  **/
-export const CORE_REPO = 'https://github.com/wndrfl/wonderpress-core.git';
+export function resolveCoreOverride() {
+
+  const repo = process.env.WONDERPRESS_CORE_REPO || null;
+  const ref = process.env.WONDERPRESS_CORE_REF || null;
+
+  if (!repo && !ref) {
+    return null;
+  }
+
+  log.warn(`Installing ${CORE_PACKAGE} from ${repo || CORE_REPO} @ ${ref || 'the theme\'s own constraint'} instead of the released package.`);
+  log.warn(`This project will NOT be reproducible. Unset WONDERPRESS_CORE_REPO / WONDERPRESS_CORE_REF for a real build.`);
+
+  return { repo, ref };
+}
 
 /**
  * Accept and route a command.
@@ -71,6 +105,138 @@ export async function command(subcommand, args) {
   }
 
   return true;
+}
+
+/**
+ * The theme directories that declare a Composer manifest.
+ *
+ * Every theme on disk is offered the install, not just the one about to be
+ * activated: `init` runs before theme activation, and a project may carry a
+ * parent and a child, or a second theme being worked on alongside the first.
+ * A theme without a composer.json is skipped by installComposer() itself.
+ *
+ * @returns {String[]} Paths to theme directories.
+ **/
+function themeDirsWithManifest() {
+  return wordpress.themesOnDisk()
+    .map((name) => path.join(wordpress.pathToThemesDir, name))
+    .filter((dir) => fs.existsSync(path.join(dir, 'composer.json')));
+}
+
+/**
+ * Install wonderpress-core into every theme that asks for it.
+ *
+ * @returns {Promise<Boolean>} True when every theme resolved its dependencies.
+ **/
+async function installCore() {
+
+  const themeDirs = themeDirsWithManifest();
+
+  if (!themeDirs.length) {
+    // Not fatal. A project can legitimately carry a theme that does not depend
+    // on core, and failing an otherwise good init over it would be wrong.
+    log.warn(`No theme declares a composer.json, so ${CORE_PACKAGE} was not installed.`);
+    return true;
+  }
+
+  const override = resolveCoreOverride();
+
+  for (const themeDir of themeDirs) {
+    if (override && ! applyCoreOverride(themeDir, override)) {
+      return false;
+    }
+
+    log.info(`Installing ${CORE_PACKAGE} into ${themeDir}...`);
+
+    if (! await composer.installComposer(themeDir)) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+/**
+ * Point a theme at an overridden source for wonderpress-core.
+ *
+ * Written through `composer config` and `composer require` rather than by
+ * editing composer.json here, so Composer validates the result and writes the
+ * lock file that goes with it. A local checkout becomes a `path` repository,
+ * which Composer symlinks — edits in the checkout show up in the site with no
+ * reinstall, which is the whole point of testing an untagged core.
+ *
+ * @param {String} themeDir The theme to configure.
+ * @param {Object} override The result of resolveCoreOverride().
+ * @returns {Boolean} True when the override was applied.
+ **/
+function applyCoreOverride(themeDir, override) {
+
+  const repo = override.repo || CORE_REPO;
+  const isLocalPath = fs.existsSync(repo);
+  const type = isLocalPath ? 'path' : 'vcs';
+  const url = isLocalPath ? path.resolve(repo) : repo;
+
+  // A `path` repository resolves to the checkout's own version, which for an
+  // untagged branch is a dev-* constraint that "^2.0" will never match.
+  const constraint = override.ref || (isLocalPath ? '*@dev' : 'dev-master');
+
+  const configured = sh.exec(
+    `composer config repositories.wonderpress-core ${type} ${JSON.stringify(url)}`,
+    { cwd: themeDir }
+  );
+
+  if (configured.code !== 0) {
+    log.error(`Could not point ${themeDir} at ${url}.`);
+    return false;
+  }
+
+  const required = sh.exec(
+    `composer require ${CORE_PACKAGE}:${JSON.stringify(constraint)} --no-interaction`,
+    { cwd: themeDir }
+  );
+
+  if (required.code !== 0) {
+    log.error(`Could not require ${CORE_PACKAGE} at ${constraint} in ${themeDir}.`);
+    return false;
+  }
+
+  return true;
+}
+
+/**
+ * The version of wonderpress-core that is actually installed.
+ *
+ * Read from the lock file rather than restated from a constant, so the record
+ * in .wonderpressrc cannot drift from what is on disk. Returns null when no
+ * theme resolved the package, which config.write() should record as honestly
+ * as it records a version.
+ *
+ * @returns {String|null} The resolved version, or null.
+ **/
+function readCoreVersion() {
+
+  for (const themeDir of themeDirsWithManifest()) {
+    const lockPath = path.join(themeDir, 'composer.lock');
+
+    if (!fs.existsSync(lockPath)) {
+      continue;
+    }
+
+    try {
+      const lock = JSON.parse(fs.readFileSync(lockPath, 'utf8'));
+      const pkg = (lock.packages || []).find((p) => p.name === CORE_PACKAGE);
+
+      if (pkg) {
+        return pkg.version;
+      }
+    } catch (e) {
+      // A malformed lock file is worth saying out loud, but it is not worth
+      // failing an otherwise successful init over.
+      log.warn(`Could not read ${lockPath}: ${e.message}`);
+    }
+  }
+
+  return null;
 }
 
 /**
@@ -160,8 +326,17 @@ export async function init(dir, initConfig) {
     const tmpDir = '.wonderpress-tmp';
     await fs.emptyDirSync(tmpDir);
 
-    let cmd = `git clone https://github.com/wndrfl/wonderpress-development-environment.git ${tmpDir} --depth=1 --progress --verbose`;
-    sh.exec(cmd);
+    const envSource = resolveEnvSource();
+    const envRefArg = envSource.ref ? ` --branch ${envSource.ref}` : '';
+    const cloned = sh.exec(`git clone ${envSource.repo}${envRefArg} ${tmpDir} --depth=1 --progress --verbose`);
+
+    // Stop rather than carry on into a half-scaffolded directory. This used to
+    // ignore the exit code entirely, so a failed clone produced an environment
+    // with no theme and an error message about something else entirely.
+    if (cloned.code !== 0) {
+      log.error(`Could not clone the environment scaffold from ${envSource.repo}${envRefArg}.`);
+      return false;
+    }
 
     // Copy a filtered list of files
     await fs.copySync(tmpDir, process.cwd(), {
@@ -219,16 +394,25 @@ export async function init(dir, initConfig) {
     return false;
   }
 
-  // Install the Wonderpress Core as an MU (must use) plugin
-  // Pinned, not tracked. wonderpress-core is central IP and a moving branch
-  // would mean two projects scaffolded a fortnight apart silently get different
-  // code — with no way to say which one a client site runs, or to upgrade it on
-  // purpose. The version is recorded below so the site can answer that question
-  // without anyone reading its git history.
-  const coreSource = resolveCoreSource();
-  const coreInstalled = await wordpress.installMuPlugin(coreSource.repo, coreSource.ref);
+  // Install the theme's Composer dependencies, chiefly wonderpress-core.
+  //
+  // Core used to be cloned into wp-content/mu-plugins from a pinned git tag.
+  // It is a theme dependency now: nothing in it needs mu-plugin load order —
+  // its earliest hook is `init` — and it cannot function without a theme at
+  // all, since it registers the blocks in the theme's blocks/ directory and
+  // resolves its partial views through locate_template(). Installing it into
+  // the theme means deleting the theme removes Wonderpress with it, and
+  // upgrading is `composer update` in one directory.
+  const coreInstalled = await installCore();
 
   if (!coreInstalled) {
+    return false;
+  }
+
+  // The environment root's own Composer packages — the phpcs toolchain that
+  // `wonderpress lint` runs. Separate from the theme's: different manifest,
+  // different purpose, and the root one ships no runtime code.
+  if (! await composer.installComposer(process.cwd())) {
     return false;
   }
 
@@ -236,13 +420,11 @@ export async function init(dir, initConfig) {
   // even when a provision failed halfway, but a core version is a claim about
   // what is on disk, and claiming one we failed to install would be worse than
   // recording nothing.
-  // The ref that was ACTUALLY installed, not the one we would have preferred.
-  // A project built from a branch should say so when someone later asks which
-  // core it is running.
-  config.write(process.cwd(), { core: coreSource.ref });
-
-  // Install Composer
-  await composer.installComposer();
+  //
+  // The version that was ACTUALLY resolved, read back out of the lock file
+  // rather than restated from a constant. A project built from a branch should
+  // say so when someone later asks which core it is running.
+  config.write(process.cwd(), { core: readCoreVersion() });
 
   // Activate a theme. --theme wins; otherwise auto-activate a lone theme, and
   // prompt (interactive) or error (headless) when several exist.

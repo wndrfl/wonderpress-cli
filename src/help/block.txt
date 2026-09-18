@@ -32,5 +32,6 @@ EXAMPLES
   wonderpress block remove Testimonial
 
 Blocks appear in the editor under the "Wonderpress" category, registered by
-wonderpress-core. If a new block is missing there, check that the mu-plugin is
-installed in the environment.
+wonderpress-core. If a new block is missing there, check that the theme's
+Composer dependencies are installed — run `composer install` in the theme
+directory.

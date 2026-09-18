@@ -15,8 +15,8 @@ import * as server from '../src/server.js';
  * can be observed without MySQL, WP-CLI, or a network.
  *
  * Scope is deliberately the failure paths and the call order. The success path
- * runs on past provisioning into `installMuPlugin`, which git-clones
- * wonderpress-core from GitHub — that belongs to the gated e2e, not here. The
+ * runs on past provisioning into `installCore`, which shells out to Composer
+ * and reaches the network — that belongs to the gated e2e, not here. The
  * fixture pre-creates a `.wonderpressrc` so init treats the directory as an
  * existing environment and skips the scaffold clone and the Static Kit install.
  **/
@@ -75,7 +75,7 @@ test('a failing preflight stops init before it touches anything else', async () 
 });
 
 test('the lifecycle runs preflight, then prepare, then provision', async () => {
-	// Provisioning fails so init returns before installMuPlugin reaches the
+	// Provisioning fails so init returns before installCore reaches the
 	// network. That still pins the order of everything ahead of it.
 	const backend = fakeBackend({ provision: { ok: false, errors: ['could not provision'] } });
 
@@ -141,17 +141,19 @@ test('a failing preflight exits non-zero', async () => {
 	});
 });
 
-// --- the core version pin ---
+// --- where the core version lives ---
 //
-// The whole value of pinning is that it cannot move. A floated ref would put
-// the repos back where they started — two projects scaffolded a fortnight apart
-// silently running different code — while still looking pinned.
+// Reproducibility used to rest on a pinned git tag held here. It rests on the
+// theme's composer.json constraint and its lock file now, which is why the CLI
+// names the package and nothing more. Restating a constraint here would
+// reintroduce exactly the drift the pin existed to prevent: two sources of
+// truth that can disagree, with the CLI quietly winning.
 
-test('the core version is a pinned tag, never a moving ref', () => {
-	assert.match(core.CORE_VERSION, /^v\d+\.\d+\.\d+$/, 'must be an exact vX.Y.Z tag');
+test('the CLI names the core package without restating its version', () => {
+	assert.match(core.CORE_PACKAGE, /^[a-z0-9]([a-z0-9._-]*)\/[a-z0-9]([a-z0-9._-]*)$/, 'must be a bare vendor/package name');
 
-	for (const floating of ['master', 'main', 'HEAD', 'latest', 'trunk', 'develop']) {
-		assert.notEqual(core.CORE_VERSION, floating, `"${floating}" is a moving ref, not a version`);
+	for (const smuggled of [':', '@', '#', '^', '~', '*']) {
+		assert.ok(! core.CORE_PACKAGE.includes(smuggled), `"${smuggled}" would make this a version constraint`);
 	}
 });
 
@@ -268,14 +270,15 @@ test('a project with no namespace at all falls back to the default', async () =>
 // Exists so an unreleased core can be tested through `init` without tagging
 // one. Before it, trying a core change meant cutting a release for it.
 
-test('the core source is pinned by default', () => {
+test('there is no override by default', () => {
 	const saved = { repo: process.env.WONDERPRESS_CORE_REPO, ref: process.env.WONDERPRESS_CORE_REF };
 	delete process.env.WONDERPRESS_CORE_REPO;
 	delete process.env.WONDERPRESS_CORE_REF;
 	try {
-		const source = core.resolveCoreSource();
-		assert.equal(source.ref, core.CORE_VERSION);
-		assert.equal(source.repo, core.CORE_REPO);
+		// null, not an object naming the defaults: an override is a thing the
+		// CLI does TO a theme's manifest, so "no override" has to be
+		// distinguishable from "override that happens to match".
+		assert.equal(core.resolveCoreOverride(), null);
 	} finally {
 		if (saved.repo !== undefined) process.env.WONDERPRESS_CORE_REPO = saved.repo;
 		if (saved.ref !== undefined) process.env.WONDERPRESS_CORE_REF = saved.ref;
@@ -285,14 +288,29 @@ test('the core source is pinned by default', () => {
 test('the environment can point core at a local checkout and a branch', () => {
 	const saved = { repo: process.env.WONDERPRESS_CORE_REPO, ref: process.env.WONDERPRESS_CORE_REF };
 	process.env.WONDERPRESS_CORE_REPO = '/tmp/wonderpress-core';
-	process.env.WONDERPRESS_CORE_REF = 'feat/whatever';
+	process.env.WONDERPRESS_CORE_REF = 'dev-feat/whatever';
 	try {
-		const source = core.resolveCoreSource();
-		assert.equal(source.repo, '/tmp/wonderpress-core');
-		assert.equal(source.ref, 'feat/whatever');
-		assert.notEqual(source.ref, core.CORE_VERSION, 'the pin must not win over an explicit override');
+		const override = core.resolveCoreOverride();
+		assert.equal(override.repo, '/tmp/wonderpress-core');
+		assert.equal(override.ref, 'dev-feat/whatever');
 	} finally {
 		delete process.env.WONDERPRESS_CORE_REPO;
+		delete process.env.WONDERPRESS_CORE_REF;
+		if (saved.repo !== undefined) process.env.WONDERPRESS_CORE_REPO = saved.repo;
+		if (saved.ref !== undefined) process.env.WONDERPRESS_CORE_REF = saved.ref;
+	}
+});
+
+test('either half of the override is enough on its own', () => {
+	const saved = { repo: process.env.WONDERPRESS_CORE_REPO, ref: process.env.WONDERPRESS_CORE_REF };
+	delete process.env.WONDERPRESS_CORE_REPO;
+	process.env.WONDERPRESS_CORE_REF = 'dev-master';
+	try {
+		const override = core.resolveCoreOverride();
+		assert.notEqual(override, null, 'a ref alone is still an override');
+		assert.equal(override.repo, null, 'an unset repo stays null so the caller can fall back to CORE_REPO');
+		assert.equal(override.ref, 'dev-master');
+	} finally {
 		delete process.env.WONDERPRESS_CORE_REF;
 		if (saved.repo !== undefined) process.env.WONDERPRESS_CORE_REPO = saved.repo;
 		if (saved.ref !== undefined) process.env.WONDERPRESS_CORE_REF = saved.ref;

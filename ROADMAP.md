@@ -74,13 +74,23 @@ or WP-CLI.
 |---|---|
 | Flag-driven-first, wizard as a wrapper | ✅ `--json @file`, repeatable `--prop` |
 | Abstract_Partial, validation engine, block registrar | ✅ in wonderpress-core |
-| wonderpress-core as a *versioned* package | ❌ installed by `git clone` of master |
+| wonderpress-core as a *versioned* package | ✅ Composer dependency of the theme |
 
-**Remaining: package wonderpress-core properly.** It is central IP installed via
-`git clone` ([src/core.js](src/core.js), `installMuPlugin`) with no version
-contract, and it has commits past its last tag. Make it a Composer dependency
-and tag it. This matters more once `[base]` starts changing alongside it — which
-is exactly what Phase 2 does.
+**Done.** Core is `wndrfl/wonderpress-core`, required by the theme's own
+`composer.json` and installed to the theme's `vendor/`. The `git clone` into
+mu-plugins is gone.
+
+It went into the *theme* rather than staying a Composer-managed mu-plugin for
+two reasons. Nothing in core needs mu-plugin load order — its earliest hook is
+`init` — and core cannot function without a theme anyway, since it registers the
+blocks in `get_stylesheet_directory()/blocks` and resolves its partial views
+through `locate_template()`. Putting it in the theme makes deleting the theme
+remove WonderPress with it, which is the removability property the toolkit
+previously asserted nowhere and implemented nowhere.
+
+`vendor/` and the theme's `composer.lock` are committed, so a deploy still needs
+no Composer step while `composer update wndrfl/wonderpress-core` becomes the
+upgrade lever. See [ARCHITECTURE.md](ARCHITECTURE.md) for the full contract.
 
 ---
 
@@ -263,8 +273,8 @@ front end is the point.
    ours rather than WordPress's.
 4. **Correctness primitives** into `[core]` — small, boring, high leverage, and
    the guardrail Phase 3 depends on.
-5. **Package wonderpress-core** — best done alongside the arc above, since it
-   changes `[core]` and `[base]` together and drift is the named risk.
+5. ~~**Package wonderpress-core**~~ ✅ done — it is a Composer dependency of the
+   theme now, so `[core]` and `[base]` version together through one lock file.
 6. **Editor JavaScript** (Phase 2b) — the large one, and the one that takes the
    Vite question with it.
 7. **Phase 3**, then Phase 4.
