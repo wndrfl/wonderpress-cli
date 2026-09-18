@@ -26,6 +26,7 @@ import {
 	LEGACY_NAMESPACE,
 } from './validate.js';
 import * as config from './config.js';
+import { pickOne } from './prompt.js';
 
 /**
  * Accept and route a command.
@@ -774,10 +775,26 @@ export async function remove(args) {
 		return false;
 	}
 
-	const name = args._ && args._[2] ? args._[2] : args['--name'];
+	let name = args._ && args._[2] ? args._[2] : args['--name'];
+
 	if (!name) {
-		log.error('No name provided. Usage: wonderpress partial remove <Name>.');
-		return false;
+		// Every partial, blocks included. `remove` refuses a partial a block
+		// wraps unless --with-block is passed, so the label says which ones
+		// will ask for that rather than letting it be a surprise.
+		name = await pickOne({
+			message: 'Which partial should be removed?',
+			choices: listPartials(themeDir).map((p) => ({
+				name: p.block ? `${p.name}  (${p.slug}) — wrapped by ${p.block}` : `${p.name}  (${p.slug})`,
+				value: p.name,
+			})),
+			empty: 'This theme has no partials to remove.',
+			usage: 'Usage: wonderpress partial remove <Name>.',
+			args,
+		});
+
+		if (!name) {
+			return false;
+		}
 	}
 
 	return removePartial(themeDir, name, { withBlock: !!args['--with-block'] });

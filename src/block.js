@@ -3,6 +3,7 @@ import * as help from './help.js';
 import * as log from './log.js';
 import * as partial from './partial.js';
 import { isSafeSlug, nameToSlug, resolveWithin } from './validate.js';
+import { pickOne } from './prompt.js';
 
 /**
  * Blocks.
@@ -102,10 +103,29 @@ export async function create(args) {
 		return false;
 	}
 
-	const name = args._ && args._[2] ? args._[2] : args['--name'];
+	let name = args._ && args._[2] ? args._[2] : args['--name'];
+
 	if (!name) {
-		log.error('No name provided. Usage: wonderpress block create <Name>.');
-		return false;
+		const partials = partial.listPartials(themeDir);
+
+		// Only the ones without a block. Re-wrapping an existing one is
+		// idempotent rather than harmful, but offering it implies something is
+		// missing when nothing is — and naming it explicitly still works.
+		name = await pickOne({
+			message: 'Which partial should be exposed as a block?',
+			choices: partials
+				.filter((p) => !p.block)
+				.map((p) => ({ name: `${p.name}  (${p.slug})`, value: p.name })),
+			empty: partials.length
+				? `Every partial in this theme is already exposed as a block (${partials.length}). Nothing to add.`
+				: 'This theme has no partials yet. Create one first: wonderpress partial create <Name>',
+				usage: 'Usage: wonderpress block create <Name>.',
+			args,
+		});
+
+		if (!name) {
+			return false;
+		}
 	}
 
 	return addBlock(themeDir, name);
@@ -280,10 +300,22 @@ export async function remove(args) {
 		return false;
 	}
 
-	const name = args._ && args._[2] ? args._[2] : args['--name'];
+	let name = args._ && args._[2] ? args._[2] : args['--name'];
+
 	if (!name) {
-		log.error('No name provided. Usage: wonderpress block remove <Name>.');
-		return false;
+		name = await pickOne({
+			message: 'Which block should be removed? The partial survives.',
+			choices: listBlocks(themeDir)
+				.filter((row) => row.managed)
+				.map((row) => ({ name: `${row.block}  (${row.partial})`, value: row.partial })),
+			empty: 'No partial in this theme is exposed as a block, so there is nothing to remove.',
+			usage: 'Usage: wonderpress block remove <Name>.',
+			args,
+		});
+
+		if (!name) {
+			return false;
+		}
 	}
 
 	return removeBlock(themeDir, name);
