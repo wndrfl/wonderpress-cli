@@ -8,7 +8,10 @@
 import path from 'path';
 
 // The property types Wonderpress can validate and render.
-export const PROP_TYPES = ['array', 'boolean', 'object', 'string'];
+export const PROP_TYPES = ['array', 'boolean', 'image', 'link', 'object', 'repeater', 'string'];
+
+// What a repeater row may contain. Nested repeaters are a later slice.
+export const REPEATER_SUB_TYPES = ['boolean', 'image', 'link', 'string'];
 
 /**
  * The namespace used when a project has not recorded one of its own.
@@ -73,6 +76,55 @@ export function parsePropFlag(str) {
 	}
 
 	return { name, type, required, description: '' };
+}
+
+/**
+ * Parse a --sub flag: `parent:name:type[:required]`.
+ * Attaches a sub-field to a repeater property named `parent`.
+ **/
+export function parseSubFlag(str) {
+	const parts = String(str).split(':');
+	const parent = parts[0];
+	const name = parts[1];
+	const type = parts[2];
+	const required = parts[3] === 'required' || parts[3] === 'true';
+
+	if (!parent || !name || !type) {
+		throw new Error(`Invalid --sub "${str}". Expected format: parent:name:type[:required] (e.g. items:quote:string:required).`);
+	}
+
+	if (!REPEATER_SUB_TYPES.includes(type)) {
+		throw new Error(`Invalid repeater sub-field type "${type}" in --sub "${str}". Valid types: ${REPEATER_SUB_TYPES.join(', ')}.`);
+	}
+
+	return { parent, name, type, required, description: '' };
+}
+
+/**
+ * PHP $_properties format for a manifest type.
+ * image / link / repeater are stored as arrays (ACF payloads / row lists).
+ **/
+export function phpFormatForType(type) {
+	if (type === 'image' || type === 'link' || type === 'repeater') {
+		return 'array';
+	}
+	return type;
+}
+
+/**
+ * Canonical property object, including nested repeater rows.
+ **/
+export function normalizeProperty(p) {
+	const prop = {
+		name: p.name,
+		type: p.type,
+		required: !!p.required,
+		description: p.description || '',
+	};
+	if (p.type === 'repeater') {
+		prop.properties = (p.properties || []).map(normalizeProperty);
+	}
+	return prop;
 }
 
 /**
@@ -169,11 +221,13 @@ export function humanizeClassName(className) {
 
 /**
  * Map a Wonderpress property type to a block.json attribute type.
- * The four PROP_TYPES all correspond 1:1 to valid block attribute types.
  **/
 export const PROP_TYPE_TO_BLOCK = {
 	string: 'string',
 	boolean: 'boolean',
 	array: 'array',
 	object: 'object',
+	image: 'object',
+	link: 'object',
+	repeater: 'array',
 };

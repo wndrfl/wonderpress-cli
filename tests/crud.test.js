@@ -423,6 +423,48 @@ test('a block without the manifest is refused: the index is what makes it manage
 	validateParams(paramsFromFlags({ '--name': 'Hero', '--block': true }));
 });
 
+test('ACF without the manifest is refused: core reads the manifest to register the group', () => {
+	assert.throws(
+		() => validateParams(paramsFromFlags({ '--name': 'Hero', '--acf': true, '--no-manifest': true })),
+		/ACF compatibility requires the manifest/
+	);
+	assert.throws(
+		() => validateParams(paramsFromJson(JSON.stringify({ name: 'Hero', acf_compatible: true, manifest: false }))),
+		/ACF compatibility requires the manifest/
+	);
+
+	validateParams(paramsFromFlags({ '--name': 'Hero', '--acf': true }));
+});
+
+test('a repeater without sub-fields is refused', () => {
+	assert.throws(
+		() => validateParams(paramsFromFlags({ '--name': 'Testimonials', '--prop': ['items:repeater'] })),
+		/must declare at least one sub-field/
+	);
+});
+
+test('--sub attaches rows to a repeater; a bare --sub on a non-repeater is refused', () => {
+	const p = paramsFromFlags({
+		'--name': 'Testimonials',
+		'--prop': ['items:repeater'],
+		'--sub': ['items:quote:string:required', 'items:photo:image'],
+	});
+	assert.deepEqual(p.properties[0].properties, [
+		{ name: 'quote', type: 'string', required: true, description: '' },
+		{ name: 'photo', type: 'image', required: false, description: '' },
+	]);
+	validateParams(p);
+
+	assert.throws(
+		() => paramsFromFlags({
+			'--name': 'Hero',
+			'--prop': ['headline:string'],
+			'--sub': ['headline:quote:string'],
+		}),
+		/not repeater/
+	);
+});
+
 // --- blocks the CLI did not write ---
 //
 // WordPress registers every `blocks/<slug>/block.json` it finds, so a

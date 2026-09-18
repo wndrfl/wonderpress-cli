@@ -108,6 +108,35 @@ this cannot accidentally unlock something.
 `contentOnly` is the interesting one and the one most agencies skip: the client
 edits words, the layout does not move.
 
+## 5b. Locate ACF groups on the templates that own them
+
+`--acf` records that a partial may register an ACF field group. Core reads the
+manifest on `acf/init` and registers the group **only where you locate it**.
+A group with no location is skipped — otherwise a Hero metabox and a Hero
+block would appear on the same screen.
+
+```php
+add_filter( 'wonderpress_template_fields', function () {
+	return array(
+		'page-landing.php' => array( 'hero', 'testimonials' ),
+	);
+} );
+```
+
+That landing page hydrates from ACF and typically locks `'all'`:
+
+```php
+( new \Wonderpress\Partials\Hero( wonder_partial_props( 'hero' ) ) )->render();
+```
+
+`wonder_partial_props( 'hero' )` is `array( 'acf' => get_field( 'hero' ) )`.
+On a blog post you insert the Hero block instead; the group does not show.
+
+Property types `string`, `boolean`, `image`, `link`, and `repeater` become
+ACF fields. `image` and `link` match the ingest already on the core Image and
+Link partials. Repeaters are one level deep (`--sub` or nested `properties`
+in `--json`). Flexible content is not generated.
+
 ## 6. Build a component
 
 ```bash

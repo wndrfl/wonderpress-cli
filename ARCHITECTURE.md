@@ -126,6 +126,14 @@ and what was written for it. `partial list`, `partial remove`, `block create`,
 at) source files — so the manifest is authoritative, and the deletion list for a
 removal is exactly what creation recorded.
 
+wonderpress-core reads manifests at runtime in `inc/manifests.php`
+(`wonder_load_theme_manifests()`). ACF is one consumer: `inc/acf.php` registers
+a field group on `acf/init` for every `acf_compatible` manifest that is located
+(`wonderpress_template_fields` or `acf.location`). That is parallel to how core
+registers `blocks/<slug>/block.json`. The CLI still owns the files; core never
+writes them. Optional `acf.location` on the manifest is the ACF location-rule
+shape; the theme filter is the usual way to locate groups.
+
 ```json
 {
   "name": "Call_To_Action",

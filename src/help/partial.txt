@@ -19,16 +19,21 @@ CREATE OPTIONS
                            you passed pre-answer its questions rather than being
                            asked again.
   --prop <name:type[:required]>
-                           A property, repeatable. Types: string, int, bool,
-                           array, object
+                           A property, repeatable. Types: string, boolean,
+                           image, link, repeater, array, object
+  --sub <parent:name:type[:required]>
+                           A sub-field of a repeater property (repeatable)
   --block                  Also expose it in the editor (off by default —
                            most partials are compositional, not blocks)
   --js                     Also scaffold a JS behavior class (off by default)
-  --acf                    Mark the partial ACF compatible
+  --acf                    Register an ACF field group from the manifest
+                           (requires the manifest; locate it with
+                           wonderpress_template_fields or acf.location)
   --template-name <file>   Name the view template, e.g. my-view.php
   --no-template            Class only, no view template
   --no-style               Skip the SCSS stub
-  --no-manifest            Skip the manifest (cannot be combined with --block)
+  --no-manifest            Skip the manifest (cannot be combined with --block
+                           or --acf)
   --json <spec|@file>      Create from a JSON spec instead of flags
   --theme <name>           Target a theme by name, skipping the active lookup
 
@@ -39,5 +44,6 @@ REMOVE OPTIONS
 EXAMPLES
   wonderpress partial create --name Testimonial --prop quote:string:required
   wonderpress partial create --name Hero --block --js
+  wonderpress partial create --name Testimonials --acf --prop items:repeater --sub items:quote:string:required
   wonderpress partial create
       No flags runs the interactive wizard, which asks the same questions.

@@ -64,20 +64,24 @@ A partial is a rendering primitive (a button, a section) — it is **not** a Gut
 | --- | --- |
 | `--name <Class_Name>` | The partial's PHP class name (headless; omit for the wizard). |
 | `--json <@file\|string>` | Create from a JSON spec instead of flags. |
-| `--prop <name:type[:required]>` | Declare a property (repeatable). |
-| `--acf` | Configure the partial as ACF compatible. |
+| `--prop <name:type[:required]>` | Declare a property (repeatable). Types: `string`, `boolean`, `image`, `link`, `repeater`, `array`, `object`. |
+| `--sub <parent:name:type[:required]>` | A sub-field of a repeater (repeatable). |
+| `--acf` | Mark the partial ACF compatible. Core registers a field group from the manifest when ACF is present and the partial is located (`wonderpress_template_fields` or `acf.location`). Cannot be combined with `--no-manifest`. |
 | `--block` | Also expose the partial as a Gutenberg block (`block.json` + a `render.php` that delegates back to the partial). Opt-in. |
 | `--js` | Also scaffold a JS behavior class for the partial (`static/src/js/lib/partials/<Name>.js`, delegated to Static Kit). Opt-in — most partials have no behavior. |
 | `--template-name <name.php>` | Name the view template. |
 | `--no-template` | Skip the view template. |
 | `--no-style` | Skip the delegated SCSS style stub. |
-| `--no-manifest` | Skip the manifest. Cannot be combined with `--block`. |
+| `--no-manifest` | Skip the manifest. Cannot be combined with `--block` or `--acf`. |
 | `--theme <name>` / `--dir <path>` | Target a specific theme / environment root. |
 
-Two combinations are worth knowing: `--block --no-manifest` is refused (the
-manifest is the index that makes a block manageable), and `--js --no-template`
-emits no behavior class, because a behavior stub is only scaffolded for a
-partial that renders a view.
+Three combinations are worth knowing: `--block --no-manifest` is refused (the
+manifest is the index that makes a block manageable), `--acf --no-manifest` is
+refused (core reads the manifest to register the field group), and
+`--js --no-template` emits no behavior class, because a behavior stub is only
+scaffolded for a partial that renders a view. `--block` and `--acf` may be
+combined: the block uses Gutenberg attributes, the PHP caller uses ACF. Do not
+locate the ACF group on a page that also inserts the block.
 
 #### `wonderpress partial list`
 

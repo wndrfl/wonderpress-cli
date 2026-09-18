@@ -5,6 +5,9 @@ import {
 	isValidTemplateName,
 	isValidPropType,
 	parsePropFlag,
+	parseSubFlag,
+	phpFormatForType,
+	normalizeProperty,
 	classNameToFileSlug,
 	defaultTemplateName,
 	isSafeSlug,
@@ -33,7 +36,9 @@ test('isValidPropType matches the shipped type set', () => {
 	for (const t of PROP_TYPES) {
 		assert.ok(isValidPropType(t));
 	}
-	assert.ok(!isValidPropType('image'));
+	assert.ok(isValidPropType('image'));
+	assert.ok(isValidPropType('link'));
+	assert.ok(isValidPropType('repeater'));
 	assert.ok(!isValidPropType('nope'));
 });
 
@@ -45,6 +50,42 @@ test('parsePropFlag parses name:type[:required]', () => {
 test('parsePropFlag throws on malformed input', () => {
 	assert.throws(() => parsePropFlag('justname'), /Expected format/);
 	assert.throws(() => parsePropFlag('x:badtype'), /Invalid property type/);
+});
+
+test('parseSubFlag parses parent:name:type[:required]', () => {
+	assert.deepEqual(parseSubFlag('items:quote:string:required'), {
+		parent: 'items', name: 'quote', type: 'string', required: true, description: '',
+	});
+	assert.deepEqual(parseSubFlag('items:photo:image'), {
+		parent: 'items', name: 'photo', type: 'image', required: false, description: '',
+	});
+});
+
+test('parseSubFlag refuses nested-repeater types and malformed input', () => {
+	assert.throws(() => parseSubFlag('items:onlytwo'), /Expected format/);
+	assert.throws(() => parseSubFlag('items:rows:repeater'), /Invalid repeater sub-field type/);
+	assert.throws(() => parseSubFlag('items:meta:object'), /Invalid repeater sub-field type/);
+});
+
+test('phpFormatForType maps media and repeaters to array', () => {
+	assert.equal(phpFormatForType('string'), 'string');
+	assert.equal(phpFormatForType('boolean'), 'boolean');
+	assert.equal(phpFormatForType('image'), 'array');
+	assert.equal(phpFormatForType('link'), 'array');
+	assert.equal(phpFormatForType('repeater'), 'array');
+});
+
+test('normalizeProperty keeps nested repeater rows', () => {
+	assert.deepEqual(
+		normalizeProperty({
+			name: 'items', type: 'repeater', required: true,
+			properties: [{ name: 'quote', type: 'string', required: true }],
+		}),
+		{
+			name: 'items', type: 'repeater', required: true, description: '',
+			properties: [{ name: 'quote', type: 'string', required: true, description: '' }],
+		}
+	);
 });
 
 test('classNameToFileSlug converts EVERY underscore (regression)', () => {

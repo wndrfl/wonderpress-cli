@@ -104,6 +104,26 @@ test('a partial is not a block: no block.json/render.php by default', async () =
 	}
 });
 
+test('--block maps image/link/repeater onto object/array attributes', async () => {
+	const dir = tmpTheme();
+	try {
+		const params = paramsFromFlags({
+			'--name': 'Gallery',
+			'--block': true,
+			'--prop': ['photo:image', 'cta:link', 'items:repeater'],
+			'--sub': ['items:quote:string'],
+		});
+		validateParams(params);
+		await writePartial(params, dir);
+		const block = JSON.parse(fs.readFileSync(path.join(dir, 'blocks/gallery/block.json'), 'utf8'));
+		assert.equal(block.attributes.photo.type, 'object');
+		assert.equal(block.attributes.cta.type, 'object');
+		assert.equal(block.attributes.items.type, 'array');
+	} finally {
+		fs.removeSync(dir);
+	}
+});
+
 test('--block opts in: block.json (with render binding) + render.php delegate to the partial', async () => {
 	const dir = tmpTheme();
 	try {
@@ -376,6 +396,67 @@ test('--no-template survives the merge, template name and all', () => {
 	const params = mergeWizardAnswers({ class_name: 'Hero' }, { '--no-template': true });
 	assert.equal(params.has_partial_template, false);
 	assert.equal(params.partial_template_name, 'hero.php', 'still named, just not created');
+});
+
+test('paramsFromFlags + --sub and paramsFromJson agree on a repeater', () => {
+	const flags = paramsFromFlags({
+		'--name': 'Testimonials',
+		'--acf': true,
+		'--prop': ['items:repeater'],
+		'--sub': ['items:quote:string:required', 'items:author:string'],
+	});
+	const json = paramsFromJson(JSON.stringify({
+		name: 'Testimonials',
+		acf_compatible: true,
+		properties: [{
+			name: 'items',
+			type: 'repeater',
+			required: false,
+			properties: [
+				{ name: 'quote', type: 'string', required: true },
+				{ name: 'author', type: 'string' },
+			],
+		}],
+	}));
+	assert.deepEqual(flags.properties, json.properties);
+});
+
+test('writePartial persists acf.location and maps image/link/repeater formats', async () => {
+	const dir = tmpTheme();
+	try {
+		const spec = {
+			name: 'Hero',
+			acf_compatible: true,
+			acf: { location: [[{ param: 'page_template', operator: '==', value: 'page-landing.php' }]] },
+			properties: [
+				{ name: 'headline', type: 'string', required: true },
+				{ name: 'photo', type: 'image' },
+				{ name: 'cta', type: 'link' },
+				{
+					name: 'items',
+					type: 'repeater',
+					properties: [{ name: 'quote', type: 'string', required: true }],
+				},
+			],
+		};
+		const params = paramsFromJson(JSON.stringify(spec));
+		validateParams(params);
+		await writePartial(params, dir);
+
+		const m = JSON.parse(fs.readFileSync(path.join(dir, '.wonderpress/manifest/hero.json'), 'utf8'));
+		assert.equal(m.acf_compatible, true);
+		assert.deepEqual(m.acf.location[0][0].value, 'page-landing.php');
+		assert.equal(m.properties.find((p) => p.name === 'items').properties[0].name, 'quote');
+
+		const php = fs.readFileSync(path.join(dir, 'src/partials/class-hero.php'), 'utf8');
+		assert.match(php, /'photo' => array\([\s\S]*'format' => 'array'/);
+		assert.match(php, /'cta' => array\([\s\S]*'format' => 'array'/);
+		assert.match(php, /'items' => array\([\s\S]*'format' => 'array'/);
+		assert.match(php, /'headline' => array\([\s\S]*'format' => 'string'/);
+		assert.ok(!fs.existsSync(path.join(dir, 'blocks/hero/block.json')));
+	} finally {
+		fs.removeSync(dir);
+	}
 });
 
 test('properties typed in the wizard win; --prop fills in when none were', () => {

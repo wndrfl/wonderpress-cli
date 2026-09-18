@@ -12,6 +12,9 @@ import {
 	isValidTemplateName,
 	isValidPropType,
 	parsePropFlag,
+	parseSubFlag,
+	normalizeProperty,
+	phpFormatForType,
 	classNameToFileSlug,
 	classNameToSlug,
 	humanizeClassName,
@@ -23,6 +26,7 @@ import {
 	isValidNamespace,
 	PROP_TYPES,
 	PROP_TYPE_TO_BLOCK,
+	REPEATER_SUB_TYPES,
 	LEGACY_NAMESPACE,
 } from './validate.js';
 import * as config from './config.js';
@@ -203,7 +207,7 @@ export function paramsFromFlags(args) {
 		is_acf_compatible: !!args['--acf'],
 		has_partial_template: !args['--no-template'],
 		partial_template_name: args['--template-name'] || defaultTemplateName(className),
-		properties: (args['--prop'] || []).map(parsePropFlag),
+		properties: attachSubFields((args['--prop'] || []).map(parsePropFlag), args['--sub'] || []),
 		emit: {
 			// A partial is not a block. block.json + register_block_type is a
 			// formal Gutenberg registration, so it's opt-IN — only partials you
@@ -216,6 +220,45 @@ export function paramsFromFlags(args) {
 			script: !!args['--js'],
 		},
 	};
+}
+
+/**
+ * Attach --sub rows onto the matching repeater properties.
+ **/
+export function attachSubFields(properties, subs = []) {
+	if (!subs.length) {
+		return properties;
+	}
+
+	const names = new Map(properties.map((p) => [p.name, p]));
+	const byParent = {};
+	for (const raw of subs) {
+		const parsed = parseSubFlag(raw);
+		const parent = names.get(parsed.parent);
+		if (!parent) {
+			throw new Error(`--sub refers to unknown property "${parsed.parent}".`);
+		}
+		if (parent.type !== 'repeater') {
+			throw new Error(`--sub parent "${parsed.parent}" is type "${parent.type}", not repeater.`);
+		}
+		if (!byParent[parsed.parent]) {
+			byParent[parsed.parent] = [];
+		}
+		byParent[parsed.parent].push({
+			name: parsed.name,
+			type: parsed.type,
+			required: parsed.required,
+			description: parsed.description,
+		});
+	}
+
+	return properties.map((p) => {
+		if (p.type !== 'repeater') {
+			return p;
+		}
+		const extra = byParent[p.name] || [];
+		return { ...p, properties: [ ...(p.properties || []), ...extra ] };
+	});
 }
 
 /**
@@ -243,12 +286,8 @@ export function paramsFromJson(raw) {
 		is_acf_compatible: !!spec.acf_compatible,
 		has_partial_template: spec.template !== false,
 		partial_template_name: spec.template_name || (className ? defaultTemplateName(className) : ''),
-		properties: (spec.properties || []).map((p) => ({
-			name: p.name,
-			type: p.type,
-			required: !!p.required,
-			description: p.description || '',
-		})),
+		properties: (spec.properties || []).map(normalizeProperty),
+		...(spec.acf ? { acf: spec.acf } : {}),
 		emit: {
 			// Opt-in (see paramsFromFlags): a block is only emitted when the
 			// spec explicitly asks for it.
@@ -284,7 +323,8 @@ export function paramsFromManifest(manifest) {
 		is_acf_compatible: !!manifest.acf_compatible,
 		has_partial_template: hasView,
 		partial_template_name: hasView ? path.basename(artifacts.view) : defaultTemplateName(manifest.name),
-		properties: manifest.properties || [],
+		properties: (manifest.properties || []).map(normalizeProperty),
+		...(manifest.acf ? { acf: manifest.acf } : {}),
 		emit: {
 			block: !!manifest.block,
 			manifest: true,
@@ -307,12 +347,7 @@ export function validateParams(params) {
 		throw new Error(`Invalid template name "${params.partial_template_name}". Use lowercase letters and dashes ending in .php, e.g. my-template.php.`);
 	}
 	for (const p of params.properties) {
-		if (!p.name) {
-			throw new Error('Every property must have a name.');
-		}
-		if (!isValidPropType(p.type)) {
-			throw new Error(`Invalid property type "${p.type}" for property "${p.name}". Valid types: ${PROP_TYPES.join(', ')}.`);
-		}
+		validateProperty(p);
 	}
 
 	// A block that is not in the index is unmanageable: `block list`,
@@ -321,6 +356,35 @@ export function validateParams(params) {
 	const emit = params.emit || {};
 	if (emit.block && emit.manifest === false) {
 		throw new Error('A block requires the manifest (it is the index that makes the block manageable). Drop --no-manifest or --block.');
+	}
+
+	// An ACF-compatible partial without a manifest cannot register a field
+	// group: core reads `.wonderpress/manifest/*.json` on acf/init.
+	if (params.is_acf_compatible && emit.manifest === false) {
+		throw new Error('ACF compatibility requires the manifest (it is what core reads to register the field group). Drop --no-manifest or --acf.');
+	}
+}
+
+/**
+ * Validate one property, including a repeater's nested rows.
+ **/
+function validateProperty(p, { asRepeaterSub = false } = {}) {
+	if (!p.name) {
+		throw new Error('Every property must have a name.');
+	}
+	if (!isValidPropType(p.type)) {
+		throw new Error(`Invalid property type "${p.type}" for property "${p.name}". Valid types: ${PROP_TYPES.join(', ')}.`);
+	}
+	if (asRepeaterSub && !REPEATER_SUB_TYPES.includes(p.type)) {
+		throw new Error(`Repeater sub-field "${p.name}" cannot be type "${p.type}". Valid types: ${REPEATER_SUB_TYPES.join(', ')}.`);
+	}
+	if (p.type === 'repeater') {
+		if (!Array.isArray(p.properties) || !p.properties.length) {
+			throw new Error(`Repeater property "${p.name}" must declare at least one sub-field (via --json, --sub, or the wizard).`);
+		}
+		for (const sub of p.properties) {
+			validateProperty(sub, { asRepeaterSub: true });
+		}
 	}
 }
 
@@ -340,7 +404,10 @@ export async function writePartial(params, themeDir) {
 		is_acf_compatible: params.is_acf_compatible,
 		has_partial_template: params.has_partial_template,
 		partial_template_path: partialTemplatePath,
-		properties: params.properties,
+		properties: params.properties.map((p) => ({
+			...p,
+			format: phpFormatForType(p.type),
+		})),
 	});
 	const classFilePath = `${themeDir}/src/partials/${classNameToFileSlug(params.class_name)}.php`;
 	fs.ensureDirSync(path.dirname(classFilePath));
@@ -548,6 +615,7 @@ export function writeManifest(params, themeDir, written = {}) {
 		...(emit.block ? { block: `${namespaceFor(params, themeDir)}/${slug}` } : {}),
 		acf_compatible: params.is_acf_compatible,
 		properties: params.properties,
+		...(params.acf ? { acf: params.acf } : {}),
 		artifacts,
 	};
 
@@ -850,7 +918,9 @@ export function mergeWizardAnswers(step1, args = {}, properties = []) {
 		partial_template_name: hasTemplate
 			? (templateName || defaultTemplateName(step1.class_name))
 			: defaultTemplateName(step1.class_name),
-		properties: properties.length ? properties : (args['--prop'] || []).map(parsePropFlag),
+		properties: properties.length
+			? properties
+			: attachSubFields((args['--prop'] || []).map(parsePropFlag), args['--sub'] || []),
 		emit: {
 			block: step1.emit_block ?? flagged.emit_block ?? false,
 			manifest: !args['--no-manifest'],
@@ -887,8 +957,8 @@ async function runWizard(themeDir, args = {}) {
 		{
 			type: 'confirm',
 			name: 'is_acf_compatible',
-			message: 'Should this partial be configured as ACF compatible?',
-			suffix: '\nIf you don\'t know, type "N":',
+			message: 'Should this partial register an ACF field group?',
+			suffix: '\nCore reads the manifest and registers the group when ACF is present. Say "N" unless a PHP template will hydrate this partial via ACF:',
 			default: false,
 			when: () => asked('is_acf_compatible'),
 		},
@@ -1000,7 +1070,76 @@ async function runWizard(themeDir, args = {}) {
 			log.info('Property configuration is complete. Moving on...');
 			addAnother = false;
 		} else {
-			properties.push({
+			const property = {
+				name: answers.name,
+				type: answers.type,
+				required: answers.required,
+				description: answers.description || '',
+			};
+			if (answers.type === 'repeater') {
+				property.properties = await promptRepeaterSubs(answers.name);
+			}
+			properties.push(property);
+		}
+	}
+
+	return mergeWizardAnswers(step1, args, properties);
+}
+
+/**
+ * Collect the rows of a repeater. Same questions as a top-level property,
+ * but the type list is the subset a repeater row may honestly hold.
+ **/
+async function promptRepeaterSubs(parentName) {
+	const subs = [];
+	let addAnother = true;
+
+	log.instructions(`Repeater "${parentName}" needs at least one sub-field — the shape of each row.`);
+
+	while (addAnother) {
+		const addMessage = subs.length
+			? `Add another sub-field to "${parentName}"?`
+			: `Add a sub-field to "${parentName}"?`;
+
+		const answers = await inquirer.prompt([
+			{
+				type: 'confirm',
+				name: 'add_another',
+				message: addMessage,
+				default: subs.length === 0,
+			},
+			{
+				type: 'input',
+				name: 'name',
+				message: 'Sub-field name?',
+				when: (a) => a.add_another,
+			},
+			{
+				type: 'list',
+				name: 'type',
+				message: 'Sub-field type?',
+				choices: REPEATER_SUB_TYPES,
+				default: 'string',
+				when: (a) => a.add_another,
+			},
+			{
+				type: 'input',
+				name: 'description',
+				message: 'Briefly describe the sub-field',
+				when: (a) => a.add_another,
+			},
+			{
+				type: 'confirm',
+				name: 'required',
+				message: 'Required?',
+				when: (a) => a.add_another,
+			},
+		]);
+
+		if (!answers.add_another) {
+			addAnother = false;
+		} else {
+			subs.push({
 				name: answers.name,
 				type: answers.type,
 				required: answers.required,
@@ -1009,5 +1148,5 @@ async function runWizard(themeDir, args = {}) {
 		}
 	}
 
-	return mergeWizardAnswers(step1, args, properties);
+	return subs;
 }
