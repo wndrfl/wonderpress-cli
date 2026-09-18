@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
+import * as help from '../src/help.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const BIN = path.join(__dirname, '..', 'bin', 'wonderpress.js');
@@ -82,4 +83,37 @@ test('help never mentions a command the CLI does not route', () => {
 			`main help advertises "${command}", but the CLI does not route it`
 		);
 	}
+});
+
+// --- the topics are files now, so they can go missing ---
+//
+// They used to be template literals, where a backtick written naturally in
+// prose silently terminated the string and took the whole module down. Files
+// cannot do that — but they CAN fail to ship, which the old form could not, so
+// the risk moved rather than vanished.
+
+test('every advertised topic has a screen', () => {
+	for (const topic of ['main', 'partial', 'block', 'init']) {
+		assert.equal(help.has(topic), true, `${topic} should have a help screen`);
+	}
+});
+
+test('topics may contain backticks, which is the whole point', () => {
+	// The case that used to be a SYNTAX ERROR rather than a test failure: prose
+	// quoting a command, in a string delimited by the same character.
+	const { out } = run('partial', 'help');
+	assert.match(out, /`wonderpress block help`/);
+	assert.match(out, /\\Wonderpress\\Partials/, 'backslashes in a PHP namespace survive too');
+});
+
+test('an unknown topic orients rather than scolding', () => {
+	assert.equal(help.has('nonsense'), false);
+	const { out, status } = run('help', 'nonsense');
+	assert.match(out, /build WordPress themes/, 'falls back to the main screen');
+	assert.equal(status, 0);
+});
+
+test('a topic name cannot wander out of the help directory', () => {
+	assert.equal(help.has('../package'), false);
+	assert.equal(help.has('../../etc/passwd'), false);
 });

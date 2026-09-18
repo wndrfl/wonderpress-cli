@@ -1,0 +1,42 @@
+wonderpress partial — reusable render primitives
+
+A partial is a PHP class plus a view template: the unit of markup in a
+Wonderpress theme. Once created it can be rendered two ways, from one source:
+
+  from PHP        echo new \Wonderpress\Partials\Testimonial([ ... ]);
+  in the editor   by also giving it a block — see `wonderpress block help`
+
+COMMANDS
+  partial create           Create one (class, view, style, optionally JS + block)
+  partial list             List every partial, and whether a block wraps it
+  partial remove <Name>    Delete a partial and everything it owns
+
+CREATE OPTIONS
+  <Class_Name>             The name, positionally — `partial create Hero`.
+                           --name <Class_Name> does the same thing.
+                           With no name at all, the wizard runs, and any flags
+                           you passed pre-answer its questions rather than being
+                           asked again.
+  --prop <name:type[:required]>
+                           A property, repeatable. Types: string, int, bool,
+                           array, object
+  --block                  Also expose it in the editor (off by default —
+                           most partials are compositional, not blocks)
+  --js                     Also scaffold a JS behavior class (off by default)
+  --acf                    Mark the partial ACF compatible
+  --template-name <file>   Name the view template, e.g. my-view.php
+  --no-template            Class only, no view template
+  --no-style               Skip the SCSS stub
+  --no-manifest            Skip the manifest (cannot be combined with --block)
+  --json <spec|@file>      Create from a JSON spec instead of flags
+  --theme <name>           Target a theme by name, skipping the active lookup
+
+REMOVE OPTIONS
+  --with-block             Also remove the block wrapping this partial.
+                           Without it, remove refuses when a block exists.
+
+EXAMPLES
+  wonderpress partial create --name Testimonial --prop quote:string:required
+  wonderpress partial create --name Hero --block --js
+  wonderpress partial create
+      No flags runs the interactive wizard, which asks the same questions.
