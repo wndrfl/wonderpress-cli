@@ -9,7 +9,8 @@ Wonderpress theme. Once created it can be rendered two ways, from one source:
 COMMANDS
   partial create           Create one (class, view, style, optionally JS + block)
   partial list             List every partial, and whether a block wraps it
-  partial remove <Name>    Delete a partial and everything it owns
+  partial remove [<Name>]  Delete a partial and everything it owns. With no
+                           name, pick from what the theme has.
 
 CREATE OPTIONS
   <Class_Name>             The name, positionally — `partial create Hero`.

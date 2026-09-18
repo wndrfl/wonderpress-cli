@@ -15,10 +15,13 @@ and its block together, or add a block to a partial you already have:
 Both produce identical output; use whichever matches what already exists.
 
 COMMANDS
-  block create <Name>      Add a block wrapper to an existing partial
+  block create [<Name>]    Add a block wrapper to an existing partial. With no
+                           name, pick from the partials that do not have one.
   block list               List the partials currently exposed as blocks
-  block remove <Name>      Remove the wrapper. The partial survives — this is
-                           the safe way to take something out of the editor.
+  block remove [<Name>]    Remove the wrapper. With no name, pick from the
+                           blocks that exist. The partial survives either way —
+                           this is the safe way to take something out of the
+                           editor.
 
 OPTIONS
   --theme <name>           Target a theme by name, skipping the active lookup
