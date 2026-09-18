@@ -24,6 +24,40 @@ import pkg from '../package.json' with { type: 'json' };
 export const CORE_VERSION = 'v1.3.0';
 
 /**
+ * Where wonderpress-core is installed from, and at what ref.
+ *
+ * Pinned by default — see CORE_VERSION. Both halves can be overridden from the
+ * environment, which exists for one reason: testing an unreleased core without
+ * tagging one. Before this, the only way to try a core change through `init` was
+ * to cut a tag for it, which turns every experiment into a release.
+ *
+ *   WONDERPRESS_CORE_REPO=../wonderpress-core   a local checkout, or any remote
+ *   WONDERPRESS_CORE_REF=my-branch              any tag, branch or commit
+ *
+ * An override warns every time and is recorded as what it actually is, so a
+ * project built from a branch never claims to be running a released version.
+ * Reproducibility is the whole point of the pin, and a silent override would
+ * hand it back.
+ **/
+export function resolveCoreSource() {
+
+  const repo = process.env.WONDERPRESS_CORE_REPO || CORE_REPO;
+  const ref = process.env.WONDERPRESS_CORE_REF || CORE_VERSION;
+
+  if (repo !== CORE_REPO || ref !== CORE_VERSION) {
+    log.warn(`Installing wonderpress-core from ${repo} @ ${ref} instead of the pinned ${CORE_VERSION}.`);
+    log.warn(`This project will NOT be reproducible. Unset WONDERPRESS_CORE_REPO / WONDERPRESS_CORE_REF for a real build.`);
+  }
+
+  return { repo, ref };
+}
+
+/**
+ * The canonical home of wonderpress-core.
+ **/
+export const CORE_REPO = 'https://github.com/wndrfl/wonderpress-core.git';
+
+/**
  * Accept and route a command.
  **/
 export async function command(subcommand, args) {
@@ -191,10 +225,8 @@ export async function init(dir, initConfig) {
   // code — with no way to say which one a client site runs, or to upgrade it on
   // purpose. The version is recorded below so the site can answer that question
   // without anyone reading its git history.
-  const coreInstalled = await wordpress.installMuPlugin(
-    'https://github.com/wndrfl/wonderpress-core.git',
-    CORE_VERSION
-  );
+  const coreSource = resolveCoreSource();
+  const coreInstalled = await wordpress.installMuPlugin(coreSource.repo, coreSource.ref);
 
   if (!coreInstalled) {
     return false;
@@ -204,7 +236,10 @@ export async function init(dir, initConfig) {
   // even when a provision failed halfway, but a core version is a claim about
   // what is on disk, and claiming one we failed to install would be worse than
   // recording nothing.
-  config.write(process.cwd(), { core: CORE_VERSION });
+  // The ref that was ACTUALLY installed, not the one we would have preferred.
+  // A project built from a branch should say so when someone later asks which
+  // core it is running.
+  config.write(process.cwd(), { core: coreSource.ref });
 
   // Install Composer
   await composer.installComposer();

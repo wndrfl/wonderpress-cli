@@ -262,3 +262,39 @@ test('a project with no namespace at all falls back to the default', async () =>
 		assert.equal(rc.namespace, 'wonderpress');
 	});
 });
+
+// --- the core source override ---
+//
+// Exists so an unreleased core can be tested through `init` without tagging
+// one. Before it, trying a core change meant cutting a release for it.
+
+test('the core source is pinned by default', () => {
+	const saved = { repo: process.env.WONDERPRESS_CORE_REPO, ref: process.env.WONDERPRESS_CORE_REF };
+	delete process.env.WONDERPRESS_CORE_REPO;
+	delete process.env.WONDERPRESS_CORE_REF;
+	try {
+		const source = core.resolveCoreSource();
+		assert.equal(source.ref, core.CORE_VERSION);
+		assert.equal(source.repo, core.CORE_REPO);
+	} finally {
+		if (saved.repo !== undefined) process.env.WONDERPRESS_CORE_REPO = saved.repo;
+		if (saved.ref !== undefined) process.env.WONDERPRESS_CORE_REF = saved.ref;
+	}
+});
+
+test('the environment can point core at a local checkout and a branch', () => {
+	const saved = { repo: process.env.WONDERPRESS_CORE_REPO, ref: process.env.WONDERPRESS_CORE_REF };
+	process.env.WONDERPRESS_CORE_REPO = '/tmp/wonderpress-core';
+	process.env.WONDERPRESS_CORE_REF = 'feat/whatever';
+	try {
+		const source = core.resolveCoreSource();
+		assert.equal(source.repo, '/tmp/wonderpress-core');
+		assert.equal(source.ref, 'feat/whatever');
+		assert.notEqual(source.ref, core.CORE_VERSION, 'the pin must not win over an explicit override');
+	} finally {
+		delete process.env.WONDERPRESS_CORE_REPO;
+		delete process.env.WONDERPRESS_CORE_REF;
+		if (saved.repo !== undefined) process.env.WONDERPRESS_CORE_REPO = saved.repo;
+		if (saved.ref !== undefined) process.env.WONDERPRESS_CORE_REF = saved.ref;
+	}
+});
