@@ -118,10 +118,14 @@ block would appear on the same screen.
 ```php
 add_filter( 'wonderpress_template_fields', function () {
 	return array(
-		'page-landing.php' => array( 'hero', 'testimonials' ),
+		'template-landing.php' => array( 'hero', 'testimonials' ),
 	);
 } );
 ```
+
+Do **not** use the `default` key unless you want those partials on every page
+that uses WordPress’s default template. Prefer a template manifest `composition`
+for bespoke landings instead.
 
 That landing page hydrates from ACF and typically locks `'all'`:
 
@@ -144,15 +148,27 @@ with `"schemaVersion": 1`. That file declares:
 
 - **`editor.lock`** — same values as `wonderpress_template_locks` (manifest
   defaults; your PHP filter still wins on the same template key).
-- **`editor.native`** — which classic editor panels appear (`blockEditor: false`
-  is typical for PHP-composed landings).
+- **`editor.native`** — which editor panels appear (`blockEditor: false` switches
+  to the classic screen; `featuredImage: false` removes featured-image support
+  on that template). After you change **Page → Template**, **Update** the page and
+  reload the edit screen so PHP can apply the manifest (editor mode, ACF, locks).
 - **`composition`** — ordered `{ "id", "partial" }` rows. The same partial may
   appear twice with different ids (two heroes).
+
+Manifest files must be **strict JSON** (no `//` comments or trailing commas). A
+parse error skips the whole file, and partials fall back to per-slug ACF groups
+from `wonderpress_template_fields` — which can look like fields “went global.”
 
 When `composition` lists ACF-compatible partials, core registers **one** field
 group on that page template; each instance id is an ACF group field name. Hydrate
 with `wonder_partial_props( 'landing-hero', 'hero-main' )` or render the stack
 with `wonder_render_template_sections()` (already in the scaffolded PHP template).
+
+Assign the page to that template in the editor (**Page** → **Template** → your
+template, then **Update**). Manifest rules apply only to pages whose saved
+`_wp_page_template` matches the manifest `template` value (e.g.
+`template-landing.php`). Pages on the default template keep the normal block
+editor.
 
 Seed sections at create time:
 
