@@ -49,7 +49,11 @@ COMMANDS
   partial remove <Name>    Delete a partial and everything it owns
 
 CREATE OPTIONS
-  --name <Class_Name>      WordPress snake-case, e.g. Testimonial_Card
+  <Class_Name>             The name, positionally — \`partial create Hero\`.
+                           --name <Class_Name> does the same thing.
+                           With no name at all, the wizard runs, and any flags
+                           you passed pre-answer its questions rather than being
+                           asked again.
   --prop <name:type[:required]>
                            A property, repeatable. Types: string, int, bool,
                            array, object

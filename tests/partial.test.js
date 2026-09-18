@@ -9,6 +9,8 @@ import {
 	writePartial,
 	validateParams,
 	resolveNamespace,
+	seedFromFlags,
+	mergeWizardAnswers,
 } from '../src/partial.js';
 
 // The theme directory is deliberately given a STABLE name inside the random
@@ -334,4 +336,56 @@ test('the render docblock names the project namespace, not the tool', async () =
 	} finally {
 		fs.removeSync(dir);
 	}
+});
+
+// ── The wizard does not re-ask what the flags already said ──────────────────
+//
+// `partial create Hero --block` used to fall through to the wizard, which asked
+// for the name that had just been typed and then asked whether to make a block
+// — defaulting to No. Answering out of habit threw away what had been
+// explicitly requested.
+
+test('a flag marks its question as already answered', () => {
+	const seeded = seedFromFlags({ '--block': true, '--js': true });
+	assert.equal(seeded.emit_block, true);
+	assert.equal(seeded.emit_script, true);
+	assert.equal(seeded.is_acf_compatible, undefined, 'unflagged questions are still worth asking');
+});
+
+test('--no-template seeds FALSE, which is an answer rather than a silence', () => {
+	// The bug `??` exists to avoid: `||` would treat this as unanswered and
+	// hand back the default of true, creating the template that was refused.
+	assert.equal(seedFromFlags({ '--no-template': true }).has_partial_template, false);
+});
+
+test('a skipped question falls back to its flag', () => {
+	const params = mergeWizardAnswers({ class_name: 'Hero' }, { '--block': true });
+	assert.equal(params.emit.block, true, 'the block asked for on the command line is emitted');
+	assert.equal(params.class_name, 'Hero');
+});
+
+test('an answered question beats the flag that seeded it', () => {
+	const params = mergeWizardAnswers(
+		{ class_name: 'Hero', emit_block: false },
+		{ '--block': true }
+	);
+	assert.equal(params.emit.block, false, 'what the wizard was told wins');
+});
+
+test('--no-template survives the merge, template name and all', () => {
+	const params = mergeWizardAnswers({ class_name: 'Hero' }, { '--no-template': true });
+	assert.equal(params.has_partial_template, false);
+	assert.equal(params.partial_template_name, 'hero.php', 'still named, just not created');
+});
+
+test('properties typed in the wizard win; --prop fills in when none were', () => {
+	const typed = mergeWizardAnswers(
+		{ class_name: 'Hero' },
+		{ '--prop': ['ignored:string'] },
+		[{ name: 'quote', type: 'string', required: true, description: '' }]
+	);
+	assert.deepEqual(typed.properties.map((p) => p.name), ['quote']);
+
+	const fromFlags = mergeWizardAnswers({ class_name: 'Hero' }, { '--prop': ['title:string'] }, []);
+	assert.deepEqual(fromFlags.properties.map((p) => p.name), ['title']);
 });

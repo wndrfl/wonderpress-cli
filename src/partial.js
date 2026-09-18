@@ -158,15 +158,25 @@ export async function create(args) {
 		return false;
 	}
 
-	// Gather params: --json, then --name (flags), else the interactive wizard.
+	// A positional name works, because `block create <Name>` has always taken
+	// one and there is no reason for two commands in the same CLI to disagree.
+	// `partial create Hero` used to fall through to the wizard, which then asked
+	// for the name that had just been typed.
+	const name = (args._ && args._[2]) || args['--name'];
+
+	// Gather params: --json, then a name (flags), else the interactive wizard.
 	let params;
 	try {
 		if (args['--json']) {
 			params = paramsFromJson(args['--json']);
-		} else if (args['--name']) {
-			params = paramsFromFlags(args);
+		} else if (name) {
+			params = paramsFromFlags({ ...args, '--name': name });
 		} else {
-			params = await runWizard(themeDir);
+			// Seeded, not ignored. Flags passed alongside no name used to be
+			// discarded silently — `partial create --block` asked whether to make
+			// a block, with the default set to No, so answering out of habit threw
+			// away what had been explicitly asked for.
+			params = await runWizard(themeDir, args);
 		}
 		validateParams(params);
 	} catch (err) {
@@ -787,7 +797,56 @@ export async function remove(args) {
  * Interactive wizard — a thin convenience wrapper that collects the same
  * params the flags would, then returns them for writePartial().
  **/
-async function runWizard(themeDir) {
+/**
+ * Which wizard questions the command line has already answered.
+ *
+ * A question whose answer was given as a flag is not a question. Undefined
+ * means "still worth asking"; anything else is the answer.
+ **/
+export function seedFromFlags(args = {}) {
+	return {
+		is_acf_compatible: args['--acf'] === true ? true : undefined,
+		has_partial_template: args['--no-template'] === true ? false : undefined,
+		partial_template_name: args['--template-name'],
+		emit_script: args['--js'] === true ? true : undefined,
+		emit_block: args['--block'] === true ? true : undefined,
+	};
+}
+
+/**
+ * Fold the wizard's answers together with the flags that pre-empted them.
+ *
+ * Separate from the prompting so the rules can be tested without a terminal.
+ * `??` rather than `||` throughout: `false` is a real answer, and
+ * `--no-template` means false rather than unanswered.
+ **/
+export function mergeWizardAnswers(step1, args = {}, properties = []) {
+
+	const flagged = seedFromFlags(args);
+	const hasTemplate = step1.has_partial_template ?? flagged.has_partial_template ?? true;
+	const templateName = step1.partial_template_name ?? flagged.partial_template_name;
+
+	return {
+		class_name: step1.class_name,
+		is_acf_compatible: step1.is_acf_compatible ?? flagged.is_acf_compatible ?? false,
+		has_partial_template: hasTemplate,
+		partial_template_name: hasTemplate
+			? (templateName || defaultTemplateName(step1.class_name))
+			: defaultTemplateName(step1.class_name),
+		properties: properties.length ? properties : (args['--prop'] || []).map(parsePropFlag),
+		emit: {
+			block: step1.emit_block ?? flagged.emit_block ?? false,
+			manifest: !args['--no-manifest'],
+			style: !args['--no-style'],
+			script: step1.emit_script ?? flagged.emit_script ?? false,
+		},
+	};
+}
+
+async function runWizard(themeDir, args = {}) {
+
+	const flagged = seedFromFlags(args);
+	const asked = (key) => flagged[key] === undefined;
 
 	log.info('Starting partial creation wizard...');
 	log.instructions('In Wonderpress, a "partial" is a PHP class that helps render a reusable view. Here we will create the PHP class (and optionally the PHP template for the view). Please answer the following questions:');
@@ -814,13 +873,15 @@ async function runWizard(themeDir) {
 			message: 'Should this partial be configured as ACF compatible?',
 			suffix: '\nIf you don\'t know, type "N":',
 			default: false,
+			when: () => asked('is_acf_compatible'),
 		},
 		{
 			type: 'confirm',
 			name: 'has_partial_template',
 			message: 'Should we create a view template for this partial?',
 			suffix: `\nThis file will be created in ${themeDir}/partials`,
-			default: true
+			default: true,
+			when: () => asked('has_partial_template'),
 		},
 		{
 			type: 'input',
@@ -849,7 +910,7 @@ async function runWizard(themeDir) {
 			suffix: '\nMost partials have no behavior; say "N" unless this one needs client-side JS:',
 			default: false,
 			when: function (answers) {
-				return answers.has_partial_template;
+				return asked('emit_script') && answers.has_partial_template !== false;
 			}
 		},
 		{
@@ -858,6 +919,7 @@ async function runWizard(themeDir) {
 			message: 'Also expose this partial as a Gutenberg block?',
 			suffix: '\nMost partials are compositional and should not be blocks; say "N" unless you want it in the editor:',
 			default: false,
+			when: () => asked('emit_block'),
 		}
 	]);
 
@@ -930,12 +992,5 @@ async function runWizard(themeDir) {
 		}
 	}
 
-	return {
-		class_name: step1.class_name,
-		is_acf_compatible: step1.is_acf_compatible,
-		has_partial_template: step1.has_partial_template,
-		partial_template_name: step1.has_partial_template ? step1.partial_template_name : defaultTemplateName(step1.class_name),
-		properties,
-		emit: { block: !!step1.emit_block, manifest: true, style: true, script: !!step1.emit_script },
-	};
+	return mergeWizardAnswers(step1, args, properties);
 }
