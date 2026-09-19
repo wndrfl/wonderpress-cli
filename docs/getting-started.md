@@ -156,7 +156,9 @@ with `"schemaVersion": 1`. That file declares:
   and maps to an ACF group field), or **tab** `{ "id", "label", "items": [ …instances… ] }`
   (editor-only grouping as ACF tabs; root-level instances have no tab wrapper).
   Instance ids must be unique across the whole tree. The same partial may appear
-  twice with different ids (two heroes).
+  twice with different ids (two heroes). Tab rows always register as ACF tabs;
+  one tab row uses **left** placement (sidebar), two or more use **top** tabs.
+  Save manifests under `.wonderpress/manifest/page-templates/` (strict JSON).
 
 Manifest files must be **strict JSON** (no `//` comments or trailing commas). A
 parse error skips the whole file, and partials fall back to per-slug ACF groups
