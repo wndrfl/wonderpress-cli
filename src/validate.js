@@ -269,6 +269,66 @@ export function compositionRowIsTab(row) {
 }
 
 /**
+ * Whether a composition row is an inline ACF field group (no partial).
+ **/
+export function compositionRowIsFieldGroup(row) {
+	return (
+		!!row
+		&& typeof row === 'object'
+		&& Array.isArray(row.properties)
+		&& row.properties.length > 0
+	);
+}
+
+/**
+ * Validate one manifest property; append errors instead of throwing.
+ **/
+function validateCompositionProperty(p, errors, pathLabel, { asRepeaterSub = false } = {}) {
+	if (!p?.name) {
+		errors.push(`${pathLabel}: every property must have a name.`);
+		return;
+	}
+
+	if (!isValidPropType(p.type)) {
+		errors.push(
+			`${pathLabel}: invalid type "${p.type}" on property "${p.name}". Valid types: ${PROP_TYPES.join(', ')}.`,
+		);
+		return;
+	}
+
+	if (asRepeaterSub && !REPEATER_SUB_TYPES.includes(p.type)) {
+		errors.push(
+			`${pathLabel}: repeater sub-field "${p.name}" cannot be type "${p.type}". Valid types: ${REPEATER_SUB_TYPES.join(', ')}.`,
+		);
+		return;
+	}
+
+	if (p.type === 'repeater') {
+		if (!Array.isArray(p.properties) || !p.properties.length) {
+			errors.push(`${pathLabel}: repeater property "${p.name}" must declare at least one sub-field.`);
+			return;
+		}
+		for (const sub of p.properties) {
+			validateCompositionProperty(sub, errors, pathLabel, { asRepeaterSub: true });
+		}
+	}
+}
+
+/**
+ * Validate an inline `properties` array on a composition row.
+ **/
+function validateCompositionProperties(properties, errors, pathLabel) {
+	if (!Array.isArray(properties) || !properties.length) {
+		errors.push(`${pathLabel} needs a non-empty properties array.`);
+		return;
+	}
+
+	for (const p of properties) {
+		validateCompositionProperty(p, errors, pathLabel);
+	}
+}
+
+/**
  * Instance rows only, in document order (root and tab children).
  **/
 export function flattenTemplateComposition(composition) {
@@ -300,9 +360,9 @@ export function flattenTemplateComposition(composition) {
 }
 
 /**
- * Validate one composition instance row (shared by root and tab children).
+ * Validate a partial instance or inline field-group row (root or tab child).
  **/
-function validateCompositionInstanceRow(row, ids, errors, partialSlugs, pathLabel) {
+function validateCompositionContentRow(row, ids, errors, partialSlugs, pathLabel) {
 	if (!row?.id || !COMPOSITION_ID_RE.test(row.id)) {
 		errors.push(`${pathLabel} needs a valid id (a-z, 0-9, hyphen).`);
 		return;
@@ -314,15 +374,31 @@ function validateCompositionInstanceRow(row, ids, errors, partialSlugs, pathLabe
 	ids.add(row.id);
 
 	const hasPartial = !!row.partial;
+	const hasProperties = compositionRowIsFieldGroup(row);
 	const hasItems = compositionRowIsTab(row);
+
+	if (hasPartial && hasProperties) {
+		errors.push(`Composition row "${row.id}" cannot have both partial and properties.`);
+		return;
+	}
 
 	if (hasPartial && hasItems) {
 		errors.push(`Composition row "${row.id}" cannot have both partial and items.`);
 		return;
 	}
 
+	if (hasProperties && hasItems) {
+		errors.push(`Composition row "${row.id}" cannot have both properties and items.`);
+		return;
+	}
+
+	if (hasProperties) {
+		validateCompositionProperties(row.properties, errors, pathLabel);
+		return;
+	}
+
 	if (!hasPartial) {
-		errors.push(`Composition row "${row.id}" needs a valid partial slug.`);
+		errors.push(`Composition row "${row.id}" needs a partial slug or properties array.`);
 		return;
 	}
 
@@ -357,10 +433,21 @@ export function validateTemplateComposition(composition, { partialSlugs = [] } =
 		}
 
 		const hasPartial = !!row.partial;
+		const hasProperties = compositionRowIsFieldGroup(row);
 		const hasItems = compositionRowIsTab(row);
 
 		if (hasPartial && hasItems) {
 			errors.push(`Composition row "${row.id}" cannot have both partial and items.`);
+			continue;
+		}
+
+		if (hasProperties && hasItems) {
+			errors.push(`Composition row "${row.id}" cannot have both properties and items.`);
+			continue;
+		}
+
+		if (hasPartial && hasProperties) {
+			errors.push(`Composition row "${row.id}" cannot have both partial and properties.`);
 			continue;
 		}
 
@@ -380,7 +467,7 @@ export function validateTemplateComposition(composition, { partialSlugs = [] } =
 					errors.push(`Tab row "${row.id}" cannot nest another tab.`);
 					continue;
 				}
-				validateCompositionInstanceRow(
+				validateCompositionContentRow(
 					child,
 					ids,
 					errors,
@@ -391,7 +478,12 @@ export function validateTemplateComposition(composition, { partialSlugs = [] } =
 			continue;
 		}
 
-		validateCompositionInstanceRow(row, ids, errors, partialSlugs, `Composition row "${row.id}"`);
+		if (hasPartial || hasProperties) {
+			validateCompositionContentRow(row, ids, errors, partialSlugs, `Composition row "${row.id}"`);
+			continue;
+		}
+
+		errors.push(`Composition row "${row.id}" needs partial, properties, or items (tab).`);
 	}
 
 	return errors;

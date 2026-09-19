@@ -157,14 +157,17 @@ with `"schemaVersion": 1`. That file declares:
   on that template). After you change **Page →
   Template**, **Update** the page and reload the edit screen so PHP can apply the
   manifest (editor mode, ACF, locks).
-- **`composition`** — ordered rows: **instance** `{ "id", "partial" }` (renders
-  and maps to an ACF group field), or **tab** `{ "id", "label", "items": [ …instances… ] }`
-  (editor-only grouping as ACF tabs; root-level instances have no tab wrapper).
-  Instance ids must be unique across the whole tree. The same partial may appear
-  twice with different ids (two heroes).   Tab rows register as ACF tabs; set `editor.acf.tabPlacement` to force **left**
-  or **top**, or omit for the default. Save manifests under
-  `.wonderpress/manifest/page-templates/`
-  (strict JSON).
+- **`composition`** — ordered rows:
+  - **partial** — `{ "id", "partial" }` renders via `wonder_render_template_sections()`
+    and maps to an ACF group (partial manifest properties).
+  - **fields** — `{ "id", "label"?, "properties": [ … ] }` editor-only ACF group
+    using the same property types as partial manifests (`string`, `boolean`, `image`,
+    `link`, `repeater`, …). Read values with `get_field( 'your-id' )` or
+    `wonder_template_composition_field( 'your-id' )` in PHP.
+  - **tab** — `{ "id", "label", "items": [ …partial or fields rows… ] }` (ACF tabs).
+  Instance ids must be unique across the whole tree. Tab rows register as ACF tabs;
+  set `editor.acf.tabPlacement` to force **left** or **top**, or omit for the default.
+  Save manifests under `.wonderpress/manifest/page-templates/` (strict JSON).
 
 Manifest files must be **strict JSON** (no `//` comments or trailing commas). A
 parse error skips the whole file, and partials fall back to per-slug ACF groups

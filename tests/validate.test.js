@@ -12,6 +12,7 @@ import {
 	validateTemplateManifest,
 	validateTemplateComposition,
 	compositionRowIsTab,
+	compositionRowIsFieldGroup,
 	phpFormatForType,
 	normalizeProperty,
 	classNameToFileSlug,
@@ -237,6 +238,43 @@ test('validateTemplateManifest accepts editor.acf.tabPlacement', () => {
 	);
 	assert.equal(bad.ok, false);
 	assert.ok(bad.errors.some((e) => /tabPlacement/.test(e)));
+});
+
+test('compositionRowIsFieldGroup detects inline properties rows', () => {
+	assert.equal(compositionRowIsFieldGroup({ id: 'x', properties: [{ name: 'a', type: 'string' }] }), true);
+	assert.equal(compositionRowIsFieldGroup({ id: 'x', partial: 'hero' }), false);
+	assert.equal(compositionRowIsFieldGroup({ id: 'x', properties: [] }), false);
+});
+
+test('validateTemplateManifest accepts inline properties composition rows', () => {
+	const result = validateTemplateManifest(
+		{
+			schemaVersion: TEMPLATE_MANIFEST_SCHEMA_VERSION,
+			template: 'template-landing.php',
+			composition: [
+				{
+					id: 'page-meta',
+					properties: [
+						{ name: 'meta_title', type: 'string', required: true },
+						{ name: 'no_index', type: 'boolean' },
+					],
+				},
+				{ id: 'hero-main', partial: 'landing-hero' },
+			],
+		},
+		{ partialSlugs: ['landing-hero'] },
+	);
+	assert.equal(result.ok, true);
+
+	const bad = validateTemplateManifest(
+		{
+			schemaVersion: TEMPLATE_MANIFEST_SCHEMA_VERSION,
+			template: 'template-landing.php',
+			composition: [{ id: 'both', partial: 'landing-hero', properties: [{ name: 'a', type: 'string' }] }],
+		},
+		{ partialSlugs: ['landing-hero'] },
+	);
+	assert.equal(bad.ok, false);
 });
 
 test('validateTemplateManifest accepts mixed composition', () => {
