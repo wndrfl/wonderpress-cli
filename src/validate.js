@@ -24,7 +24,7 @@ export const PROP_TYPES = [
  * Property types a dual partial (ACF + block) may use today.
  * Tier B types require block inspector work — see docs/dual-authorable-types.md.
  */
-export const DUAL_AUTHORABLE_TYPES = ['string', 'boolean', 'email', 'select', 'image'];
+export const DUAL_AUTHORABLE_TYPES = ['string', 'boolean', 'email', 'select', 'image', 'link'];
 
 // What a repeater row may contain. Nested repeaters are a later slice.
 export const REPEATER_SUB_TYPES = ['boolean', 'email', 'image', 'link', 'partial', 'select', 'string'];

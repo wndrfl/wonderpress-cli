@@ -5,8 +5,8 @@ must produce the **same canonical value** on flat partial properties after
 construction. See [dual-authorable-types.md](dual-authorable-types.md) for the
 platform rule and tier rollout.
 
-Status: Tier A implemented. Tier B `image` has block controls and PHP
-normalization; other Tier B types are specified with controls/normalize backlog.
+Status: Tier A implemented. Tier B `image` and simple `link` have block controls
+and PHP normalization; other Tier B types are specified with controls/normalize backlog.
 
 ## Hydration pipeline
 
@@ -91,9 +91,9 @@ is **not** the rich Link primitive (`partial: "link"`); see [Deferred profiles](
 
 **Block storage:** single `object` attribute (matches ACF group and `phpFormatForType( 'link' )` → array).
 
-**Future editor:** `LinkControl` and/or four inspector fields mapped into this object.
+**Editor:** four inspector fields (link text, URL, title attribute, new tab) in `editor-preview.js`.
 
-**Acceptance:** add `link` to `DUAL_AUTHORABLE_TYPES` when editor ships.
+**Acceptance:** `link` is in `DUAL_AUTHORABLE_TYPES` with `wonder_normalize_link_value()`.
 
 ## Tier B — `post_object`
 
@@ -163,7 +163,7 @@ Add types to `DUAL_AUTHORABLE_TYPES` in `validate.js` only after spec acceptance
 | Order | Type | Requires |
 | --- | --- | --- |
 | 1 | `image` | ✅ MediaUpload + `wonder_normalize_image_value()` |
-| 2 | `link` | Simple link object editor |
+| 2 | `link` | ✅ Four-field inspector + `wonder_normalize_link_value()` |
 | 3 | `post_object` | Post picker + ID normalize |
 | 4 | `repeater` | Row UI + nested type coverage |
 | 5 | `partial` | Recursive schema/UI + transitive lint |

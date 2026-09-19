@@ -24,7 +24,7 @@ someone else for. Owning an implementation decays. Owning an interface compounds
 | 0 — Re-home the plumbing | **Mostly done** — one item left (Vite) |
 | 1 — Formalize core + contract | **Mostly done** — one item left (core as a versioned package) |
 | 2 — Fire the spine + constrain the editor | **Mostly done** — theme.json, wrapper attributes and the curated suite shipped; the page lock dial is left |
-| 2b — Editor JavaScript | In progress — buildless editor-preview; Tier B rollout started (`image`) |
+| 2b — Editor JavaScript | In progress — buildless editor-preview; Tier B rollout (`image`, `link` done) |
 | 3 — The AI layer | Not started |
 | 4 — Optional Figma | Not started |
 
