@@ -32,7 +32,7 @@ enforced by the `node_modules` rule in the shipped
 | Concern | Owner | Where it lives |
 | --- | --- | --- |
 | PHP partials & templates (the render layer) | **WonderPress CLI** | `wp-content/themes/wonderpress/partials`, `.../src` |
-| Component manifests (always emitted) | **WonderPress CLI** | `.../.wonderpress/manifest/*.json` |
+| Partial manifests (always emitted) | **WonderPress CLI** | `.../.wonderpress/manifest/partials/*.json` |
 | `block.json` + `render.php` (opt-in Gutenberg wrapper — `--block`) | **WonderPress CLI** | `.../blocks/<slug>/` |
 | The `static/` tree (layout, `.staticrc`) | **Static Kit** | `wp-content/themes/wonderpress/static` |
 | Component **style stubs** (token-only SCSS) | **Static Kit** | `static/` (created via delegation) |
@@ -118,9 +118,14 @@ metadata to things that have no business carrying it.
 Blocks are dynamic and server-rendered: `render.php` news up the partial class
 and echoes `->render()`. There is no `edit.js` and no editor bundle.
 
-### The manifest is the index
+### The manifest tree
 
-`.wonderpress/manifest/<slug>.json` is the CLI's record of what a component is
+All WonderPress manifests live under `.wonderpress/manifest/`, typed by path:
+`partials/` for components, `page-templates/` for page-template contracts.
+
+### Partial manifests are the index
+
+`.wonderpress/manifest/partials/<slug>.json` is the CLI's record of what a component is
 and what was written for it. `partial list`, `partial remove`, `block create`,
 `block list`, and `block remove` all read it rather than scanning (and guessing
 at) source files — so the manifest is authoritative, and the deletion list for a
@@ -134,7 +139,7 @@ registers `blocks/<slug>/block.json`. The CLI still owns the files; core never
 writes them. Optional `acf.location` on the manifest is the ACF location-rule
 shape; the theme filter is the usual way to locate groups.
 
-**Template manifests** (`.wonderpress/templates/<template>.json`, integer
+**Page-template manifests** (`.wonderpress/manifest/page-templates/<template>.json`, integer
 `schemaVersion`) declare the editor contract (`editor.lock`, `editor.native`) and
 an ordered `composition` of partial instances (`id` + `partial`). Core merges
 locks with `wonderpress_template_locks`, registers one ACF group per template

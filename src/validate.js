@@ -232,8 +232,27 @@ export const PROP_TYPE_TO_BLOCK = {
 	repeater: 'array',
 };
 
-/** Supported `.wonderpress/templates/*.json` schema version. */
+/** WonderPress manifest tree under the theme (typed by subdirectory). */
+export const MANIFEST_ROOT = '.wonderpress/manifest';
+export const PARTIAL_MANIFEST_DIR = `${MANIFEST_ROOT}/partials`;
+export const PAGE_TEMPLATE_MANIFEST_DIR = `${MANIFEST_ROOT}/page-templates`;
+
+/** Supported page-template manifest schema version. */
 export const TEMPLATE_MANIFEST_SCHEMA_VERSION = 1;
+
+/**
+ * Path to a partial manifest file.
+ **/
+export function partialManifestPath(themeDir, slug) {
+	return `${themeDir}/${PARTIAL_MANIFEST_DIR}/${slug}.json`;
+}
+
+/**
+ * Directory for page-template manifest JSON files.
+ **/
+export function pageTemplateManifestDir(themeDir) {
+	return `${themeDir}/${PAGE_TEMPLATE_MANIFEST_DIR}`;
+}
 
 export const TEMPLATE_LOCK_LEVELS = ['all', 'insert', 'contentOnly', false];
 

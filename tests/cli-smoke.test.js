@@ -39,7 +39,7 @@ test('partial create --json runs headlessly against a fixture', () => {
 		// the spine's additional outputs land too (block opted in via the spec)
 		assert.ok(fs.existsSync(path.join(dir, 'wp-content/themes/smoke/blocks/smoke-test/block.json')), 'block.json should exist');
 		assert.ok(fs.existsSync(path.join(dir, 'wp-content/themes/smoke/blocks/smoke-test/render.php')), 'render.php should exist');
-		const manifestFile = path.join(dir, 'wp-content/themes/smoke/.wonderpress/manifest/smoke-test.json');
+		const manifestFile = path.join(dir, 'wp-content/themes/smoke/.wonderpress/manifest/partials/smoke-test.json');
 		assert.ok(fs.existsSync(manifestFile), 'manifest should exist');
 
 		// This fixture has no Static Kit tree, so the delegated halves cannot land.
@@ -81,7 +81,7 @@ test('partial/block list + remove route through the CLI against a fixture', () =
 
 		run('partial', 'remove', 'Smoke_Test');
 		assert.ok(!fs.existsSync(path.join(dir, 'wp-content/themes/smoke/src/partials/class-smoke-test.php')));
-		assert.ok(!fs.existsSync(path.join(dir, 'wp-content/themes/smoke/.wonderpress/manifest/smoke-test.json')));
+		assert.ok(!fs.existsSync(path.join(dir, 'wp-content/themes/smoke/.wonderpress/manifest/partials/smoke-test.json')));
 		assert.match(run('partial', 'list'), /No partials found/);
 	} finally {
 		fs.removeSync(dir);

@@ -28,6 +28,8 @@ import {
 	PROP_TYPE_TO_BLOCK,
 	REPEATER_SUB_TYPES,
 	LEGACY_NAMESPACE,
+	partialManifestPath,
+	PARTIAL_MANIFEST_DIR,
 } from './validate.js';
 import * as config from './config.js';
 import { pickOne } from './prompt.js';
@@ -359,7 +361,7 @@ export function validateParams(params) {
 	}
 
 	// An ACF-compatible partial without a manifest cannot register a field
-	// group: core reads `.wonderpress/manifest/*.json` on acf/init.
+	// group: core reads `.wonderpress/manifest/partials/*.json` on acf/init.
 	if (params.is_acf_compatible && emit.manifest === false) {
 		throw new Error('ACF compatibility requires the manifest (it is what core reads to register the field group). Drop --no-manifest or --acf.');
 	}
@@ -631,7 +633,7 @@ export function writeManifest(params, themeDir, written = {}) {
  * Path to a component's manifest file within a theme.
  **/
 export function manifestPath(themeDir, slug) {
-	return `${themeDir}/.wonderpress/manifest/${slug}.json`;
+	return partialManifestPath(themeDir, slug);
 }
 
 /**
@@ -677,12 +679,12 @@ export function readManifest(themeDir, slug) {
 /**
  * Read every manifest in a theme, sorted by slug.
  *
- * `.wonderpress/manifest/` is the CLI's index — `list` and `remove` read it
+ * `.wonderpress/manifest/partials/` is the CLI's index — `list` and `remove` read it
  * rather than scanning (and guessing at) source files.
  **/
 export function readManifests(themeDir) {
 
-	const dir = `${themeDir}/.wonderpress/manifest`;
+	const dir = `${themeDir}/${PARTIAL_MANIFEST_DIR}`;
 	if (!fs.existsSync(dir)) {
 		return [];
 	}
@@ -832,7 +834,7 @@ export function removePartial(themeDir, name, options = {}) {
 		removeBlockDir(themeDir, slug);
 	}
 
-	const file = resolveWithin(themeDir, `.wonderpress/manifest/${slug}.json`);
+	const file = resolveWithin(themeDir, `${PARTIAL_MANIFEST_DIR}/${slug}.json`);
 	if (!file) {
 		log.error(`Refusing to remove the manifest for "${slug}": that path escapes the theme directory.`);
 		return false;

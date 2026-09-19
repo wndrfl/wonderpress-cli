@@ -85,7 +85,7 @@ locate the ACF group on a page that also inserts the block.
 
 #### `wonderpress partial list`
 
-List every partial in the theme (name, slug, and the block wrapping it, if any). Reads `.wonderpress/manifest/*.json` — the manifest directory is the CLI's index.
+List every partial in the theme (name, slug, and the block wrapping it, if any). Reads `.wonderpress/manifest/partials/*.json` — the partial manifest directory is the CLI's index.
 
 #### `wonderpress partial remove <Name>`
 
@@ -113,7 +113,7 @@ Starts a web server to run WordPress locally. (uses [WP CLI](https://developer.w
 
 #### `wonderpress template create`
 
-Create a Wonderpress custom page template, a matching `.wonderpress/templates/*.json`
+Create a Wonderpress custom page template, a matching `.wonderpress/manifest/page-templates/*.json`
 manifest (`schemaVersion` 1), and Static Kit page assets. Optional `--lock` and
 repeatable `--section id:partial` seed composition.
 

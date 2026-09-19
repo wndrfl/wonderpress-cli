@@ -95,7 +95,7 @@ test('a partial is not a block: no block.json/render.php by default', async () =
 		assert.ok(!fs.existsSync(path.join(dir, 'blocks/testimonial/block.json')), 'no block.json without --block');
 		assert.ok(!fs.existsSync(path.join(dir, 'blocks/testimonial/render.php')), 'no render.php without --block');
 		// the manifest is still written, and does not advertise a block.
-		const m = JSON.parse(fs.readFileSync(path.join(dir, '.wonderpress/manifest/testimonial.json'), 'utf8'));
+		const m = JSON.parse(fs.readFileSync(path.join(dir, '.wonderpress/manifest/partials/testimonial.json'), 'utf8'));
 		assert.equal(m.block, undefined, 'manifest must not name a block that was not emitted');
 		assert.equal(m.artifacts.block, undefined);
 		assert.equal(m.artifacts.render, undefined);
@@ -151,7 +151,7 @@ test('writePartial emits an agent manifest mirroring properties + artifact paths
 	const dir = tmpTheme();
 	try {
 		await writePartial(paramsFromFlags({ '--name': 'My_Cool_Thing', '--block': true, '--acf': true, '--prop': ['body:string:required'] }), dir);
-		const m = JSON.parse(fs.readFileSync(path.join(dir, '.wonderpress/manifest/my-cool-thing.json'), 'utf8'));
+		const m = JSON.parse(fs.readFileSync(path.join(dir, '.wonderpress/manifest/partials/my-cool-thing.json'), 'utf8'));
 		assert.equal(m.name, 'My_Cool_Thing');
 		assert.equal(m.slug, 'my-cool-thing');
 		assert.equal(m.block, 'wonderpress/my-cool-thing');
@@ -170,7 +170,7 @@ test('emit opt-outs: default suppresses block, --no-manifest suppresses manifest
 	try {
 		await writePartial(paramsFromFlags({ '--name': 'Solo', '--no-manifest': true }), dir);
 		assert.ok(!fs.existsSync(path.join(dir, 'blocks/solo/block.json')));
-		assert.ok(!fs.existsSync(path.join(dir, '.wonderpress/manifest/solo.json')));
+		assert.ok(!fs.existsSync(path.join(dir, '.wonderpress/manifest/partials/solo.json')));
 		assert.ok(fs.existsSync(path.join(dir, 'src/partials/class-solo.php')));
 	} finally {
 		fs.removeSync(dir);
@@ -190,7 +190,7 @@ test('block + manifest are identical across flag and json paths', async () => {
 	try {
 		await writePartial(paramsFromFlags(flags), t1);
 		await writePartial(paramsFromJson(JSON.stringify(spec)), t2);
-		for (const rel of ['blocks/testimonial/block.json', 'blocks/testimonial/render.php', '.wonderpress/manifest/testimonial.json']) {
+		for (const rel of ['blocks/testimonial/block.json', 'blocks/testimonial/render.php', '.wonderpress/manifest/partials/testimonial.json']) {
 			assert.equal(fs.readFileSync(path.join(t1, rel), 'utf8'), fs.readFileSync(path.join(t2, rel), 'utf8'), rel);
 		}
 	} finally {
@@ -271,7 +271,7 @@ test('namespace: it reaches block.json, its category, and the manifest together'
 		assert.equal(block.name, 'acme/testimonial');
 		assert.equal(block.category, 'acme', 'the inserter groups a project under the project');
 
-		const m = JSON.parse(fs.readFileSync(path.join(dir, '.wonderpress/manifest/testimonial.json'), 'utf8'));
+		const m = JSON.parse(fs.readFileSync(path.join(dir, '.wonderpress/manifest/partials/testimonial.json'), 'utf8'));
 		assert.equal(m.block, 'acme/testimonial', 'the manifest records it, so it can be read back');
 	} finally {
 		fs.removeSync(dir);
@@ -295,7 +295,7 @@ test('namespace: a writer called without one resolves it, rather than defaulting
 		assert.equal(block.name, 'acme/hero');
 		assert.equal(block.category, 'acme');
 
-		const m = JSON.parse(fs.readFileSync(path.join(themeDir, '.wonderpress/manifest/hero.json'), 'utf8'));
+		const m = JSON.parse(fs.readFileSync(path.join(themeDir, '.wonderpress/manifest/partials/hero.json'), 'utf8'));
 		assert.equal(m.block, 'acme/hero', 'block.json and the manifest must never disagree');
 	} finally {
 		fs.removeSync(root);
@@ -443,7 +443,7 @@ test('writePartial persists acf.location and maps image/link/repeater formats', 
 		validateParams(params);
 		await writePartial(params, dir);
 
-		const m = JSON.parse(fs.readFileSync(path.join(dir, '.wonderpress/manifest/hero.json'), 'utf8'));
+		const m = JSON.parse(fs.readFileSync(path.join(dir, '.wonderpress/manifest/partials/hero.json'), 'utf8'));
 		assert.equal(m.acf_compatible, true);
 		assert.deepEqual(m.acf.location[0][0].value, 'page-landing.php');
 		assert.equal(m.properties.find((p) => p.name === 'items').properties[0].name, 'quote');

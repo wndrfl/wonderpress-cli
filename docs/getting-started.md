@@ -143,7 +143,7 @@ in `--json`). Flexible content is not generated.
 
 ## 5c. Template manifests (composition + editor contract)
 
-`wonderpress template create` writes `.wonderpress/templates/template-{name}.json`
+`wonderpress template create` writes `.wonderpress/manifest/page-templates/template-{name}.json`
 with `"schemaVersion": 1`. That file declares:
 
 - **`editor.lock`** — same values as `wonderpress_template_locks` (manifest

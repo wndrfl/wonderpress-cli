@@ -10,6 +10,8 @@ import {
   buildDefaultTemplateManifest,
   parseSectionFlag,
   validateTemplateManifest,
+  pageTemplateManifestDir,
+  PARTIAL_MANIFEST_DIR,
 } from './validate.js';
 
 /**
@@ -75,7 +77,7 @@ export async function create(templateName, opts) {
   fs.writeFileSync(filePath, templateOutput);
   log.success(`Template created: ${filePath}`);
 
-  const manifestDir = `${themeDir}/.wonderpress/templates`;
+  const manifestDir = pageTemplateManifestDir(themeDir);
   fs.ensureDirSync(manifestDir);
 
   const sections = [];
@@ -111,10 +113,10 @@ export async function create(templateName, opts) {
 }
 
 /**
- * Slugs from `.wonderpress/manifest/*.json` for validation.
+ * Slugs from `.wonderpress/manifest/partials/*.json` for validation.
  **/
 async function loadPartialSlugs(themeDir) {
-  const manifestDir = `${themeDir}/.wonderpress/manifest`;
+  const manifestDir = `${themeDir}/${PARTIAL_MANIFEST_DIR}`;
   if (!fs.existsSync(manifestDir)) {
     return [];
   }

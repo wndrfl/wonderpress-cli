@@ -103,7 +103,7 @@ with the list we curate — what turns "the block editor" into "our suite," and
 the direct answer to clients asking for a kit they can build pages from.
 
 **Corrected during the build: the list does not come from the manifest.** The
-plan said to generate it from `.wonderpress/manifest/`, on the principle that
+plan said to generate it from `.wonderpress/manifest/partials/`, on the principle that
 the manifest is the index. But the manifest indexes *partials*, most of which
 are not blocks, while the allowed list wants *block names* — and core already
 registers those blocks itself, so it can simply keep what it registered rather

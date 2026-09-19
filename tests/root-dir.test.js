@@ -64,7 +64,7 @@ test('honors the legacy .wonderpress marker', async () => {
 });
 
 test("a theme's .wonderpress manifest directory is not an environment root", async () => {
-	// The CLI writes `.wonderpress/manifest/` into every theme it touches. The
+	// The CLI writes `.wonderpress/manifest/partials/` into every theme it touches. The
 	// legacy marker is a *file* also named `.wonderpress`, and existsSync() is
 	// true for both — so before the marker check required a file, a walk up
 	// from inside a theme stopped at the theme.
