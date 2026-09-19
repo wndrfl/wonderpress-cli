@@ -3,7 +3,9 @@ import path from 'path';
 import * as log from './log.js';
 import mustache from 'mustache';
 import * as core from './core.js';
-import inquirer from 'inquirer';
+import * as help from './help.js';
+import { pickOne } from './prompt.js';
+import { resolveThemeDir } from './partial.js';
 import * as staticCli from '@wndrfl/static-kit-cli';
 import * as wordpress from './wordpress.js';
 import {
@@ -11,7 +13,9 @@ import {
   parseSectionFlag,
   validateTemplateManifest,
   pageTemplateManifestDir,
+  PAGE_TEMPLATE_MANIFEST_DIR,
   PARTIAL_MANIFEST_DIR,
+  resolveWithin,
 } from './validate.js';
 
 /**
@@ -26,9 +30,245 @@ export async function command(subcommand, args) {
         sections: args['--section'] || [],
       });
       break;
+    case 'list':
+      await list(args);
+      break;
+    case 'remove':
+      await remove(args);
+      break;
+    default:
+      if (subcommand) {
+        log.error(`Unknown template subcommand: ${subcommand}`);
+        process.exitCode = 1;
+      }
+      help.show('template');
+      break;
   }
 
   return true;
+}
+
+/**
+ * Normalize user input to a manifest basename (e.g. template-landing).
+ **/
+export function normalizePageTemplateKey(input) {
+  let s = String(input).trim().toLowerCase().replace(/_/g, '-');
+  s = s.replace(/\.(php|json)$/, '');
+  if (!s.startsWith('template-')) {
+    s = `template-${s}`;
+  }
+  return s;
+}
+
+/**
+ * Rows for `template list`, read from page-template manifests.
+ **/
+export function listPageTemplates(themeDir) {
+  const dir = pageTemplateManifestDir(themeDir);
+  if (!fs.existsSync(dir)) {
+    return [];
+  }
+
+  const rows = [];
+  for (const file of fs.readdirSync(dir)) {
+    if (!file.endsWith('.json')) {
+      continue;
+    }
+
+    let data;
+    try {
+      data = JSON.parse(fs.readFileSync(path.join(dir, file), 'utf8'));
+    } catch {
+      continue;
+    }
+
+    if (!data?.template || typeof data.template !== 'string') {
+      continue;
+    }
+
+    rows.push({
+      template: data.template,
+      manifestFile: file,
+      schemaVersion: data.schemaVersion ?? '—',
+      sections: Array.isArray(data.composition) ? data.composition.length : 0,
+      lock: data.editor?.lock ?? '—',
+    });
+  }
+
+  rows.sort((a, b) => a.template.localeCompare(b.template));
+  return rows;
+}
+
+/**
+ * Locate a page-template manifest by name, slug, or PHP filename.
+ **/
+export function findPageTemplateManifest(themeDir, query) {
+  const key = normalizePageTemplateKey(query);
+  const manifestRel = `${PAGE_TEMPLATE_MANIFEST_DIR}/${key}.json`;
+  const manifestPath = resolveWithin(themeDir, manifestRel);
+
+  if (manifestPath && fs.existsSync(manifestPath)) {
+    try {
+      const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
+      return { manifest, manifestPath, key };
+    } catch {
+      log.error(`Could not read manifest at ${manifestPath}. Fix or remove it by hand.`);
+      return null;
+    }
+  }
+
+  for (const row of listPageTemplates(themeDir)) {
+    const rowKey = row.template.replace(/\.php$/, '');
+    if (rowKey === key || row.template === query) {
+      const altPath = resolveWithin(themeDir, `${PAGE_TEMPLATE_MANIFEST_DIR}/${row.manifestFile}`);
+      if (!altPath) {
+        continue;
+      }
+      try {
+        const manifest = JSON.parse(fs.readFileSync(altPath, 'utf8'));
+        return { manifest, manifestPath: altPath, key: rowKey };
+      } catch {
+        log.error(`Could not read manifest at ${altPath}. Fix or remove it by hand.`);
+        return null;
+      }
+    }
+  }
+
+  return null;
+}
+
+function readStaticConfig(staticDir) {
+  for (const name of ['.staticrc', '.static', 'statickit.json']) {
+    const file = path.join(staticDir, name);
+    if (!fs.existsSync(file)) {
+      continue;
+    }
+    try {
+      return JSON.parse(fs.readFileSync(file, 'utf8'));
+    } catch {
+      // try next
+    }
+  }
+  return null;
+}
+
+/**
+ * Static Kit entry paths for a template, relative to the theme directory.
+ **/
+export function staticTemplateEntryPaths(themeDir, templatePhpFile) {
+  const fileFriendly = path.basename(templatePhpFile, '.php').replace(/^template-/, '');
+  const staticDir = path.join(themeDir, 'static');
+  const config = readStaticConfig(staticDir);
+  if (!config?.paths?.src?.js || !config?.paths?.src?.scss) {
+    return [];
+  }
+
+  const jsRel = `static/${config.paths.src.js}/${fileFriendly}.js`.replace(/\/+/g, '/');
+  const scssRel = `static/${config.paths.src.scss}/${fileFriendly}.scss`.replace(/\/+/g, '/');
+  return [jsRel, scssRel];
+}
+
+/**
+ * Delete a page template and everything `template create` wrote for it.
+ **/
+export function removePageTemplate(themeDir, query, options = {}) {
+  const found = findPageTemplateManifest(themeDir, query);
+  if (!found) {
+    log.error(`No page template named "${query}" is recorded in this theme. Run \`wonderpress template list\` to see what exists.`);
+    return false;
+  }
+
+  const { manifest, manifestPath } = found;
+
+  if (!manifest.template || typeof manifest.template !== 'string') {
+    log.error(`The manifest at ${manifestPath} has no usable template filename. Fix the manifest before removing this template.`);
+    return false;
+  }
+
+  const phpFile = resolveWithin(themeDir, manifest.template);
+  if (!phpFile) {
+    log.error(`Refusing to remove template "${manifest.template}": that path escapes the theme directory.`);
+    return false;
+  }
+
+  if (fs.existsSync(phpFile)) {
+    fs.removeSync(phpFile);
+    log.success(`Removed template: ${phpFile}`);
+  } else {
+    log.warn(`Nothing to remove for template PHP: ${phpFile} does not exist.`);
+  }
+
+  if (!options.noStatic) {
+    for (const rel of staticTemplateEntryPaths(themeDir, manifest.template)) {
+      const file = resolveWithin(themeDir, rel);
+      if (!file) {
+        log.error(`Refusing to remove static entry "${rel}": that path escapes the theme directory. Skipping it.`);
+        continue;
+      }
+      if (fs.existsSync(file)) {
+        fs.removeSync(file);
+        log.success(`Removed static entry: ${file}`);
+      }
+    }
+  }
+
+  fs.removeSync(manifestPath);
+  log.success(`Removed manifest: ${manifestPath}`);
+  return true;
+}
+
+/**
+ * List page templates in the active (or selected) theme.
+ **/
+export async function list(args) {
+  const themeDir = await resolveThemeDir(args);
+  if (!themeDir) {
+    return false;
+  }
+
+  const rows = listPageTemplates(themeDir);
+  if (!rows.length) {
+    log.info(`No page templates found in ${themeDir}. Create one with \`wonderpress template create --name <Name>\`.`);
+    return true;
+  }
+
+  log.table(
+    ['TEMPLATE', 'SECTIONS', 'LOCK', 'SCHEMA'],
+    rows.map((row) => [row.template, String(row.sections), String(row.lock), String(row.schemaVersion)]),
+  );
+  log.info(`${rows.length} page template${rows.length === 1 ? '' : 's'}.`);
+  return true;
+}
+
+/**
+ * Remove a page template (`template remove <Name>`).
+ **/
+export async function remove(args) {
+  const themeDir = await resolveThemeDir(args);
+  if (!themeDir) {
+    return false;
+  }
+
+  let name = args._ && args._[2] ? args._[2] : args['--name'];
+
+  if (!name) {
+    name = await pickOne({
+      message: 'Which page template should be removed?',
+      choices: listPageTemplates(themeDir).map((row) => ({
+        name: `${row.template}  (${row.sections} section${row.sections === 1 ? '' : 's'})`,
+        value: row.template,
+      })),
+      empty: 'This theme has no page templates to remove.',
+      usage: 'Usage: wonderpress template remove <Name>.',
+      args,
+    });
+
+    if (!name) {
+      return false;
+    }
+  }
+
+  return removePageTemplate(themeDir, name, { noStatic: !!args['--no-static'] });
 }
 
 /**

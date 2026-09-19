@@ -117,6 +117,15 @@ Create a Wonderpress custom page template, a matching `.wonderpress/manifest/pag
 manifest (`schemaVersion` 1), and Static Kit page assets. Optional `--lock` and
 repeatable `--section id:partial` seed composition.
 
+#### `wonderpress template list`
+
+List page templates recorded under `.wonderpress/manifest/page-templates/`.
+
+#### `wonderpress template remove <Name>`
+
+Remove the template PHP file, its manifest, and the delegated Static Kit JS/SCSS
+entries (pass `--no-static` to keep static files).
+
 ## [Architecture](#architecture)
 
 WonderPress consumes [Static Kit](https://github.com/wndrfl/static-kit) as a

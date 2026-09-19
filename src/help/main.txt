@@ -13,7 +13,7 @@ ENVIRONMENT
 AUTHORING
   partial       Reusable render primitives — the unit of markup in a theme
   block         Editor wrappers that expose a partial in Gutenberg
-  template      Create a page template
+  template      Page templates — create, list, and remove
   readme        Generate a project README
 
 Run `wonderpress <command> help` for detail on any of these — start with
