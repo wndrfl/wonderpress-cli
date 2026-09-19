@@ -152,8 +152,11 @@ with `"schemaVersion": 1`. That file declares:
   to the classic screen; `featuredImage: false` removes featured-image support
   on that template). After you change **Page → Template**, **Update** the page and
   reload the edit screen so PHP can apply the manifest (editor mode, ACF, locks).
-- **`composition`** — ordered `{ "id", "partial" }` rows. The same partial may
-  appear twice with different ids (two heroes).
+- **`composition`** — ordered rows: **instance** `{ "id", "partial" }` (renders
+  and maps to an ACF group field), or **tab** `{ "id", "label", "items": [ …instances… ] }`
+  (editor-only grouping as ACF tabs; root-level instances have no tab wrapper).
+  Instance ids must be unique across the whole tree. The same partial may appear
+  twice with different ids (two heroes).
 
 Manifest files must be **strict JSON** (no `//` comments or trailing commas). A
 parse error skips the whole file, and partials fall back to per-slug ACF groups

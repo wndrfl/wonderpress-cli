@@ -259,6 +259,142 @@ export const TEMPLATE_LOCK_LEVELS = ['all', 'insert', 'contentOnly', false];
 const COMPOSITION_ID_RE = /^[a-z0-9-]+$/;
 
 /**
+ * Whether a composition row is a tab container (`items` array, no partial).
+ **/
+export function compositionRowIsTab(row) {
+	return !!row && typeof row === 'object' && Array.isArray(row.items);
+}
+
+/**
+ * Instance rows only, in document order (root and tab children).
+ **/
+export function flattenTemplateComposition(composition) {
+	if (!Array.isArray(composition)) {
+		return [];
+	}
+
+	const flat = [];
+	for (const row of composition) {
+		if (!row || typeof row !== 'object') {
+			continue;
+		}
+
+		if (compositionRowIsTab(row)) {
+			for (const child of row.items) {
+				if (child && typeof child === 'object' && child.partial && !compositionRowIsTab(child)) {
+					flat.push(child);
+				}
+			}
+			continue;
+		}
+
+		if (row.partial) {
+			flat.push(row);
+		}
+	}
+
+	return flat;
+}
+
+/**
+ * Validate one composition instance row (shared by root and tab children).
+ **/
+function validateCompositionInstanceRow(row, ids, errors, partialSlugs, pathLabel) {
+	if (!row?.id || !COMPOSITION_ID_RE.test(row.id)) {
+		errors.push(`${pathLabel} needs a valid id (a-z, 0-9, hyphen).`);
+		return;
+	}
+
+	if (ids.has(row.id)) {
+		errors.push(`Duplicate composition id "${row.id}".`);
+	}
+	ids.add(row.id);
+
+	const hasPartial = !!row.partial;
+	const hasItems = compositionRowIsTab(row);
+
+	if (hasPartial && hasItems) {
+		errors.push(`Composition row "${row.id}" cannot have both partial and items.`);
+		return;
+	}
+
+	if (!hasPartial) {
+		errors.push(`Composition row "${row.id}" needs a valid partial slug.`);
+		return;
+	}
+
+	if (!isSafeSlug(row.partial)) {
+		errors.push(`Composition row "${row.id}" needs a valid partial slug.`);
+	} else if (partialSlugs.length && !partialSlugs.includes(row.partial)) {
+		errors.push(`Composition row "${row.id}" references unknown partial "${row.partial}".`);
+	}
+}
+
+/**
+ * Validate template composition (flat instances and tab containers).
+ **/
+export function validateTemplateComposition(composition, { partialSlugs = [] } = {}) {
+	const errors = [];
+
+	if (composition === undefined) {
+		return errors;
+	}
+
+	if (!Array.isArray(composition)) {
+		errors.push('composition must be an array.');
+		return errors;
+	}
+
+	const ids = new Set();
+
+	for (const row of composition) {
+		if (!row?.id || !COMPOSITION_ID_RE.test(row.id)) {
+			errors.push('Each composition row needs a valid id (a-z, 0-9, hyphen).');
+			continue;
+		}
+
+		const hasPartial = !!row.partial;
+		const hasItems = compositionRowIsTab(row);
+
+		if (hasPartial && hasItems) {
+			errors.push(`Composition row "${row.id}" cannot have both partial and items.`);
+			continue;
+		}
+
+		if (hasItems) {
+			if (ids.has(row.id)) {
+				errors.push(`Duplicate composition id "${row.id}".`);
+			}
+			ids.add(row.id);
+
+			if (!row.items.length) {
+				errors.push(`Tab row "${row.id}" must include at least one item.`);
+				continue;
+			}
+
+			for (const child of row.items) {
+				if (compositionRowIsTab(child)) {
+					errors.push(`Tab row "${row.id}" cannot nest another tab.`);
+					continue;
+				}
+				validateCompositionInstanceRow(
+					child,
+					ids,
+					errors,
+					partialSlugs,
+					`Composition item under tab "${row.id}"`,
+				);
+			}
+			continue;
+		}
+
+		validateCompositionInstanceRow(row, ids, errors, partialSlugs, `Composition row "${row.id}"`);
+	}
+
+	return errors;
+}
+
+/**
  * Parse `--section id:partial`.
  **/
 export function parseSectionFlag(str) {
@@ -336,29 +472,7 @@ export function validateTemplateManifest(data, { partialSlugs = [] } = {}) {
 		errors.push('editor.native must be an object when present.');
 	}
 
-	const ids = new Set();
-	const composition = data.composition;
-	if (composition !== undefined) {
-		if (!Array.isArray(composition)) {
-			errors.push('composition must be an array.');
-		} else {
-			for (const row of composition) {
-				if (!row?.id || !COMPOSITION_ID_RE.test(row.id)) {
-					errors.push('Each composition row needs a valid id (a-z, 0-9, hyphen).');
-					continue;
-				}
-				if (ids.has(row.id)) {
-					errors.push(`Duplicate composition id "${row.id}".`);
-				}
-				ids.add(row.id);
-				if (!row.partial || !isSafeSlug(row.partial)) {
-					errors.push(`Composition row "${row.id}" needs a valid partial slug.`);
-				} else if (partialSlugs.length && !partialSlugs.includes(row.partial)) {
-					errors.push(`Composition row "${row.id}" references unknown partial "${row.partial}".`);
-				}
-			}
-		}
-	}
+	errors.push(...validateTemplateComposition(data.composition, { partialSlugs }));
 
 	if (errors.length) {
 		return { ok: false, errors };

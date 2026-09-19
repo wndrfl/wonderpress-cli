@@ -141,9 +141,11 @@ shape; the theme filter is the usual way to locate groups.
 
 **Page-template manifests** (`.wonderpress/manifest/page-templates/<template>.json`, integer
 `schemaVersion`) declare the editor contract (`editor.lock`, `editor.native`) and
-an ordered `composition` of partial instances (`id` + `partial`). Core merges
-locks with `wonderpress_template_locks`, registers one ACF group per template
-when composition lists ACF-compatible partials (field names = instance ids), and
+an ordered `composition`: flat partial instances (`id` + `partial`) and optional
+tab rows (`id`, `label`, `items[]`) that group instances as ACF tabs (root
+instances have no tab wrapper). Core merges locks with
+`wonderpress_template_locks`, registers one ACF group per template when
+composition lists ACF-compatible partials (field names = instance ids), and
 renders via `wonder_render_template_sections()`. Partial manifests stay the
 component dictionary; template manifests are the page-template sentence.
 

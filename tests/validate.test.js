@@ -8,7 +8,10 @@ import {
 	parseSubFlag,
 	parseSectionFlag,
 	buildDefaultTemplateManifest,
+	flattenTemplateComposition,
 	validateTemplateManifest,
+	validateTemplateComposition,
+	compositionRowIsTab,
 	phpFormatForType,
 	normalizeProperty,
 	classNameToFileSlug,
@@ -146,6 +149,88 @@ test('validateTemplateManifest rejects bad schemaVersion and unknown partials', 
 		{ partialSlugs: ['landing-hero'] }
 	);
 	assert.equal(dup.ok, false);
+});
+
+test('flattenTemplateComposition flattens tab items in order', () => {
+	const composition = [
+		{ id: 'seo', partial: 'page-meta' },
+		{
+			id: 'hero',
+			label: 'Hero',
+			items: [
+				{ id: 'hero-main', partial: 'landing-hero' },
+				{ id: 'hero-cta', partial: 'cta-strip' },
+			],
+		},
+		{ id: 'footer-cta', partial: 'cta-strip' },
+	];
+	assert.equal(flattenTemplateComposition(composition).length, 4);
+	assert.deepEqual(
+		flattenTemplateComposition(composition).map((r) => r.id),
+		['seo', 'hero-main', 'hero-cta', 'footer-cta'],
+	);
+	assert.equal(compositionRowIsTab(composition[1]), true);
+	assert.equal(compositionRowIsTab(composition[0]), false);
+});
+
+test('validateTemplateComposition accepts tabs and rejects nested tabs', () => {
+	const ok = validateTemplateComposition(
+		[
+			{ id: 'a', partial: 'landing-hero' },
+			{
+				id: 'hero',
+				items: [{ id: 'hero-main', partial: 'landing-hero' }],
+			},
+		],
+		{ partialSlugs: ['landing-hero'] },
+	);
+	assert.equal(ok.length, 0);
+
+	const nested = validateTemplateComposition(
+		[
+			{
+				id: 'outer',
+				items: [
+					{
+						id: 'inner-tab',
+						items: [{ id: 'x', partial: 'landing-hero' }],
+					},
+				],
+			},
+		],
+		{ partialSlugs: ['landing-hero'] },
+	);
+	assert.ok(nested.some((e) => /cannot nest another tab/.test(e)));
+
+	const dup = validateTemplateComposition(
+		[
+			{ id: 'same', partial: 'landing-hero' },
+			{
+				id: 'hero',
+				items: [{ id: 'same', partial: 'landing-hero' }],
+			},
+		],
+		{ partialSlugs: ['landing-hero'] },
+	);
+	assert.ok(dup.some((e) => /Duplicate composition id "same"/.test(e)));
+});
+
+test('validateTemplateManifest accepts mixed composition', () => {
+	const result = validateTemplateManifest(
+		{
+			schemaVersion: TEMPLATE_MANIFEST_SCHEMA_VERSION,
+			template: 'template-landing.php',
+			composition: [
+				{ id: 'seo', partial: 'page-meta' },
+				{
+					id: 'hero',
+					items: [{ id: 'hero-main', partial: 'landing-hero' }],
+				},
+			],
+		},
+		{ partialSlugs: ['page-meta', 'landing-hero'] },
+	);
+	assert.equal(result.ok, true);
 });
 
 test('parseSectionFlag parses id:partial', () => {

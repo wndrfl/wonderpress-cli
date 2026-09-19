@@ -10,6 +10,7 @@ import * as staticCli from '@wndrfl/static-kit-cli';
 import * as wordpress from './wordpress.js';
 import {
   buildDefaultTemplateManifest,
+  flattenTemplateComposition,
   parseSectionFlag,
   validateTemplateManifest,
   pageTemplateManifestDir,
@@ -90,7 +91,7 @@ export function listPageTemplates(themeDir) {
       template: data.template,
       manifestFile: file,
       schemaVersion: data.schemaVersion ?? '—',
-      sections: Array.isArray(data.composition) ? data.composition.length : 0,
+      sections: Array.isArray(data.composition) ? flattenTemplateComposition(data.composition).length : 0,
       lock: data.editor?.lock ?? '—',
     });
   }
