@@ -28,6 +28,7 @@ import {
 	PROP_TYPE_TO_BLOCK,
 	REPEATER_SUB_TYPES,
 	LEGACY_NAMESPACE,
+	validateManifestProperty,
 	partialManifestPath,
 	PARTIAL_MANIFEST_DIR,
 } from './validate.js';
@@ -348,8 +349,9 @@ export function validateParams(params) {
 	if (params.has_partial_template && !isValidTemplateName(params.partial_template_name)) {
 		throw new Error(`Invalid template name "${params.partial_template_name}". Use lowercase letters and dashes ending in .php, e.g. my-template.php.`);
 	}
+	const siblingNames = new Set(params.properties.filter((prop) => prop?.name).map((prop) => prop.name));
 	for (const p of params.properties) {
-		validateProperty(p);
+		validateManifestProperty(p, { siblingNames });
 	}
 
 	// A block that is not in the index is unmanageable: `block list`,
@@ -364,29 +366,6 @@ export function validateParams(params) {
 	// group: core reads `.wonderpress/manifest/partials/*.json` on acf/init.
 	if (params.is_acf_compatible && emit.manifest === false) {
 		throw new Error('ACF compatibility requires the manifest (it is what core reads to register the field group). Drop --no-manifest or --acf.');
-	}
-}
-
-/**
- * Validate one property, including a repeater's nested rows.
- **/
-function validateProperty(p, { asRepeaterSub = false } = {}) {
-	if (!p.name) {
-		throw new Error('Every property must have a name.');
-	}
-	if (!isValidPropType(p.type)) {
-		throw new Error(`Invalid property type "${p.type}" for property "${p.name}". Valid types: ${PROP_TYPES.join(', ')}.`);
-	}
-	if (asRepeaterSub && !REPEATER_SUB_TYPES.includes(p.type)) {
-		throw new Error(`Repeater sub-field "${p.name}" cannot be type "${p.type}". Valid types: ${REPEATER_SUB_TYPES.join(', ')}.`);
-	}
-	if (p.type === 'repeater') {
-		if (!Array.isArray(p.properties) || !p.properties.length) {
-			throw new Error(`Repeater property "${p.name}" must declare at least one sub-field (via --json, --sub, or the wizard).`);
-		}
-		for (const sub of p.properties) {
-			validateProperty(sub, { asRepeaterSub: true });
-		}
 	}
 }
 

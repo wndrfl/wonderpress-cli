@@ -11,6 +11,7 @@ import {
 	flattenTemplateComposition,
 	validateTemplateManifest,
 	validateTemplateComposition,
+	validateManifestProperty,
 	compositionRowIsTab,
 	compositionRowIsFieldGroup,
 	phpFormatForType,
@@ -298,6 +299,66 @@ test('validateTemplateManifest accepts mixed composition', () => {
 test('parseSectionFlag parses id:partial', () => {
 	assert.deepEqual(parseSectionFlag('hero-main:landing-hero'), { id: 'hero-main', partial: 'landing-hero' });
 	assert.throws(() => parseSectionFlag('bad id:hero'), /Invalid composition id/);
+});
+
+test('validateManifestProperty accepts select, when, and post_object', () => {
+	const siblingNames = new Set(['type', 'internal_target_obj']);
+	assert.doesNotThrow(() => validateManifestProperty(
+		{
+			name: 'type',
+			type: 'select',
+			choices: { internal: 'Internal', url: 'Url' },
+		},
+		{ siblingNames },
+	));
+	assert.doesNotThrow(() => validateManifestProperty(
+		{
+			name: 'internal_target_obj',
+			type: 'post_object',
+			when: [[{ field: 'type', operator: '==', value: 'internal' }]],
+			acf: { post_type: ['page'], return_format: 'object' },
+		},
+		{ siblingNames },
+	));
+	assert.throws(
+		() => validateManifestProperty({ name: 'type', type: 'select' }, { siblingNames }),
+		/choices/,
+	);
+	assert.throws(
+		() => validateManifestProperty(
+			{
+				name: 'x',
+				type: 'string',
+				when: [[{ field: 'missing', operator: '==', value: 'a' }]],
+			},
+			{ siblingNames },
+		),
+		/unknown sibling field/,
+	);
+});
+
+test('validateTemplateManifest rejects invalid when on inline properties', () => {
+	const bad = validateTemplateManifest(
+		{
+			schemaVersion: TEMPLATE_MANIFEST_SCHEMA_VERSION,
+			template: 'template-landing.php',
+			composition: [
+				{
+					id: 'link-fields',
+					properties: [
+						{ name: 'type', type: 'select', choices: { a: 'A' } },
+						{
+							name: 'url',
+							type: 'string',
+							when: [[{ field: 'type', operator: '===', value: 'a' }]],
+						},
+					],
+				},
+			],
+		},
+	);
+	assert.equal(bad.ok, false);
+	assert.ok(bad.errors.some((e) => /operator/.test(e)));
 });
 
 test('resolveWithin keeps a path inside its root, or returns null', () => {

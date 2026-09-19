@@ -8,10 +8,56 @@
 import path from 'path';
 
 // The property types Wonderpress can validate and render.
-export const PROP_TYPES = ['array', 'boolean', 'image', 'link', 'object', 'repeater', 'string'];
+export const PROP_TYPES = [
+	'array',
+	'boolean',
+	'email',
+	'image',
+	'link',
+	'object',
+	'post_object',
+	'repeater',
+	'select',
+	'string',
+];
 
 // What a repeater row may contain. Nested repeaters are a later slice.
-export const REPEATER_SUB_TYPES = ['boolean', 'image', 'link', 'string'];
+export const REPEATER_SUB_TYPES = ['boolean', 'email', 'image', 'link', 'select', 'string'];
+
+/** ACF conditional operators allowed in manifest `when` rules. */
+export const MANIFEST_WHEN_OPERATORS = [
+	'==',
+	'!=',
+	'>',
+	'<',
+	'>=',
+	'<=',
+	'contains',
+	'!contains',
+	'pattern',
+	'!pattern',
+];
+
+/** Manifest `acf` keys that may be merged onto compiled ACF fields. */
+export const MANIFEST_ACF_PASSTHROUGH_KEYS = [
+	'choices',
+	'default_value',
+	'ui',
+	'post_type',
+	'return_format',
+	'preview_size',
+	'library',
+	'layout',
+	'wrapper',
+	'allow_null',
+	'multiple',
+	'placeholder',
+	'min',
+	'max',
+	'step',
+	'rows',
+	'format',
+];
 
 /**
  * The namespace used when a project has not recorded one of its own.
@@ -105,8 +151,11 @@ export function parseSubFlag(str) {
  * image / link / repeater are stored as arrays (ACF payloads / row lists).
  **/
 export function phpFormatForType(type) {
-	if (type === 'image' || type === 'link' || type === 'repeater') {
+	if (type === 'image' || type === 'link' || type === 'repeater' || type === 'post_object') {
 		return 'array';
+	}
+	if (type === 'select' || type === 'email') {
+		return 'string';
 	}
 	return type;
 }
@@ -230,6 +279,9 @@ export const PROP_TYPE_TO_BLOCK = {
 	image: 'object',
 	link: 'object',
 	repeater: 'array',
+	select: 'string',
+	email: 'string',
+	post_object: 'object',
 };
 
 /** WonderPress manifest tree under the theme (typed by subdirectory). */
@@ -280,13 +332,73 @@ export function compositionRowIsFieldGroup(row) {
 	);
 }
 
+function validateManifestAcfObject(acf, errors, pathLabel, propName) {
+	if (acf === undefined) {
+		return;
+	}
+	if (typeof acf !== 'object' || acf === null || Array.isArray(acf)) {
+		errors.push(`${pathLabel}: property "${propName}" acf must be an object.`);
+		return;
+	}
+	for (const key of Object.keys(acf)) {
+		if (!MANIFEST_ACF_PASSTHROUGH_KEYS.includes(key)) {
+			errors.push(`${pathLabel}: property "${propName}" has unsupported acf key "${key}".`);
+		}
+	}
+}
+
+function validateManifestWhen(when, errors, pathLabel, propName, siblingNames) {
+	if (when === undefined) {
+		return;
+	}
+	if (!Array.isArray(when) || !when.length) {
+		errors.push(`${pathLabel}: property "${propName}" when must be a non-empty array of rule groups.`);
+		return;
+	}
+	if (!siblingNames) {
+		errors.push(`${pathLabel}: property "${propName}" when cannot be validated without sibling property names.`);
+		return;
+	}
+
+	for (const andGroup of when) {
+		if (!Array.isArray(andGroup) || !andGroup.length) {
+			errors.push(`${pathLabel}: property "${propName}" when groups must be non-empty arrays.`);
+			continue;
+		}
+		for (const rule of andGroup) {
+			if (!rule || typeof rule !== 'object') {
+				errors.push(`${pathLabel}: property "${propName}" when rules must be objects.`);
+				continue;
+			}
+			if (!rule.field || typeof rule.field !== 'string') {
+				errors.push(`${pathLabel}: property "${propName}" when rules need a field name.`);
+				continue;
+			}
+			if (!siblingNames.has(rule.field)) {
+				errors.push(
+					`${pathLabel}: property "${propName}" when references unknown sibling field "${rule.field}".`,
+				);
+			}
+			if (!rule.operator || !MANIFEST_WHEN_OPERATORS.includes(rule.operator)) {
+				errors.push(
+					`${pathLabel}: property "${propName}" when operator must be one of: ${MANIFEST_WHEN_OPERATORS.join(', ')}.`,
+				);
+			}
+		}
+	}
+}
+
 /**
  * Validate one manifest property; append errors instead of throwing.
  **/
-function validateCompositionProperty(p, errors, pathLabel, { asRepeaterSub = false } = {}) {
+function validateOneManifestProperty(p, errors, pathLabel, { asRepeaterSub = false, siblingNames = null } = {}) {
 	if (!p?.name) {
 		errors.push(`${pathLabel}: every property must have a name.`);
 		return;
+	}
+
+	if (p.label !== undefined && typeof p.label !== 'string') {
+		errors.push(`${pathLabel}: property "${p.name}" label must be a string.`);
 	}
 
 	if (!isValidPropType(p.type)) {
@@ -303,14 +415,49 @@ function validateCompositionProperty(p, errors, pathLabel, { asRepeaterSub = fal
 		return;
 	}
 
+	if (p.type === 'select') {
+		const choices = p.choices ?? p.acf?.choices;
+		if (!choices || typeof choices !== 'object' || Array.isArray(choices) || !Object.keys(choices).length) {
+			errors.push(`${pathLabel}: select property "${p.name}" must declare choices (object map).`);
+		}
+	}
+
+	validateManifestAcfObject(p.acf, errors, pathLabel, p.name);
+	validateManifestWhen(p.when, errors, pathLabel, p.name, siblingNames);
+
 	if (p.type === 'repeater') {
 		if (!Array.isArray(p.properties) || !p.properties.length) {
 			errors.push(`${pathLabel}: repeater property "${p.name}" must declare at least one sub-field.`);
 			return;
 		}
+		const subNames = new Set(p.properties.filter((sub) => sub?.name).map((sub) => sub.name));
 		for (const sub of p.properties) {
-			validateCompositionProperty(sub, errors, pathLabel, { asRepeaterSub: true });
+			validateOneManifestProperty(sub, errors, pathLabel, { asRepeaterSub: true, siblingNames: subNames });
 		}
+	}
+}
+
+/**
+ * Validate manifest properties sharing one field group (sibling `when` rules).
+ **/
+export function validateManifestProperties(properties, errors, pathLabel, { asRepeaterSub = false } = {}) {
+	if (!Array.isArray(properties)) {
+		return;
+	}
+	const siblingNames = new Set(properties.filter((prop) => prop?.name).map((prop) => prop.name));
+	for (const p of properties) {
+		validateOneManifestProperty(p, errors, pathLabel, { asRepeaterSub, siblingNames });
+	}
+}
+
+/**
+ * Validate one manifest property. Throws on the first error.
+ **/
+export function validateManifestProperty(p, { asRepeaterSub = false, siblingNames = null } = {}) {
+	const errors = [];
+	validateOneManifestProperty(p, errors, 'Property', { asRepeaterSub, siblingNames });
+	if (errors.length) {
+		throw new Error(errors[0]);
 	}
 }
 
@@ -323,9 +470,7 @@ function validateCompositionProperties(properties, errors, pathLabel) {
 		return;
 	}
 
-	for (const p of properties) {
-		validateCompositionProperty(p, errors, pathLabel);
-	}
+	validateManifestProperties(properties, errors, pathLabel);
 }
 
 /**
