@@ -70,17 +70,27 @@ test('assertDualAuthorable allows Tier A on dual partials', () => {
 	assert.ok(isDualExposure({ acf_compatible: true, block: 'acme/hero', properties: [{ name: 'x', type: 'string' }] }));
 });
 
+test('assertDualAuthorable allows image on dual partials', () => {
+	assert.doesNotThrow(() =>
+		assertDualAuthorable({
+			is_acf_compatible: true,
+			emit: { block: true },
+			properties: [{ name: 'photo', type: 'image' }],
+		}),
+	);
+});
+
 test('assertDualAuthorable rejects Tier B types on dual partials', () => {
 	assert.throws(
 		() =>
 			assertDualAuthorable({
 				is_acf_compatible: true,
 				emit: { block: true },
-				properties: [{ name: 'photo', type: 'image' }],
+				properties: [{ name: 'cta', type: 'link' }],
 			}),
 		/Tier A/,
 	);
-	assert.deepEqual(DUAL_AUTHORABLE_TYPES, ['string', 'boolean', 'email', 'select']);
+	assert.deepEqual(DUAL_AUTHORABLE_TYPES, ['string', 'boolean', 'email', 'select', 'image']);
 });
 
 test('parsePropFlag parses name:type[:required]', () => {

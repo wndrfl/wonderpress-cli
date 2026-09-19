@@ -35,6 +35,10 @@ use Wonderpress\Partials\{{ class_name }};
  * block impossible to use at all.
  */
 try {
+	if ( function_exists( 'wonder_normalize_block_attributes' ) ) {
+		$attributes = wonder_normalize_block_attributes( $attributes, '{{ namespace }}/{{ slug }}' );
+	}
+
 	$partial = new {{ class_name }}( $attributes );
 	$html    = $partial->render( false );
 } catch ( \Throwable $e ) {

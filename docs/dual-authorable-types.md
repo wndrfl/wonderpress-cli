@@ -19,7 +19,8 @@ This is a **type-system** guarantee. It does not require every partial to be dua
 | Tier | Types | Dual partials |
 | --- | --- | --- |
 | **A** | `string`, `boolean`, `email`, `select` | Allowed today |
-| **B** | `image`, `link`, `repeater`, `partial`, `post_object` | Specified; CLI rejects `--acf` + `--block` until each type meets rollout checklist |
+| **A+** | `image` | Dual today (Phase 2b rollout #1) |
+| **B** | `link`, `repeater`, `partial`, `post_object` | Specified; CLI rejects `--acf` + `--block` until each type meets rollout checklist |
 | **Removed** | `array`, `object` | Use explicit primitives, `repeater`, or `partial` embeds instead |
 
 ## Value shape (Tier A)

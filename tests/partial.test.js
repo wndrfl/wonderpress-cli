@@ -132,7 +132,7 @@ test('validateParams rejects dual exposure with Tier B property types', () => {
 				has_partial_template: true,
 				partial_template_name: 'hero.php',
 				is_acf_compatible: true,
-				properties: [{ name: 'photo', type: 'image', required: false, description: '' }],
+				properties: [{ name: 'cta', type: 'link', required: false, description: '' }],
 				emit: { block: true, manifest: true },
 			}),
 		/Tier A/,

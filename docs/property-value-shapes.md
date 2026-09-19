@@ -5,8 +5,8 @@ must produce the **same canonical value** on flat partial properties after
 construction. See [dual-authorable-types.md](dual-authorable-types.md) for the
 platform rule and tier rollout.
 
-Status: Tier A implemented. Tier B specified here; block controls and PHP
-normalization are backlog.
+Status: Tier A implemented. Tier B `image` has block controls and PHP
+normalization; other Tier B types are specified with controls/normalize backlog.
 
 ## Hydration pipeline
 
@@ -62,7 +62,7 @@ partial property unless normalization always expands).
 
 **Future editor:** `MediaUpload` + schema in `wonderpressBlockSchemas`.
 
-**Acceptance:** add `image` to `DUAL_AUTHORABLE_TYPES` when editor + normalize ship.
+**Acceptance:** `image` is in `DUAL_AUTHORABLE_TYPES` (editor MediaUpload + `wonder_normalize_image_value()`).
 
 ## Tier B — `link` (simple manifest type)
 
@@ -162,7 +162,7 @@ Add types to `DUAL_AUTHORABLE_TYPES` in `validate.js` only after spec acceptance
 
 | Order | Type | Requires |
 | --- | --- | --- |
-| 1 | `image` | MediaUpload + ID→array normalize |
+| 1 | `image` | ✅ MediaUpload + `wonder_normalize_image_value()` |
 | 2 | `link` | Simple link object editor |
 | 3 | `post_object` | Post picker + ID normalize |
 | 4 | `repeater` | Row UI + nested type coverage |
