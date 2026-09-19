@@ -21,6 +21,9 @@ import {
 	isSafeSlug,
 	resolveWithin,
 	PROP_TYPES,
+	DUAL_AUTHORABLE_TYPES,
+	assertDualAuthorable,
+	isDualExposure,
 	TEMPLATE_MANIFEST_SCHEMA_VERSION,
 } from '../src/validate.js';
 
@@ -48,7 +51,36 @@ test('isValidPropType matches the shipped type set', () => {
 	assert.ok(isValidPropType('image'));
 	assert.ok(isValidPropType('link'));
 	assert.ok(isValidPropType('repeater'));
+	assert.ok(!isValidPropType('array'));
+	assert.ok(!isValidPropType('object'));
 	assert.ok(!isValidPropType('nope'));
+});
+
+test('assertDualAuthorable allows Tier A on dual partials', () => {
+	assert.doesNotThrow(() =>
+		assertDualAuthorable({
+			is_acf_compatible: true,
+			emit: { block: true },
+			properties: [
+				{ name: 'title', type: 'string' },
+				{ name: 'featured', type: 'boolean' },
+			],
+		}),
+	);
+	assert.ok(isDualExposure({ acf_compatible: true, block: 'acme/hero', properties: [{ name: 'x', type: 'string' }] }));
+});
+
+test('assertDualAuthorable rejects Tier B types on dual partials', () => {
+	assert.throws(
+		() =>
+			assertDualAuthorable({
+				is_acf_compatible: true,
+				emit: { block: true },
+				properties: [{ name: 'photo', type: 'image' }],
+			}),
+		/Tier A/,
+	);
+	assert.deepEqual(DUAL_AUTHORABLE_TYPES, ['string', 'boolean', 'email', 'select']);
 });
 
 test('parsePropFlag parses name:type[:required]', () => {

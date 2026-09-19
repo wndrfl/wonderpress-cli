@@ -149,6 +149,10 @@ Property types `string`, `boolean`, `email`, `select`, `post_object`, `image`,
 (conditionals by sibling property name), and whitelisted `acf` overrides are
 supported (Pass 1).
 
+Dual partials (`--acf` and `--block` together) may only use **Tier A** types
+until block editor controls ship for structured fields — see
+[dual-authorable-types.md](dual-authorable-types.md).
+
 Nested `type: "link"` on another partial still maps to a **simple** four-field
 link group. To embed the **rich** Link primitive inside another partial, use
 `type: "partial"` and `partial: "link"` (fields come from core

@@ -9,18 +9,22 @@ import path from 'path';
 
 // The property types Wonderpress can validate and render.
 export const PROP_TYPES = [
-	'array',
 	'boolean',
 	'email',
 	'image',
 	'link',
-	'object',
 	'partial',
 	'post_object',
 	'repeater',
 	'select',
 	'string',
 ];
+
+/**
+ * Property types a dual partial (ACF + block) may use today.
+ * Tier B types require block inspector work — see docs/dual-authorable-types.md.
+ */
+export const DUAL_AUTHORABLE_TYPES = ['string', 'boolean', 'email', 'select'];
 
 // What a repeater row may contain. Nested repeaters are a later slice.
 export const REPEATER_SUB_TYPES = ['boolean', 'email', 'image', 'link', 'partial', 'select', 'string'];
@@ -171,6 +175,21 @@ export function normalizeProperty(p) {
 		required: !!p.required,
 		description: p.description || '',
 	};
+	if (p.label) {
+		prop.label = p.label;
+	}
+	if (p.choices && typeof p.choices === 'object' && !Array.isArray(p.choices)) {
+		prop.choices = p.choices;
+	}
+	if (p.when) {
+		prop.when = p.when;
+	}
+	if (p.acf && typeof p.acf === 'object') {
+		prop.acf = p.acf;
+	}
+	if (p.partial) {
+		prop.partial = p.partial;
+	}
 	if (p.type === 'repeater') {
 		prop.properties = (p.properties || []).map(normalizeProperty);
 	}
@@ -275,8 +294,6 @@ export function humanizeClassName(className) {
 export const PROP_TYPE_TO_BLOCK = {
 	string: 'string',
 	boolean: 'boolean',
-	array: 'array',
-	object: 'object',
 	image: 'object',
 	link: 'object',
 	partial: 'object',
@@ -285,6 +302,47 @@ export const PROP_TYPE_TO_BLOCK = {
 	email: 'string',
 	post_object: 'object',
 };
+
+/**
+ * Whether params or a saved manifest opts into both ACF and a block wrapper.
+ *
+ * @param {{ is_acf_compatible?: boolean, acf_compatible?: boolean, emit?: { block?: boolean }, block?: string, artifacts?: { block?: string }, properties?: object[] }} subject
+ * @returns {boolean}
+ */
+export function isDualExposure(subject) {
+	if (!subject || !Array.isArray(subject.properties)) {
+		return false;
+	}
+	const acf = subject.is_acf_compatible === true || subject.acf_compatible === true;
+	const block =
+		subject.emit?.block === true ||
+		(typeof subject.block === 'string' && subject.block.length > 0) ||
+		(typeof subject.artifacts?.block === 'string' && subject.artifacts.block.length > 0);
+	return acf && block;
+}
+
+/**
+ * Dual partials may only use property types the block editor can author today.
+ *
+ * @param {Parameters<typeof isDualExposure>[0]} subject
+ */
+export function assertDualAuthorable(subject) {
+	if (!isDualExposure(subject)) {
+		return;
+	}
+	for (const prop of subject.properties) {
+		if (!prop?.name || !prop?.type) {
+			continue;
+		}
+		if (!DUAL_AUTHORABLE_TYPES.includes(prop.type)) {
+			throw new Error(
+				`Dual partials (--acf + --block) require Tier A property types until Tier B block controls ship. ` +
+					`Property "${prop.name}" has type "${prop.type}". Allowed: ${DUAL_AUTHORABLE_TYPES.join(', ')}. ` +
+					`See docs/dual-authorable-types.md.`,
+			);
+		}
+	}
+}
 
 /** WonderPress manifest tree under the theme (typed by subdirectory). */
 export const MANIFEST_ROOT = '.wonderpress/manifest';

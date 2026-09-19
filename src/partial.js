@@ -27,6 +27,7 @@ import {
 	PROP_TYPES,
 	PROP_TYPE_TO_BLOCK,
 	REPEATER_SUB_TYPES,
+	assertDualAuthorable,
 	LEGACY_NAMESPACE,
 	validateManifestProperty,
 	partialManifestPath,
@@ -379,6 +380,8 @@ export function validateParams(params) {
 	if (params.is_acf_compatible && emit.manifest === false) {
 		throw new Error('ACF compatibility requires the manifest (it is what core reads to register the field group). Drop --no-manifest or --acf.');
 	}
+
+	assertDualAuthorable(params);
 }
 
 /**
@@ -533,7 +536,11 @@ export function writeBlock(params, themeDir) {
 
 	const attributes = {};
 	for (const p of params.properties) {
-		attributes[p.name] = { type: PROP_TYPE_TO_BLOCK[p.type] || 'string' };
+		const attr = { type: PROP_TYPE_TO_BLOCK[p.type] || 'string' };
+		if (p.type === 'select' && p.choices && typeof p.choices === 'object' && !Array.isArray(p.choices)) {
+			attr.enum = Object.keys(p.choices);
+		}
+		attributes[p.name] = attr;
 	}
 	// The project's namespace, not the tool's — see resolveNamespace(). The
 	// category rides along with it so the inserter groups a project's blocks

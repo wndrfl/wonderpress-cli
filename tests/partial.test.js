@@ -124,6 +124,50 @@ test('--block maps image/link/repeater onto object/array attributes', async () =
 	}
 });
 
+test('validateParams rejects dual exposure with Tier B property types', () => {
+	assert.throws(
+		() =>
+			validateParams({
+				class_name: 'Hero',
+				has_partial_template: true,
+				partial_template_name: 'hero.php',
+				is_acf_compatible: true,
+				properties: [{ name: 'photo', type: 'image', required: false, description: '' }],
+				emit: { block: true, manifest: true },
+			}),
+		/Tier A/,
+	);
+});
+
+test('--block emits enum on select choices', async () => {
+	const dir = tmpTheme();
+	try {
+		const params = paramsFromJson(
+			JSON.stringify({
+				name: 'Banner',
+				acf_compatible: true,
+				template: true,
+				block: true,
+				properties: [
+					{
+						name: 'style',
+						type: 'select',
+						required: false,
+						description: '',
+						choices: { solid: 'Solid', outline: 'Outline' },
+					},
+				],
+			}),
+		);
+		validateParams(params);
+		await writePartial(params, dir);
+		const block = JSON.parse(fs.readFileSync(path.join(dir, 'blocks/banner/block.json'), 'utf8'));
+		assert.deepEqual(block.attributes.style.enum, ['solid', 'outline']);
+	} finally {
+		fs.removeSync(dir);
+	}
+});
+
 test('--block opts in: block.json (with render binding) + render.php delegate to the partial', async () => {
 	const dir = tmpTheme();
 	try {

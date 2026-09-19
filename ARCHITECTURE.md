@@ -139,6 +139,11 @@ to how core registers `blocks/<slug>/block.json`. The CLI still owns the files;
 core never writes them. Partial manifests declare fields only; page-template
 manifests and the theme filter declare placement.
 
+**Dual-authorable types:** When a partial is both ACF-compatible and exposed as
+a block, every property type must be authorable in ACF and in the block editor
+with the same value shape. Tier A (scalars) is enforced by the CLI today; Tier B
+(structured types) is backlog. See [docs/dual-authorable-types.md](docs/dual-authorable-types.md).
+
 **Page-template manifests** (`.wonderpress/manifest/page-templates/<template>.json`, integer
 `schemaVersion`) declare the editor contract (`editor.lock`, `editor.native`) and
 an ordered `composition`: partial instances (`id` + `partial`), inline field
