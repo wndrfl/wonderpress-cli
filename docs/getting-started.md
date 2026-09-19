@@ -151,7 +151,8 @@ supported (Pass 1).
 
 Dual partials (`--acf` and `--block` together) may only use **Tier A** types
 until block editor controls ship for structured fields — see
-[dual-authorable-types.md](dual-authorable-types.md).
+[dual-authorable-types.md](dual-authorable-types.md) and wire formats in
+[property-value-shapes.md](property-value-shapes.md).
 
 Nested `type: "link"` on another partial still maps to a **simple** four-field
 link group. To embed the **rich** Link primitive inside another partial, use

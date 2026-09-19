@@ -142,7 +142,8 @@ manifests and the theme filter declare placement.
 **Dual-authorable types:** When a partial is both ACF-compatible and exposed as
 a block, every property type must be authorable in ACF and in the block editor
 with the same value shape. Tier A (scalars) is enforced by the CLI today; Tier B
-(structured types) is backlog. See [docs/dual-authorable-types.md](docs/dual-authorable-types.md).
+(structured types) is backlog. See [docs/dual-authorable-types.md](docs/dual-authorable-types.md)
+and [docs/property-value-shapes.md](docs/property-value-shapes.md).
 
 **Page-template manifests** (`.wonderpress/manifest/page-templates/<template>.json`, integer
 `schemaVersion`) declare the editor contract (`editor.lock`, `editor.native`) and
