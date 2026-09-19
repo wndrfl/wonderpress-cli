@@ -91,7 +91,7 @@ is **not** the rich Link primitive (`partial: "link"`); see [Deferred profiles](
 
 **Block storage:** single `object` attribute (matches ACF group and `phpFormatForType( 'link' )` → array).
 
-**Editor:** four inspector fields (link text, URL, title attribute, new tab) in `editor-preview.js`.
+**Editor:** four inspector fields inside a type-driven fieldset in `editor-preview.js` (text, URL, then optional title + new tab).
 
 **Acceptance:** `link` is in `DUAL_AUTHORABLE_TYPES` with `wonder_normalize_link_value()`.
 
