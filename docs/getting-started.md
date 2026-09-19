@@ -148,17 +148,23 @@ with `"schemaVersion": 1`. That file declares:
 
 - **`editor.lock`** — same values as `wonderpress_template_locks` (manifest
   defaults; your PHP filter still wins on the same template key).
+- **`editor.acf`** — ACF field-group options for this template. Optional
+  **`tabPlacement`**: `left` (sidebar tabs) or `top` (horizontal tabs) for
+  composition tab rows; omit to auto-pick (left when there is one tab row, top
+  when there are two or more).
 - **`editor.native`** — which editor panels appear (`blockEditor: false` switches
   to the classic screen; `featuredImage: false` removes featured-image support
-  on that template). After you change **Page → Template**, **Update** the page and
-  reload the edit screen so PHP can apply the manifest (editor mode, ACF, locks).
+  on that template). After you change **Page →
+  Template**, **Update** the page and reload the edit screen so PHP can apply the
+  manifest (editor mode, ACF, locks).
 - **`composition`** — ordered rows: **instance** `{ "id", "partial" }` (renders
   and maps to an ACF group field), or **tab** `{ "id", "label", "items": [ …instances… ] }`
   (editor-only grouping as ACF tabs; root-level instances have no tab wrapper).
   Instance ids must be unique across the whole tree. The same partial may appear
-  twice with different ids (two heroes). Tab rows always register as ACF tabs;
-  one tab row uses **left** placement (sidebar), two or more use **top** tabs.
-  Save manifests under `.wonderpress/manifest/page-templates/` (strict JSON).
+  twice with different ids (two heroes).   Tab rows register as ACF tabs; set `editor.acf.tabPlacement` to force **left**
+  or **top**, or omit for the default. Save manifests under
+  `.wonderpress/manifest/page-templates/`
+  (strict JSON).
 
 Manifest files must be **strict JSON** (no `//` comments or trailing commas). A
 parse error skips the whole file, and partials fall back to per-slug ACF groups

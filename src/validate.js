@@ -256,6 +256,9 @@ export function pageTemplateManifestDir(themeDir) {
 
 export const TEMPLATE_LOCK_LEVELS = ['all', 'insert', 'contentOnly', false];
 
+/** ACF tab placement for composition tab rows (`editor.acf.tabPlacement`). */
+export const TEMPLATE_TAB_PLACEMENTS = ['left', 'top'];
+
 const COMPOSITION_ID_RE = /^[a-z0-9-]+$/;
 
 /**
@@ -470,6 +473,18 @@ export function validateTemplateManifest(data, { partialSlugs = [] } = {}) {
 	const native = data.editor?.native;
 	if (native !== undefined && (typeof native !== 'object' || native === null)) {
 		errors.push('editor.native must be an object when present.');
+	}
+
+	const editorAcf = data.editor?.acf;
+	if (editorAcf !== undefined && (typeof editorAcf !== 'object' || editorAcf === null)) {
+		errors.push('editor.acf must be an object when present.');
+	}
+
+	if (
+		editorAcf?.tabPlacement !== undefined
+		&& !TEMPLATE_TAB_PLACEMENTS.includes(editorAcf.tabPlacement)
+	) {
+		errors.push('editor.acf.tabPlacement must be left or top.');
 	}
 
 	errors.push(...validateTemplateComposition(data.composition, { partialSlugs }));

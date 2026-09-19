@@ -215,6 +215,30 @@ test('validateTemplateComposition accepts tabs and rejects nested tabs', () => {
 	assert.ok(dup.some((e) => /Duplicate composition id "same"/.test(e)));
 });
 
+test('validateTemplateManifest accepts editor.acf.tabPlacement', () => {
+	const left = validateTemplateManifest(
+		{
+			schemaVersion: TEMPLATE_MANIFEST_SCHEMA_VERSION,
+			template: 'template-landing.php',
+			editor: { acf: { tabPlacement: 'left' } },
+			composition: [{ id: 'hero', items: [{ id: 'a', partial: 'landing-hero' }] }],
+		},
+		{ partialSlugs: ['landing-hero'] },
+	);
+	assert.equal(left.ok, true);
+
+	const bad = validateTemplateManifest(
+		{
+			schemaVersion: TEMPLATE_MANIFEST_SCHEMA_VERSION,
+			template: 'template-landing.php',
+			editor: { acf: { tabPlacement: 'side' } },
+		},
+		{},
+	);
+	assert.equal(bad.ok, false);
+	assert.ok(bad.errors.some((e) => /tabPlacement/.test(e)));
+});
+
 test('validateTemplateManifest accepts mixed composition', () => {
 	const result = validateTemplateManifest(
 		{
