@@ -150,8 +150,23 @@ Property types `string`, `boolean`, `email`, `select`, `post_object`, `image`,
 supported (Pass 1).
 
 Nested `type: "link"` on another partial still maps to a **simple** four-field
-link group. The **rich** agency Link field group lives on the core **Link**
-primitive manifest:
+link group. To embed the **rich** Link primitive inside another partial, use
+`type: "partial"` and `partial: "link"` (fields come from core
+`manifest/partials/link.json`):
+
+```json
+{
+  "name": "cta",
+  "type": "partial",
+  "partial": "link",
+  "label": "Call to action"
+}
+```
+
+In PHP, render with `wonder_render_partial_ref( 'link', $this->cta )` or
+`new \Wonderpress_Core\Partials\Link( [ 'acf' => $this->cta ] )`.
+
+The standalone **Link** primitive manifest is also available via:
 
 ```bash
 wonderpress partial install-manifest link

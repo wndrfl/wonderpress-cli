@@ -301,6 +301,16 @@ test('parseSectionFlag parses id:partial', () => {
 	assert.throws(() => parseSectionFlag('bad id:hero'), /Invalid composition id/);
 });
 
+test('validateManifestProperty accepts partial refs', () => {
+	assert.doesNotThrow(() => validateManifestProperty(
+		{ name: 'cta', type: 'partial', partial: 'link' },
+	));
+	assert.throws(
+		() => validateManifestProperty({ name: 'cta', type: 'partial' }),
+		/partial slug/,
+	);
+});
+
 test('validateManifestProperty accepts select, when, and post_object', () => {
 	const siblingNames = new Set(['type', 'internal_target_obj']);
 	assert.doesNotThrow(() => validateManifestProperty(

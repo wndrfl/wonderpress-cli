@@ -15,6 +15,7 @@ export const PROP_TYPES = [
 	'image',
 	'link',
 	'object',
+	'partial',
 	'post_object',
 	'repeater',
 	'select',
@@ -22,7 +23,7 @@ export const PROP_TYPES = [
 ];
 
 // What a repeater row may contain. Nested repeaters are a later slice.
-export const REPEATER_SUB_TYPES = ['boolean', 'email', 'image', 'link', 'select', 'string'];
+export const REPEATER_SUB_TYPES = ['boolean', 'email', 'image', 'link', 'partial', 'select', 'string'];
 
 /** ACF conditional operators allowed in manifest `when` rules. */
 export const MANIFEST_WHEN_OPERATORS = [
@@ -151,7 +152,7 @@ export function parseSubFlag(str) {
  * image / link / repeater are stored as arrays (ACF payloads / row lists).
  **/
 export function phpFormatForType(type) {
-	if (type === 'image' || type === 'link' || type === 'repeater' || type === 'post_object') {
+	if (type === 'image' || type === 'link' || type === 'partial' || type === 'repeater' || type === 'post_object') {
 		return 'array';
 	}
 	if (type === 'select' || type === 'email') {
@@ -278,6 +279,7 @@ export const PROP_TYPE_TO_BLOCK = {
 	object: 'object',
 	image: 'object',
 	link: 'object',
+	partial: 'object',
 	repeater: 'array',
 	select: 'string',
 	email: 'string',
@@ -419,6 +421,12 @@ function validateOneManifestProperty(p, errors, pathLabel, { asRepeaterSub = fal
 		const choices = p.choices ?? p.acf?.choices;
 		if (!choices || typeof choices !== 'object' || Array.isArray(choices) || !Object.keys(choices).length) {
 			errors.push(`${pathLabel}: select property "${p.name}" must declare choices (object map).`);
+		}
+	}
+
+	if (p.type === 'partial') {
+		if (!p.partial || !isSafeSlug(p.partial)) {
+			errors.push(`${pathLabel}: partial property "${p.name}" must declare a valid partial slug (partial).`);
 		}
 	}
 
