@@ -5,8 +5,8 @@ must produce the **same canonical value** on flat partial properties after
 construction. See [dual-authorable-types.md](dual-authorable-types.md) for the
 platform rule and tier rollout.
 
-Status: Tier A implemented. Tier B `image` and simple `link` have block controls
-and PHP normalization; other Tier B types are specified with controls/normalize backlog.
+Status: Tier A implemented. Tier B `image`, `link`, and `post_object` have block
+controls and PHP normalization; repeater and partial embeds remain backlog.
 
 ## Hydration pipeline
 
@@ -110,9 +110,9 @@ with `ID`, reduce to int before assigning the flat property.
 (or normalize to int on the flat prop at construct time). Multi-select
 (`acf.multiple`) is **v2** — not in Tier B unless spec is extended.
 
-**Future editor:** post picker filtered by `acf.post_type` from block schema.
+**Editor:** REST search combobox in a fieldset; `acf.post_type` from block schema filters subtype.
 
-**Acceptance:** picker + ID normalization on flat prop.
+**Acceptance:** `post_object` in `DUAL_AUTHORABLE_TYPES` with `wonder_normalize_post_object_value()` → int ID.
 
 ## Tier B — `repeater`
 
@@ -164,7 +164,7 @@ Add types to `DUAL_AUTHORABLE_TYPES` in `validate.js` only after spec acceptance
 | --- | --- | --- |
 | 1 | `image` | ✅ MediaUpload + `wonder_normalize_image_value()` |
 | 2 | `link` | ✅ Four-field inspector + `wonder_normalize_link_value()` |
-| 3 | `post_object` | Post picker + ID normalize |
+| 3 | `post_object` | ✅ Combobox search + `wonder_normalize_post_object_value()` |
 | 4 | `repeater` | Row UI + nested type coverage |
 | 5 | `partial` | Recursive schema/UI + transitive lint |
 

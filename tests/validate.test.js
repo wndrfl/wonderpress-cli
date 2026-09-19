@@ -90,6 +90,16 @@ test('assertDualAuthorable allows link on dual partials', () => {
 	);
 });
 
+test('assertDualAuthorable allows post_object on dual partials', () => {
+	assert.doesNotThrow(() =>
+		assertDualAuthorable({
+			is_acf_compatible: true,
+			emit: { block: true },
+			properties: [{ name: 'related_page', type: 'post_object', acf: { post_type: ['page'] } }],
+		}),
+	);
+});
+
 test('assertDualAuthorable rejects Tier B types on dual partials', () => {
 	assert.throws(
 		() =>
@@ -100,7 +110,7 @@ test('assertDualAuthorable rejects Tier B types on dual partials', () => {
 			}),
 		/Tier A/,
 	);
-	assert.deepEqual(DUAL_AUTHORABLE_TYPES, ['string', 'boolean', 'email', 'select', 'image', 'link']);
+	assert.deepEqual(DUAL_AUTHORABLE_TYPES, ['string', 'boolean', 'email', 'select', 'image', 'link', 'post_object']);
 });
 
 test('parsePropFlag parses name:type[:required]', () => {
