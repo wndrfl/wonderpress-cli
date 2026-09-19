@@ -34,6 +34,11 @@ import {
 } from './validate.js';
 import * as config from './config.js';
 import { pickOne } from './prompt.js';
+import {
+	CORE_PARTIAL_MANIFEST_SLUGS,
+	installCorePartialManifest,
+	resolveCoreBundledPartialManifest,
+} from './partial-manifests.js';
 
 /**
  * Accept and route a command.
@@ -48,6 +53,9 @@ export async function command(subcommand, args) {
 			break;
 		case 'remove':
 			await remove(args);
+			break;
+		case 'install-manifest':
+			await installManifest(args);
 			break;
 		default:
 			// No subcommand (or an unrecognised one) means the user is looking for
@@ -821,6 +829,43 @@ export function removePartial(themeDir, name, options = {}) {
 
 	fs.removeSync(file);
 	log.success(`Removed manifest: ${file}`);
+	return true;
+}
+
+/**
+ * Copy a core-bundled primitive manifest into the theme (Pass 2: Link).
+ **/
+export async function installManifest(args) {
+	const themeDir = await resolveThemeDir(args);
+	if (!themeDir) {
+		return false;
+	}
+
+	const slug = args._ && args._[2] ? nameToSlug(args._[2]) : nameToSlug(args['--slug'] || '');
+	if (!slug) {
+		log.error('Usage: wonderpress partial install-manifest <slug> (e.g. link)');
+		log.info(`Available core primitives: ${CORE_PARTIAL_MANIFEST_SLUGS.join(', ')}`);
+		return false;
+	}
+
+	if (!CORE_PARTIAL_MANIFEST_SLUGS.includes(slug)) {
+		log.error(`Unknown core primitive "${slug}". Available: ${CORE_PARTIAL_MANIFEST_SLUGS.join(', ')}`);
+		return false;
+	}
+
+	if (!resolveCoreBundledPartialManifest(themeDir, slug)) {
+		log.error(`Could not find bundled manifest for "${slug}" in wonderpress-core. Is the package installed?`);
+		return false;
+	}
+
+	const dest = installCorePartialManifest(themeDir, slug);
+	if (!dest) {
+		log.error(`Failed to install manifest for "${slug}".`);
+		return false;
+	}
+
+	log.success(`Installed core manifest: ${dest}`);
+	log.info('Add acf.location or wonderpress_template_fields so ACF registers the field group where editors need it.');
 	return true;
 }
 

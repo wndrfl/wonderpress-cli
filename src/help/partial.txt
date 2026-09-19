@@ -11,6 +11,9 @@ COMMANDS
   partial list             List every partial, and whether a block wraps it
   partial remove [<Name>]  Delete a partial and everything it owns. With no
                            name, pick from what the theme has.
+  partial install-manifest <slug>
+                           Copy a core primitive manifest (e.g. link) into
+                           .wonderpress/manifest/partials/
 
 CREATE OPTIONS
   <Class_Name>             The name, positionally — `partial create Hero`.

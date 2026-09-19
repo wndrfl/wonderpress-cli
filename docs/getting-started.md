@@ -136,10 +136,24 @@ That landing page hydrates from ACF and typically locks `'all'`:
 `wonder_partial_props( 'hero' )` is `array( 'acf' => get_field( 'hero' ) )`.
 On a blog post you insert the Hero block instead; the group does not show.
 
-Property types `string`, `boolean`, `image`, `link`, and `repeater` become
-ACF fields. `image` and `link` match the ingest already on the core Image and
-Link partials. Repeaters are one level deep (`--sub` or nested `properties`
-in `--json`). Flexible content is not generated.
+Property types `string`, `boolean`, `email`, `select`, `post_object`, `image`,
+`link`, and `repeater` become ACF fields. Optional `label`, `when`
+(conditionals by sibling property name), and whitelisted `acf` overrides are
+supported (Pass 1).
+
+Nested `type: "link"` on another partial still maps to a **simple** four-field
+link group. The **rich** agency Link field group lives on the core **Link**
+primitive manifest:
+
+```bash
+wonderpress partial install-manifest link
+```
+
+Core ships `manifest/partials/link.json` (loaded automatically for ACF
+registration when the partial is located). The PHP class is
+`Wonderpress_Core\Partials\Link` in wonderpress-core. Repeaters are one level
+deep (`--sub` or nested `properties` in `--json`). Flexible content is not
+generated.
 
 ## 5c. Template manifests (composition + editor contract)
 
