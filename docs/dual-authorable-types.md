@@ -42,7 +42,9 @@ that partial as a block (duplicate Hero UI). See [getting-started.md](getting-st
 `block.json` only stores WordPress attribute types (`string`, `boolean`, `object`, …).
 WonderPress passes manifest property definitions to the editor as
 `window.wonderpressBlockSchemas` so controls match ACF semantics (`select`, `email`,
-textarea heuristics, `when` conditionals).
+`format` / `rows` for strings, `post_type` for post_object, `when` conditionals).
+
+Shared keys live on the **property root**, not under `acf` (see property-value-shapes.md).
 
 ## Tier B rollout
 

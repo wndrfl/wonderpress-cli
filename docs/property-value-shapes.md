@@ -28,7 +28,8 @@ Call from block render or `Abstract_Partial` when hydrating from attributes.
 
 - **JSON-safe block storage:** no `WP_Post`, no PHP resources — IDs and plain arrays/objects only.
 - **Empty values:** document per type; required-field validation stays in `Abstract_Partial::render()`.
-- **Manifest `acf` passthrough:** affects ACF UI and ACF return format only. **Block wire format is fixed** per type below unless this doc says otherwise.
+- **Shared property keys (`post_type`, `format`, `rows`):** on the **property root** — used by **both** ACF and the block editor. Do not nest under `acf`.
+- **Manifest `acf` passthrough:** ACF-only UI overrides (`ui`, `return_format`, `wrapper`, …). **Block wire format is fixed** per type below unless this doc says otherwise.
 - **`when`:** authoring-only (hide inspector fields; saved values retained — ACF parity).
 - **Repeater depth:** one level only (no repeater sub-fields of type `repeater`).
 
@@ -98,7 +99,7 @@ is **not** the rich Link primitive (`partial: "link"`); see [Deferred profiles](
 ## Tier B — `post_object`
 
 **ACF mapping:** `post_object`; default `return_format: object` unless manifest
-`acf.return_format` overrides. `post_type` from manifest `acf.post_type`.
+`acf.return_format` overrides (ACF-only). **`post_type`** on the property root (e.g. `["page"]`).
 
 **Canonical wire on the flat partial property:** **`int` post ID or `null`**
 (recommended for dual partials and simple templates).
@@ -110,7 +111,7 @@ with `ID`, reduce to int before assigning the flat property.
 (or normalize to int on the flat prop at construct time). Multi-select
 (`acf.multiple`) is **v2** — not in Tier B unless spec is extended.
 
-**Editor:** REST search combobox in a fieldset; `acf.post_type` from block schema filters subtype.
+**Editor:** REST search combobox in a fieldset; property `post_type` filters subtype.
 
 **Acceptance:** `post_object` in `DUAL_AUTHORABLE_TYPES` with `wonder_normalize_post_object_value()` → int ID.
 

@@ -95,7 +95,7 @@ test('assertDualAuthorable allows post_object on dual partials', () => {
 		assertDualAuthorable({
 			is_acf_compatible: true,
 			emit: { block: true },
-			properties: [{ name: 'related_page', type: 'post_object', acf: { post_type: ['page'] } }],
+			properties: [{ name: 'related_page', type: 'post_object', post_type: ['page'] }],
 		}),
 	);
 });
@@ -373,6 +373,16 @@ test('validateManifestProperty accepts partial refs', () => {
 	);
 });
 
+test('validateManifestProperty rejects shared keys nested under acf', () => {
+	assert.throws(
+		() => validateManifestProperty(
+			{ name: 'related', type: 'post_object', acf: { post_type: ['page'] } },
+			{ siblingNames: new Set(['related']) },
+		),
+		/not under acf/,
+	);
+});
+
 test('validateManifestProperty accepts select, when, and post_object', () => {
 	const siblingNames = new Set(['type', 'internal_target_obj']);
 	assert.doesNotThrow(() => validateManifestProperty(
@@ -388,7 +398,8 @@ test('validateManifestProperty accepts select, when, and post_object', () => {
 			name: 'internal_target_obj',
 			type: 'post_object',
 			when: [[{ field: 'type', operator: '==', value: 'internal' }]],
-			acf: { post_type: ['page'], return_format: 'object' },
+			post_type: ['page'],
+			acf: { return_format: 'object' },
 		},
 		{ siblingNames },
 	));

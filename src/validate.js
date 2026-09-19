@@ -43,12 +43,17 @@ export const MANIFEST_WHEN_OPERATORS = [
 	'!pattern',
 ];
 
-/** Manifest `acf` keys that may be merged onto compiled ACF fields. */
+/**
+ * Manifest keys on the property root shared by ACF and the block editor.
+ * Do not nest these under `acf`.
+ */
+export const MANIFEST_PROPERTY_SHARED_KEYS = ['post_type', 'format', 'rows'];
+
+/** Manifest `acf` keys that may be merged onto compiled ACF fields (ACF-only UI). */
 export const MANIFEST_ACF_PASSTHROUGH_KEYS = [
 	'choices',
 	'default_value',
 	'ui',
-	'post_type',
 	'return_format',
 	'preview_size',
 	'library',
@@ -60,8 +65,6 @@ export const MANIFEST_ACF_PASSTHROUGH_KEYS = [
 	'min',
 	'max',
 	'step',
-	'rows',
-	'format',
 ];
 
 /**
@@ -166,6 +169,59 @@ export function phpFormatForType(type) {
 }
 
 /**
+ * @param {string|string[]} postType
+ * @returns {string[]}
+ */
+export function normalizePostTypeList(postType) {
+	if (typeof postType === 'string') {
+		return [postType];
+	}
+	if (Array.isArray(postType)) {
+		return postType.map(String).filter(Boolean);
+	}
+	return [];
+}
+
+function validateManifestSharedPropertyKeys(p, errors, pathLabel) {
+	if (p.acf && typeof p.acf === 'object') {
+		for (const key of MANIFEST_PROPERTY_SHARED_KEYS) {
+			if (Object.prototype.hasOwnProperty.call(p.acf, key)) {
+				errors.push(
+					`${pathLabel}: property "${p.name}" must declare "${key}" on the property root, not under acf.`,
+				);
+			}
+		}
+	}
+
+	if (p.post_type !== undefined) {
+		if (p.type !== 'post_object') {
+			errors.push(`${pathLabel}: property "${p.name}" post_type is only allowed for type post_object.`);
+		} else {
+			const list = normalizePostTypeList(p.post_type);
+			if (!list.length) {
+				errors.push(`${pathLabel}: property "${p.name}" post_type must be a non-empty string or array of strings.`);
+			}
+		}
+	}
+
+	if (p.format !== undefined) {
+		if (p.type !== 'string') {
+			errors.push(`${pathLabel}: property "${p.name}" format is only allowed for type string.`);
+		} else if (!['text', 'textarea'].includes(p.format)) {
+			errors.push(`${pathLabel}: property "${p.name}" format must be "text" or "textarea".`);
+		}
+	}
+
+	if (p.rows !== undefined) {
+		if (p.type !== 'string') {
+			errors.push(`${pathLabel}: property "${p.name}" rows is only allowed for type string.`);
+		} else if (typeof p.rows !== 'number' || !Number.isFinite(p.rows) || p.rows < 1) {
+			errors.push(`${pathLabel}: property "${p.name}" rows must be a positive number.`);
+		}
+	}
+}
+
+/**
  * Canonical property object, including nested repeater rows.
  **/
 export function normalizeProperty(p) {
@@ -183,6 +239,15 @@ export function normalizeProperty(p) {
 	}
 	if (p.when) {
 		prop.when = p.when;
+	}
+	if (p.post_type !== undefined) {
+		prop.post_type = normalizePostTypeList(p.post_type);
+	}
+	if (p.format !== undefined) {
+		prop.format = p.format;
+	}
+	if (p.rows !== undefined) {
+		prop.rows = p.rows;
 	}
 	if (p.acf && typeof p.acf === 'object') {
 		prop.acf = p.acf;
@@ -488,6 +553,7 @@ function validateOneManifestProperty(p, errors, pathLabel, { asRepeaterSub = fal
 		}
 	}
 
+	validateManifestSharedPropertyKeys(p, errors, pathLabel);
 	validateManifestAcfObject(p.acf, errors, pathLabel, p.name);
 	validateManifestWhen(p.when, errors, pathLabel, p.name, siblingNames);
 
