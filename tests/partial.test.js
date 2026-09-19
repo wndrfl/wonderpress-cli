@@ -421,13 +421,12 @@ test('paramsFromFlags + --sub and paramsFromJson agree on a repeater', () => {
 	assert.deepEqual(flags.properties, json.properties);
 });
 
-test('writePartial persists acf.location and maps image/link/repeater formats', async () => {
+test('writePartial maps image/link/repeater formats for ACF-compatible partials', async () => {
 	const dir = tmpTheme();
 	try {
 		const spec = {
 			name: 'Hero',
 			acf_compatible: true,
-			acf: { location: [[{ param: 'page_template', operator: '==', value: 'page-landing.php' }]] },
 			properties: [
 				{ name: 'headline', type: 'string', required: true },
 				{ name: 'photo', type: 'image' },
@@ -445,7 +444,7 @@ test('writePartial persists acf.location and maps image/link/repeater formats', 
 
 		const m = JSON.parse(fs.readFileSync(path.join(dir, '.wonderpress/manifest/partials/hero.json'), 'utf8'));
 		assert.equal(m.acf_compatible, true);
-		assert.deepEqual(m.acf.location[0][0].value, 'page-landing.php');
+		assert.equal(m.acf, undefined);
 		assert.equal(m.properties.find((p) => p.name === 'items').properties[0].name, 'quote');
 
 		const php = fs.readFileSync(path.join(dir, 'src/partials/class-hero.php'), 'utf8');
@@ -457,6 +456,21 @@ test('writePartial persists acf.location and maps image/link/repeater formats', 
 	} finally {
 		fs.removeSync(dir);
 	}
+});
+
+test('validateParams rejects acf.location on partial manifests', () => {
+	assert.throws(
+		() => validateParams({
+			class_name: 'Hero',
+			has_partial_template: true,
+			partial_template_name: 'hero.php',
+			properties: [{ name: 'headline', type: 'string', required: false, description: '' }],
+			acf: { location: [[{ param: 'page_template', operator: '==', value: 'page-landing.php' }]] },
+			is_acf_compatible: true,
+			emit: { manifest: true },
+		}),
+		/acf\.location/,
+	);
 });
 
 test('properties typed in the wizard win; --prop fills in when none were', () => {

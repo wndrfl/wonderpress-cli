@@ -134,10 +134,10 @@ removal is exactly what creation recorded.
 wonderpress-core reads manifests at runtime in `inc/manifests.php`
 (`wonder_load_theme_manifests()`). ACF is one consumer: `inc/acf.php` registers
 a field group on `acf/init` for every `acf_compatible` manifest that is located
-(`wonderpress_template_fields` or `acf.location`). That is parallel to how core
-registers `blocks/<slug>/block.json`. The CLI still owns the files; core never
-writes them. Optional `acf.location` on the manifest is the ACF location-rule
-shape; the theme filter is the usual way to locate groups.
+via template composition and/or `wonderpress_template_fields`. That is parallel
+to how core registers `blocks/<slug>/block.json`. The CLI still owns the files;
+core never writes them. Partial manifests declare fields only; page-template
+manifests and the theme filter declare placement.
 
 **Page-template manifests** (`.wonderpress/manifest/page-templates/<template>.json`, integer
 `schemaVersion`) declare the editor contract (`editor.lock`, `editor.native`) and

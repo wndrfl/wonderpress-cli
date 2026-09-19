@@ -112,8 +112,17 @@ edits words, the layout does not move.
 
 `--acf` records that a partial may register an ACF field group. Core reads the
 manifest on `acf/init` and registers the group **only where you locate it**.
-A group with no location is skipped — otherwise a Hero metabox and a Hero
-block would appear on the same screen.
+Partial manifests declare **fields only** — not ACF location rules. A group
+with no location is skipped — otherwise a Hero metabox and a Hero block would
+appear on the same screen.
+
+**Locate partials** in either of these ways:
+
+1. **Template composition** (preferred) — list the partial in
+   `.wonderpress/manifest/page-templates/*.json` `composition`. Core derives
+   page-template location from that file.
+2. **`wonderpress_template_fields` filter** — explicit PHP map when you are not
+   using composition:
 
 ```php
 add_filter( 'wonderpress_template_fields', function () {
@@ -124,8 +133,7 @@ add_filter( 'wonderpress_template_fields', function () {
 ```
 
 Do **not** use the `default` key unless you want those partials on every page
-that uses WordPress’s default template. Prefer a template manifest `composition`
-for bespoke landings instead.
+that uses WordPress’s default template.
 
 That landing page hydrates from ACF and typically locks `'all'`:
 

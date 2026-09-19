@@ -30,8 +30,8 @@ CREATE OPTIONS
                            most partials are compositional, not blocks)
   --js                     Also scaffold a JS behavior class (off by default)
   --acf                    Register an ACF field group from the manifest
-                           (requires the manifest; locate it with
-                           wonderpress_template_fields or acf.location)
+                           (requires the manifest; locate it with template
+                           composition or wonderpress_template_fields)
   --template-name <file>   Name the view template, e.g. my-view.php
   --no-template            Class only, no view template
   --no-style               Skip the SCSS stub

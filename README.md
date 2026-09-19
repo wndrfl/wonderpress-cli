@@ -66,7 +66,7 @@ A partial is a rendering primitive (a button, a section) — it is **not** a Gut
 | `--json <@file\|string>` | Create from a JSON spec instead of flags. |
 | `--prop <name:type[:required]>` | Declare a property (repeatable). Types: `string`, `boolean`, `image`, `link`, `repeater`, `array`, `object`. |
 | `--sub <parent:name:type[:required]>` | A sub-field of a repeater (repeatable). |
-| `--acf` | Mark the partial ACF compatible. Core registers a field group from the manifest when ACF is present and the partial is located (`wonderpress_template_fields` or `acf.location`). Cannot be combined with `--no-manifest`. |
+| `--acf` | Mark the partial ACF compatible. Core registers a field group from the manifest when ACF is present and the partial is located (template composition or `wonderpress_template_fields`). Cannot be combined with `--no-manifest`. |
 | `--block` | Also expose the partial as a Gutenberg block (`block.json` + a `render.php` that delegates back to the partial). Opt-in. |
 | `--js` | Also scaffold a JS behavior class for the partial (`static/src/js/lib/partials/<Name>.js`, delegated to Static Kit). Opt-in — most partials have no behavior. |
 | `--template-name <name.php>` | Name the view template. |

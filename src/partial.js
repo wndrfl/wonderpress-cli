@@ -298,7 +298,6 @@ export function paramsFromJson(raw) {
 		has_partial_template: spec.template !== false,
 		partial_template_name: spec.template_name || (className ? defaultTemplateName(className) : ''),
 		properties: (spec.properties || []).map(normalizeProperty),
-		...(spec.acf ? { acf: spec.acf } : {}),
 		emit: {
 			// Opt-in (see paramsFromFlags): a block is only emitted when the
 			// spec explicitly asks for it.
@@ -335,7 +334,6 @@ export function paramsFromManifest(manifest) {
 		has_partial_template: hasView,
 		partial_template_name: hasView ? path.basename(artifacts.view) : defaultTemplateName(manifest.name),
 		properties: (manifest.properties || []).map(normalizeProperty),
-		...(manifest.acf ? { acf: manifest.acf } : {}),
 		emit: {
 			block: !!manifest.block,
 			manifest: true,
@@ -360,6 +358,12 @@ export function validateParams(params) {
 	const siblingNames = new Set(params.properties.filter((prop) => prop?.name).map((prop) => prop.name));
 	for (const p of params.properties) {
 		validateManifestProperty(p, { siblingNames });
+	}
+
+	if (params.acf?.location) {
+		throw new Error(
+			'Partial manifests no longer support acf.location. Locate the field group via template composition or the wonderpress_template_fields filter.',
+		);
 	}
 
 	// A block that is not in the index is unmanageable: `block list`,
@@ -604,7 +608,6 @@ export function writeManifest(params, themeDir, written = {}) {
 		...(emit.block ? { block: `${namespaceFor(params, themeDir)}/${slug}` } : {}),
 		acf_compatible: params.is_acf_compatible,
 		properties: params.properties,
-		...(params.acf ? { acf: params.acf } : {}),
 		artifacts,
 	};
 
@@ -865,7 +868,7 @@ export async function installManifest(args) {
 	}
 
 	log.success(`Installed core manifest: ${dest}`);
-	log.info('Add acf.location or wonderpress_template_fields so ACF registers the field group where editors need it.');
+	log.info('Add the partial to a template composition or wonderpress_template_fields so ACF registers the field group where editors need it.');
 	return true;
 }
 
