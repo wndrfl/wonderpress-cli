@@ -124,7 +124,7 @@ test('--block maps image/link/repeater onto object/array attributes', async () =
 	}
 });
 
-test('validateParams rejects dual exposure with Tier B property types', () => {
+test('validateParams rejects dual exposure with partial embeds', () => {
 	assert.throws(
 		() =>
 			validateParams({
@@ -134,16 +134,16 @@ test('validateParams rejects dual exposure with Tier B property types', () => {
 				is_acf_compatible: true,
 				properties: [
 					{
-						name: 'items',
-						type: 'repeater',
+						name: 'cta',
+						type: 'partial',
+						partial: 'cta-link',
 						required: false,
 						description: '',
-						properties: [{ name: 'label', type: 'string', required: true }],
 					},
 				],
 				emit: { block: true, manifest: true },
 			}),
-		/Tier A/,
+		/dual-authorable/,
 	);
 });
 

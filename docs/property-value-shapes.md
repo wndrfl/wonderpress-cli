@@ -128,9 +128,12 @@ sub-property `name`; values follow that sub-type’s spec in this document
 
 **Block storage:** `array` attribute.
 
-**Future editor:** add/remove rows; nested controls reuse per-type editors.
+**Block editor:** add/remove rows; each row is a fieldset; sub-fields reuse the
+same per-type inspectors as top-level properties (`when` evaluates against the row).
 
-**Acceptance:** repeater UI + every nested sub-type dual-authorable.
+**Acceptance:** `repeater` in `DUAL_AUTHORABLE_TYPES` with row UI +
+`wonder_normalize_repeater_value()`; repeater sub-types must be dual-authorable
+(`partial` not allowed inside dual repeaters until partial embed ships).
 
 ## Tier B — `partial` (embed)
 
@@ -166,7 +169,7 @@ Add types to `DUAL_AUTHORABLE_TYPES` in `validate.js` only after spec acceptance
 | 1 | `image` | ✅ MediaUpload + `wonder_normalize_image_value()` |
 | 2 | `link` | ✅ Four-field inspector + `wonder_normalize_link_value()` |
 | 3 | `post_object` | ✅ Combobox search + `wonder_normalize_post_object_value()` |
-| 4 | `repeater` | Row UI + nested type coverage |
+| 4 | `repeater` | ✅ Row UI + `wonder_normalize_repeater_value()` + nested dual lint |
 | 5 | `partial` | Recursive schema/UI + transitive lint |
 
 Editor work tracks [editor-js-plan.md](editor-js-plan.md) and [ROADMAP.md](../ROADMAP.md) Phase 2b.

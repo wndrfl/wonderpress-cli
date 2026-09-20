@@ -100,17 +100,60 @@ test('assertDualAuthorable allows post_object on dual partials', () => {
 	);
 });
 
-test('assertDualAuthorable rejects Tier B types on dual partials', () => {
+test('assertDualAuthorable allows repeater with dual sub-fields on dual partials', () => {
+	assert.doesNotThrow(() =>
+		assertDualAuthorable({
+			is_acf_compatible: true,
+			emit: { block: true },
+			properties: [
+				{
+					name: 'items',
+					type: 'repeater',
+					properties: [
+						{ name: 'label', type: 'string' },
+						{ name: 'photo', type: 'image' },
+					],
+				},
+			],
+		}),
+	);
+});
+
+test('assertDualAuthorable rejects non-dual types on dual partials', () => {
 	assert.throws(
 		() =>
 			assertDualAuthorable({
 				is_acf_compatible: true,
 				emit: { block: true },
-				properties: [{ name: 'items', type: 'repeater', properties: [{ name: 'label', type: 'string' }] }],
+				properties: [{ name: 'card', type: 'partial', partial: 'cta-link' }],
 			}),
-		/Tier A/,
+		/dual-authorable/,
 	);
-	assert.deepEqual(DUAL_AUTHORABLE_TYPES, ['string', 'boolean', 'email', 'select', 'image', 'link', 'post_object']);
+	assert.throws(
+		() =>
+			assertDualAuthorable({
+				is_acf_compatible: true,
+				emit: { block: true },
+				properties: [
+					{
+						name: 'items',
+						type: 'repeater',
+						properties: [{ name: 'embed', type: 'partial', partial: 'cta-link' }],
+					},
+				],
+			}),
+		/repeater "items" sub-field/,
+	);
+	assert.deepEqual(DUAL_AUTHORABLE_TYPES, [
+		'string',
+		'boolean',
+		'email',
+		'select',
+		'image',
+		'link',
+		'post_object',
+		'repeater',
+	]);
 });
 
 test('parsePropFlag parses name:type[:required]', () => {
