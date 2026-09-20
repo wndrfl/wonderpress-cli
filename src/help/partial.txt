@@ -9,6 +9,8 @@ Wonderpress theme. Once created it can be rendered two ways, from one source:
 COMMANDS
   partial create           Create one (class, view, style, optionally JS + block)
   partial list             List every partial, and whether a block wraps it
+  partial sync [<Name>]    Regenerate class $_properties and block.json from
+                           the manifest (after you edit properties in JSON)
   partial remove [<Name>]  Delete a partial and everything it owns. With no
                            name, pick from what the theme has.
   partial install-manifest <slug>
@@ -40,6 +42,12 @@ CREATE OPTIONS
   --json <spec|@file>      Create from a JSON spec instead of flags
   --theme <name>           Target a theme by name, skipping the active lookup
 
+SYNC OPTIONS
+  --all                    Sync every partial manifest in the theme
+  --slug <slug>            Partial slug (alternative to positional name)
+  --dry-run                Print what would be written, without changing files
+  --properties-only        Update class + block.json only (skip render.php)
+
 REMOVE OPTIONS
   --with-block             Also remove the block wrapping this partial.
                            Without it, remove refuses when a block exists.
@@ -48,5 +56,7 @@ EXAMPLES
   wonderpress partial create --name Testimonial --prop quote:string:required
   wonderpress partial create --name Hero --block --js
   wonderpress partial create --name Testimonials --acf --prop items:repeater --sub items:quote:string:required
+  wonderpress partial sync Scalar_Demo
+  wonderpress partial sync --all
   wonderpress partial create
       No flags runs the interactive wizard, which asks the same questions.

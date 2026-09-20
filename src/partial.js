@@ -58,6 +58,9 @@ export async function command(subcommand, args) {
 		case 'install-manifest':
 			await installManifest(args);
 			break;
+		case 'sync':
+			await sync(args);
+			break;
 		default:
 			// No subcommand (or an unrecognised one) means the user is looking for
 			// the shape of this command group, not silence.
@@ -389,11 +392,16 @@ export function validateParams(params, themeDir = null) {
  * Pure execution: no prompts, no network. Given identical params + themeDir it
  * produces identical output whether called from the flag path or the wizard.
  **/
-export async function writePartial(params, themeDir) {
-
+/**
+ * Regenerate the partial PHP class from manifest properties ($_properties).
+ * Overwrites the class file; custom methods in that file are not preserved.
+ *
+ * @param {ReturnType<typeof paramsFromManifest>} params
+ * @param {string} themeDir
+ * @returns {string} Absolute path written.
+ */
+export function writePartialClass(params, themeDir) {
 	const partialTemplatePath = './partials/' + params.partial_template_name;
-
-	// The class
 	const classTemplate = fs.readFileSync(new URL('./templates/partial.class.mustache', import.meta.url), 'utf8');
 	const classOutput = mustache.render(classTemplate, {
 		class_name: params.class_name,
@@ -408,6 +416,12 @@ export async function writePartial(params, themeDir) {
 	const classFilePath = `${themeDir}/src/partials/${classNameToFileSlug(params.class_name)}.php`;
 	fs.ensureDirSync(path.dirname(classFilePath));
 	fs.writeFileSync(classFilePath, classOutput);
+	return classFilePath;
+}
+
+export async function writePartial(params, themeDir) {
+
+	const classFilePath = writePartialClass(params, themeDir);
 	log.success(`Partial class created at: ${classFilePath}`);
 
 	// The view template (optional)
@@ -530,7 +544,12 @@ export function staticArtifacts(params, apiAvailable) {
  * markup of its own — so this is the single code path behind both
  * `partial create --block` and `block create`.
  **/
-export function writeBlock(params, themeDir) {
+/**
+ * @param {ReturnType<typeof paramsFromManifest>} params
+ * @param {string} themeDir
+ * @param {{ skipRender?: boolean }} [options]
+ */
+export function writeBlock(params, themeDir, options = {}) {
 
 	const slug = classNameToSlug(params.class_name);
 
@@ -561,15 +580,17 @@ export function writeBlock(params, themeDir) {
 	fs.writeFileSync(`${blockDir}/block.json`, JSON.stringify(block, null, 2) + '\n');
 	log.success(`Block metadata created at: ${blockDir}/block.json`);
 
-	// Server render: delegate to the partial (block == partial-in-the-editor).
-	const renderTemplate = fs.readFileSync(new URL('./templates/block.render.mustache', import.meta.url), 'utf8');
-	const renderOutput = mustache.render(renderTemplate, {
-		slug,
-		namespace,
-		class_name: params.class_name,
-	});
-	fs.writeFileSync(`${blockDir}/render.php`, renderOutput);
-	log.success(`Block render created at: ${blockDir}/render.php`);
+	if (!options.skipRender) {
+		// Server render: delegate to the partial (block == partial-in-the-editor).
+		const renderTemplate = fs.readFileSync(new URL('./templates/block.render.mustache', import.meta.url), 'utf8');
+		const renderOutput = mustache.render(renderTemplate, {
+			slug,
+			namespace,
+			class_name: params.class_name,
+		});
+		fs.writeFileSync(`${blockDir}/render.php`, renderOutput);
+		log.success(`Block render created at: ${blockDir}/render.php`);
+	}
 
 	return blockDir;
 }
@@ -746,6 +767,124 @@ export function listPartials(themeDir) {
 /**
  * List every partial the manifest index knows about.
  **/
+/**
+ * Apply manifest contract to derived artifacts (class $_properties, block.json, manifest index).
+ *
+ * @param {object} manifest Parsed partial manifest.
+ * @param {string} themeDir Theme root.
+ * @param {{ dryRun?: boolean, propertiesOnly?: boolean }} [options]
+ */
+export function syncPartialFromManifest(manifest, themeDir, options = {}) {
+	const artifacts = manifest.artifacts || {};
+	const params = paramsFromManifest(manifest);
+	params.namespace = resolveNamespace(themeDir);
+
+	validateParams(params, themeDir);
+
+	const dryRun = !!options.dryRun;
+	const propertiesOnly = !!options.propertiesOnly;
+
+	if (dryRun) {
+		log.info(`Would sync partial class from manifest (${params.properties.length} properties).`);
+		if (artifacts.class) {
+			log.info(`  class: ${artifacts.class}`);
+		}
+		if (params.emit.block) {
+			log.info(`  block: blocks/${classNameToSlug(params.class_name)}/block.json`);
+			if (!propertiesOnly) {
+				log.info(`  render: blocks/${classNameToSlug(params.class_name)}/render.php`);
+			}
+		}
+		log.info(`  manifest: ${PARTIAL_MANIFEST_DIR}/${manifest.slug}.json (normalize)`);
+		return true;
+	}
+
+	const classPath = writePartialClass(params, themeDir);
+	log.success(`Synced partial class: ${classPath}`);
+
+	if (params.emit.block) {
+		writeBlock(params, themeDir, { skipRender: propertiesOnly });
+		log.success(
+			propertiesOnly
+				? 'Synced block.json attributes from manifest.'
+				: 'Synced block wrapper (block.json + render.php) from manifest.',
+		);
+	}
+
+	writeManifest(params, themeDir, {
+		style: !!artifacts.style,
+		script: !!artifacts.script,
+	});
+	log.success(`Manifest normalized at: ${manifestPath(themeDir, manifest.slug)}`);
+	return true;
+}
+
+/**
+ * Sync derived partial artifacts from `.wonderpress/manifest/partials/*.json`.
+ **/
+export async function sync(args) {
+	const themeDir = await resolveThemeDir(args);
+	if (!themeDir) {
+		return false;
+	}
+
+	const dryRun = args['--dry-run'] === true;
+	const propertiesOnly = args['--properties-only'] === true;
+	const syncAll = args['--all'] === true;
+
+	if (syncAll) {
+		const manifests = readManifests(themeDir);
+		if (!manifests.length) {
+			log.info(`No partial manifests in ${themeDir}.`);
+			return true;
+		}
+		for (const manifest of manifests) {
+			log.info(`Syncing ${manifest.name} (${manifest.slug})...`);
+			try {
+				syncPartialFromManifest(manifest, themeDir, { dryRun, propertiesOnly });
+			} catch (err) {
+				log.error(`${manifest.slug}: ${err.message}`);
+				return false;
+			}
+		}
+		log.info(`Synced ${manifests.length} partial${manifests.length === 1 ? '' : 's'}.`);
+		return true;
+	}
+
+	const name = (args._ && args._[2]) || args['--name'] || args['--slug'];
+	if (!name) {
+		log.error('Pass a partial name or slug, or use --all. Example: wonderpress partial sync Scalar_Demo');
+		return false;
+	}
+
+	const lookupSlug = nameToSlug(name);
+	if (!isSafeSlug(lookupSlug)) {
+		log.error(`Invalid partial name "${name}".`);
+		return false;
+	}
+
+	const manifest = readManifest(themeDir, lookupSlug);
+	if (!manifest) {
+		log.error(`No partial manifest for "${name}". Run \`wonderpress partial list\`.`);
+		return false;
+	}
+
+	try {
+		syncPartialFromManifest(manifest, themeDir, { dryRun, propertiesOnly });
+	} catch (err) {
+		log.error(err.message);
+		return false;
+	}
+
+	if (!dryRun) {
+		log.warn(
+			'The partial class file was regenerated from the manifest template. Custom code in that class is not preserved — keep custom logic in separate helpers or the view template.',
+		);
+	}
+
+	return true;
+}
+
 export async function list(args) {
 
 	const themeDir = await resolveThemeDir(args);

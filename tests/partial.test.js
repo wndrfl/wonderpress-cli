@@ -7,6 +7,7 @@ import {
 	paramsFromFlags,
 	paramsFromJson,
 	writePartial,
+	syncPartialFromManifest,
 	validateParams,
 	resolveNamespace,
 	seedFromFlags,
@@ -119,6 +120,64 @@ test('--block maps image/link/repeater onto object/array attributes', async () =
 		assert.equal(block.attributes.photo.type, 'object');
 		assert.equal(block.attributes.cta.type, 'object');
 		assert.equal(block.attributes.items.type, 'array');
+	} finally {
+		fs.removeSync(dir);
+	}
+});
+
+test('syncPartialFromManifest updates class $_properties and block.json from manifest', async () => {
+	const dir = tmpTheme();
+	try {
+		const params = paramsFromFlags({
+			'--name': 'Scalar_Demo',
+			'--acf': true,
+			'--block': true,
+			'--prop': ['headline:string:required'],
+		});
+		await writePartial(params, dir);
+		const manifestPath = path.join(dir, '.wonderpress/manifest/partials/scalar-demo.json');
+		const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
+		manifest.properties.push({
+			name: 'rich_link',
+			type: 'partial',
+			partial: 'link',
+			required: false,
+			description: '',
+		});
+		fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2) + '\n');
+
+		syncPartialFromManifest(manifest, dir);
+
+		const classSrc = fs.readFileSync(path.join(dir, 'src/partials/class-scalar-demo.php'), 'utf8');
+		assert.match(classSrc, /'rich_link'/);
+		assert.match(classSrc, /'format' => 'array'/);
+
+		const block = JSON.parse(fs.readFileSync(path.join(dir, 'blocks/scalar-demo/block.json'), 'utf8'));
+		assert.equal(block.attributes.rich_link.type, 'object');
+		assert.equal(block.attributes.headline.type, 'string');
+	} finally {
+		fs.removeSync(dir);
+	}
+});
+
+test('syncPartialFromManifest --dry-run does not write files', async () => {
+	const dir = tmpTheme();
+	try {
+		const params = paramsFromFlags({
+			'--name': 'Hero',
+			'--prop': ['title:string:required'],
+		});
+		await writePartial(params, dir);
+		const manifestPath = path.join(dir, '.wonderpress/manifest/partials/hero.json');
+		const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
+		manifest.properties.push({ name: 'dek', type: 'string', required: false, description: '' });
+		fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2) + '\n');
+
+		const classBefore = fs.readFileSync(path.join(dir, 'src/partials/class-hero.php'), 'utf8');
+		syncPartialFromManifest(manifest, dir, { dryRun: true });
+		const classAfter = fs.readFileSync(path.join(dir, 'src/partials/class-hero.php'), 'utf8');
+		assert.equal(classBefore, classAfter);
+		assert.ok(!classAfter.includes("'dek'"));
 	} finally {
 		fs.removeSync(dir);
 	}
