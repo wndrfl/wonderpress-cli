@@ -1,0 +1,100 @@
+{
+  "name": "Link",
+  "slug": "link",
+  "acf_compatible": true,
+  "core_primitive": true,
+  "properties": [
+    {
+      "name": "open_in_new_tab",
+      "type": "boolean",
+      "label": "Open in new tab?",
+      "description": "Whether to open this link in a new tab.",
+      "required": true
+    },
+    {
+      "name": "type",
+      "type": "select",
+      "label": "Type",
+      "description": "The type of link to create.",
+      "choices": {
+        "internal": "Internal",
+        "url": "Url",
+        "file": "File",
+        "email": "Email",
+        "telephone": "Telephone"
+      },
+      "default": "internal",
+      "acf": { "ui": 1 }
+    },
+    {
+      "name": "internal_target_obj",
+      "type": "post_object",
+      "label": "Internal Target",
+      "description": "Select the internal item to dynamically link.",
+      "when": [[{ "field": "type", "operator": "==", "value": "internal" }]],
+      "post_type": ["page", "post"],
+      "acf": {
+        "return_format": "object",
+        "ui": 1
+      }
+    },
+    {
+      "name": "url",
+      "type": "string",
+      "label": "Url",
+      "description": "An arbitrary URL to link to.",
+      "when": [[{ "field": "type", "operator": "==", "value": "url" }]]
+    },
+    {
+      "name": "add_query_params",
+      "type": "boolean",
+      "label": "Add Query Params?"
+    },
+    {
+      "name": "query_params",
+      "type": "string",
+      "label": "Query Params",
+      "description": "Query parameters to append (e.g. param1=value1&param2=value2).",
+      "when": [[{ "field": "add_query_params", "operator": "==", "value": "1" }]]
+    },
+    {
+      "name": "file",
+      "type": "post_object",
+      "label": "File",
+      "description": "An image or file to link.",
+      "when": [[{ "field": "type", "operator": "==", "value": "file" }]],
+      "post_type": ["attachment"],
+      "acf": {
+        "return_format": "object",
+        "ui": 1
+      }
+    },
+    {
+      "name": "email",
+      "type": "email",
+      "label": "Email",
+      "description": "An email address to link.",
+      "when": [[{ "field": "type", "operator": "==", "value": "email" }]]
+    },
+    {
+      "name": "telephone",
+      "type": "string",
+      "label": "Telephone",
+      "description": "A telephone number to link.",
+      "when": [[{ "field": "type", "operator": "==", "value": "telephone" }]]
+    },
+    {
+      "name": "content",
+      "type": "string",
+      "label": "Link text",
+      "description": "The content to display inside the anchor tag.",
+      "required": true
+    },
+    {
+      "name": "title",
+      "type": "string",
+      "label": "Title",
+      "description": "Accessible title for screen readers."
+    }
+  ]
+}

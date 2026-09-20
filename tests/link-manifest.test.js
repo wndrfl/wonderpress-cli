@@ -3,7 +3,6 @@ import assert from 'node:assert/strict';
 import fs from 'fs-extra';
 import os from 'node:os';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
 import {
 	validateManifestProperty,
 	validateManifestProperties,
@@ -14,14 +13,9 @@ import {
 	installCorePartialManifest,
 } from '../src/partial-manifests.js';
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const coreLinkManifest = path.join(
-	__dirname,
-	'../../wonderpress-core/wonderpress-core/manifest/partials/link.json',
-);
-
 test('core Link manifest validates and compiles conditionals', () => {
-	assert.ok(fs.existsSync(coreLinkManifest), 'bundled link.json exists in monorepo core');
+	const coreLinkManifest = resolveCoreBundledPartialManifest(null, 'link');
+	assert.ok(coreLinkManifest, 'bundled link.json ships with CLI or monorepo core');
 	const manifest = JSON.parse(fs.readFileSync(coreLinkManifest, 'utf8'));
 	const errors = [];
 	validateManifestProperties(manifest.properties, errors, 'Link manifest');
@@ -31,10 +25,10 @@ test('core Link manifest validates and compiles conditionals', () => {
 	assert.doesNotThrow(() => validateManifestProperty(manifest.properties[5], { siblingNames }));
 });
 
-test('resolveCoreBundledPartialManifest finds link.json in monorepo', () => {
+test('resolveCoreBundledPartialManifest finds bundled link.json', () => {
 	const resolved = resolveCoreBundledPartialManifest(null, 'link');
 	assert.ok(resolved);
-	assert.ok(resolved.endsWith('manifest/partials/link.json'));
+	assert.ok(resolved.endsWith(`${path.sep}manifest${path.sep}partials${path.sep}link.json`));
 });
 
 test('readPartialEmbedProperties loads bundled Link properties', () => {

@@ -29,7 +29,10 @@ export function resolveCoreBundledPartialManifest(themeDir, slug) {
 	if (themeDir) {
 		roots.push(path.join(themeDir, 'vendor/wndrfl/wonderpress-core/wonderpress-core'));
 	}
+	// Monorepo dev checkout (wonderpress-main).
 	roots.push(path.join(__dirname, '../../wonderpress-core/wonderpress-core'));
+	// Shipped with wonderpress-cli (npm / global install).
+	roots.push(path.join(__dirname, '..'));
 
 	for (const root of roots) {
 		const candidate = path.join(root, 'manifest/partials', `${slug}.json`);
