@@ -149,10 +149,15 @@ Property types `string`, `boolean`, `email`, `select`, `post_object`, `image`,
 (conditionals by sibling property name), and whitelisted `acf` overrides are
 supported (Pass 1).
 
-Dual partials (`--acf` and `--block` together) may only use **Tier A** types
-until block editor controls ship for structured fields — see
-[dual-authorable-types.md](dual-authorable-types.md) and wire formats in
+Dual partials (`--acf` and `--block` together) use **dual-authorable** types
+(image, link, post_object, repeater, partial embed, and Tier A scalars) — see
+[dual-authorable-types.md](dual-authorable-types.md) and
 [property-value-shapes.md](property-value-shapes.md).
+
+**Manifest-first:** field definitions live in
+`.wonderpress/manifest/partials/*.json`, not in the PHP class. After editing a
+manifest, run `wonderpress partial sync <Name>` so `$_properties` and
+`block.json` stay aligned. See [manifest-first-partials.md](manifest-first-partials.md).
 
 Nested `type: "link"` on another partial still maps to a **simple** four-field
 link group. To embed the **rich** Link primitive inside another partial, use

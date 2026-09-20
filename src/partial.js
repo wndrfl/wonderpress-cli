@@ -40,6 +40,7 @@ import {
 	installCorePartialManifest,
 	resolveCoreBundledPartialManifest,
 } from './partial-manifests.js';
+import { checkPartialDrift } from './partial-drift.js';
 
 /**
  * Accept and route a command.
@@ -60,6 +61,9 @@ export async function command(subcommand, args) {
 			break;
 		case 'sync':
 			await sync(args);
+			break;
+		case 'check-drift':
+			await checkDrift(args);
 			break;
 		default:
 			// No subcommand (or an unrecognised one) means the user is looking for
@@ -403,11 +407,14 @@ export function validateParams(params, themeDir = null) {
 export function writePartialClass(params, themeDir) {
 	const partialTemplatePath = './partials/' + params.partial_template_name;
 	const classTemplate = fs.readFileSync(new URL('./templates/partial.class.mustache', import.meta.url), 'utf8');
+	const slug = classNameToSlug(params.class_name);
 	const classOutput = mustache.render(classTemplate, {
 		class_name: params.class_name,
 		is_acf_compatible: params.is_acf_compatible,
 		has_partial_template: params.has_partial_template,
 		partial_template_path: partialTemplatePath,
+		manifest_rel_path: `.wonderpress/manifest/partials/${slug}.json`,
+		sync_command: `wonderpress partial sync ${params.class_name}`,
 		properties: params.properties.map((p) => ({
 			...p,
 			format: phpFormatForType(p.type),
@@ -882,6 +889,69 @@ export async function sync(args) {
 		);
 	}
 
+	return true;
+}
+
+/**
+ * Fail when manifest-derived artifacts drift (class $_properties, block.json).
+ **/
+export async function checkDrift(args) {
+	const themeDir = await resolveThemeDir(args);
+	if (!themeDir) {
+		return false;
+	}
+
+	const checkAll = args['--all'] === true;
+	const name = (args._ && args._[2]) || args['--name'] || args['--slug'];
+
+	const manifests = checkAll
+		? readManifests(themeDir)
+		: (() => {
+				if (!name) {
+					log.error('Pass a partial name or slug, or use --all. Example: wonderpress partial check-drift Scalar_Demo');
+					return null;
+				}
+				const lookupSlug = nameToSlug(name);
+				if (!isSafeSlug(lookupSlug)) {
+					log.error(`Invalid partial name "${name}".`);
+					return null;
+				}
+				const manifest = readManifest(themeDir, lookupSlug);
+				if (!manifest) {
+					log.error(`No partial manifest for "${name}".`);
+					return null;
+				}
+				return [manifest];
+			})();
+
+	if (!manifests) {
+		return false;
+	}
+	if (!manifests.length) {
+		log.info(`No partial manifests in ${themeDir}.`);
+		return true;
+	}
+
+	let failed = false;
+	for (const manifest of manifests) {
+		const result = checkPartialDrift(manifest, themeDir);
+		if (result.ok) {
+			log.success(`${manifest.slug}: in sync with manifest.`);
+			continue;
+		}
+		failed = true;
+		log.error(`${manifest.slug}: drift detected.`);
+		for (const issue of result.issues) {
+			log.error(`  • ${issue.message}`);
+		}
+	}
+
+	if (failed) {
+		process.exitCode = 1;
+		return false;
+	}
+
+	log.info(`${manifests.length} partial${manifests.length === 1 ? '' : 's'} checked.`);
 	return true;
 }
 

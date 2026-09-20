@@ -11,6 +11,9 @@ COMMANDS
   partial list             List every partial, and whether a block wraps it
   partial sync [<Name>]    Regenerate class $_properties and block.json from
                            the manifest (after you edit properties in JSON)
+  partial check-drift [<Name>]
+                           Fail if class or block.json drift from manifest
+                           (use in CI; fix with partial sync)
   partial remove [<Name>]  Delete a partial and everything it owns. With no
                            name, pick from what the theme has.
   partial install-manifest <slug>
@@ -58,5 +61,6 @@ EXAMPLES
   wonderpress partial create --name Testimonials --acf --prop items:repeater --sub items:quote:string:required
   wonderpress partial sync Scalar_Demo
   wonderpress partial sync --all
+  wonderpress partial check-drift --all
   wonderpress partial create
       No flags runs the interactive wizard, which asks the same questions.
