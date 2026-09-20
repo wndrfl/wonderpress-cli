@@ -124,26 +124,24 @@ test('--block maps image/link/repeater onto object/array attributes', async () =
 	}
 });
 
-test('validateParams rejects dual exposure with partial embeds', () => {
-	assert.throws(
-		() =>
-			validateParams({
-				class_name: 'Hero',
-				has_partial_template: true,
-				partial_template_name: 'hero.php',
-				is_acf_compatible: true,
-				properties: [
-					{
-						name: 'cta',
-						type: 'partial',
-						partial: 'cta-link',
-						required: false,
-						description: '',
-					},
-				],
-				emit: { block: true, manifest: true },
-			}),
-		/dual-authorable/,
+test('validateParams allows dual exposure with core Link partial embed', () => {
+	assert.doesNotThrow(() =>
+		validateParams({
+			class_name: 'Hero',
+			has_partial_template: true,
+			partial_template_name: 'hero.php',
+			is_acf_compatible: true,
+			properties: [
+				{
+					name: 'rich_link',
+					type: 'partial',
+					partial: 'link',
+					required: false,
+					description: '',
+				},
+			],
+			emit: { block: true, manifest: true },
+		}),
 	);
 });
 

@@ -133,7 +133,7 @@ same per-type inspectors as top-level properties (`when` evaluates against the r
 
 **Acceptance:** `repeater` in `DUAL_AUTHORABLE_TYPES` with row UI +
 `wonder_normalize_repeater_value()`; repeater sub-types must be dual-authorable
-(`partial` not allowed inside dual repeaters until partial embed ships).
+(repeater rows may embed `partial` when the referenced manifest passes transitive dual lint).
 
 ## Tier B — `partial` (embed)
 
@@ -149,16 +149,18 @@ nested object directly or delegate render.
 
 **Block storage:** `object` attribute.
 
-**Future editor:** recursive inspector; server may embed referenced manifests in
-`wonderpressBlockSchemas` for linked slugs.
+**Block editor:** nested fieldsets from embedded manifest properties in
+`wonderpressBlockSchemas` (referenced slug + recursive sub-schema).
 
-**Acceptance:** recursive UI + [transitive dual rule](#transitive-dual-exposure).
+**Acceptance:** `partial` in `DUAL_AUTHORABLE_TYPES` with recursive inspector +
+`wonder_normalize_partial_value()` + [transitive dual rule](#transitive-dual-exposure).
 
 ## Transitive dual exposure
 
 When a dual partial declares `type: partial`, **every property on the referenced
-manifest** must be dual-authorable (transitive closure). Future CLI lint beyond
-flat `assertDualAuthorable()`.
+manifest** must be dual-authorable (transitive closure). CLI
+`assertDualAuthorable()` walks referenced manifests (theme index, then core
+bundles) and rejects unknown slugs or embed cycles.
 
 ## Rollout checklist
 
@@ -170,7 +172,7 @@ Add types to `DUAL_AUTHORABLE_TYPES` in `validate.js` only after spec acceptance
 | 2 | `link` | ✅ Four-field inspector + `wonder_normalize_link_value()` |
 | 3 | `post_object` | ✅ Combobox search + `wonder_normalize_post_object_value()` |
 | 4 | `repeater` | ✅ Row UI + `wonder_normalize_repeater_value()` + nested dual lint |
-| 5 | `partial` | Recursive schema/UI + transitive lint |
+| 5 | `partial` | ✅ Recursive schema/UI + `wonder_normalize_partial_value()` + transitive lint |
 
 Editor work tracks [editor-js-plan.md](editor-js-plan.md) and [ROADMAP.md](../ROADMAP.md) Phase 2b.
 

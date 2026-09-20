@@ -195,7 +195,7 @@ export async function create(args) {
 			// away what had been explicitly asked for.
 			params = await runWizard(themeDir, args);
 		}
-		validateParams(params);
+		validateParams(params, themeDir);
 	} catch (err) {
 		log.error(err.message);
 		return false;
@@ -349,7 +349,7 @@ export function paramsFromManifest(manifest) {
 /**
  * Validate a fully-assembled params object. Throws with a clear message.
  **/
-export function validateParams(params) {
+export function validateParams(params, themeDir = null) {
 	if (!params.class_name || !isValidClassName(params.class_name)) {
 		throw new Error(`Invalid class name "${params.class_name || ''}". Must be WordPress snake-case, e.g. Example_Class.`);
 	}
@@ -381,7 +381,7 @@ export function validateParams(params) {
 		throw new Error('ACF compatibility requires the manifest (it is what core reads to register the field group). Drop --no-manifest or --acf.');
 	}
 
-	assertDualAuthorable(params);
+	assertDualAuthorable(params, { themeDir });
 }
 
 /**

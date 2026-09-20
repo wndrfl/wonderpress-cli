@@ -8,7 +8,11 @@ import {
 	validateManifestProperty,
 	validateManifestProperties,
 } from '../src/validate.js';
-import { resolveCoreBundledPartialManifest, installCorePartialManifest } from '../src/partial-manifests.js';
+import {
+	readPartialEmbedProperties,
+	resolveCoreBundledPartialManifest,
+	installCorePartialManifest,
+} from '../src/partial-manifests.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const coreLinkManifest = path.join(
@@ -31,6 +35,12 @@ test('resolveCoreBundledPartialManifest finds link.json in monorepo', () => {
 	const resolved = resolveCoreBundledPartialManifest(null, 'link');
 	assert.ok(resolved);
 	assert.ok(resolved.endsWith('manifest/partials/link.json'));
+});
+
+test('readPartialEmbedProperties loads bundled Link properties', () => {
+	const props = readPartialEmbedProperties(null, 'link');
+	assert.ok(Array.isArray(props));
+	assert.ok(props.some((p) => p.name === 'content' && p.type === 'string'));
 });
 
 test('installCorePartialManifest copies bundled manifest into theme', () => {

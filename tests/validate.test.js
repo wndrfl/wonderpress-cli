@@ -119,30 +119,38 @@ test('assertDualAuthorable allows repeater with dual sub-fields on dual partials
 	);
 });
 
-test('assertDualAuthorable rejects non-dual types on dual partials', () => {
-	assert.throws(
-		() =>
-			assertDualAuthorable({
-				is_acf_compatible: true,
-				emit: { block: true },
-				properties: [{ name: 'card', type: 'partial', partial: 'cta-link' }],
-			}),
-		/dual-authorable/,
+test('assertDualAuthorable allows core Link partial embed on dual partials', () => {
+	assert.doesNotThrow(() =>
+		assertDualAuthorable({
+			is_acf_compatible: true,
+			emit: { block: true },
+			properties: [{ name: 'rich_link', type: 'partial', partial: 'link' }],
+		}),
 	);
+	assert.doesNotThrow(() =>
+		assertDualAuthorable({
+			is_acf_compatible: true,
+			emit: { block: true },
+			properties: [
+				{
+					name: 'items',
+					type: 'repeater',
+					properties: [{ name: 'embed', type: 'partial', partial: 'link' }],
+				},
+			],
+		}),
+	);
+});
+
+test('assertDualAuthorable rejects unknown partial embeds on dual partials', () => {
 	assert.throws(
 		() =>
 			assertDualAuthorable({
 				is_acf_compatible: true,
 				emit: { block: true },
-				properties: [
-					{
-						name: 'items',
-						type: 'repeater',
-						properties: [{ name: 'embed', type: 'partial', partial: 'cta-link' }],
-					},
-				],
+				properties: [{ name: 'card', type: 'partial', partial: 'not-a-real-slug' }],
 			}),
-		/repeater "items" sub-field/,
+		/unknown or empty partial/,
 	);
 	assert.deepEqual(DUAL_AUTHORABLE_TYPES, [
 		'string',
@@ -153,6 +161,7 @@ test('assertDualAuthorable rejects non-dual types on dual partials', () => {
 		'link',
 		'post_object',
 		'repeater',
+		'partial',
 	]);
 });
 

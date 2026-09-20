@@ -5,7 +5,12 @@
 import fs from 'fs-extra';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { partialManifestPath } from './validate.js';
+
+const PARTIAL_MANIFEST_REL = '.wonderpress/manifest/partials';
+
+function themePartialManifestPath(themeDir, slug) {
+	return path.join(themeDir, PARTIAL_MANIFEST_REL, `${slug}.json`);
+}
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -49,8 +54,52 @@ export function installCorePartialManifest(themeDir, slug) {
 		return null;
 	}
 
-	const dest = partialManifestPath(themeDir, slug);
+	const dest = themePartialManifestPath(themeDir, slug);
 	fs.ensureDirSync(path.dirname(dest));
 	fs.copyFileSync(source, dest);
 	return dest;
+}
+
+/**
+ * Property list for a partial embed (`type: partial`), theme manifest first then core bundle.
+ *
+ * @param {string|null} themeDir Theme root.
+ * @param {string} slug Referenced partial slug.
+ * @returns {import('./validate.js').ManifestProperty[]|null}
+ */
+export function readPartialEmbedProperties(themeDir, slug) {
+	const safeSlug = String(slug || '').trim();
+	if (!safeSlug) {
+		return null;
+	}
+
+	if (themeDir) {
+		const themePath = themePartialManifestPath(themeDir, safeSlug);
+		if (fs.existsSync(themePath)) {
+			try {
+				const manifest = JSON.parse(fs.readFileSync(themePath, 'utf8'));
+				if (Array.isArray(manifest?.properties) && manifest.properties.length) {
+					return manifest.properties;
+				}
+			} catch {
+				return null;
+			}
+		}
+	}
+
+	const bundled = resolveCoreBundledPartialManifest(themeDir, safeSlug);
+	if (!bundled) {
+		return null;
+	}
+
+	try {
+		const manifest = JSON.parse(fs.readFileSync(bundled, 'utf8'));
+		if (Array.isArray(manifest?.properties) && manifest.properties.length) {
+			return manifest.properties;
+		}
+	} catch {
+		return null;
+	}
+
+	return null;
 }

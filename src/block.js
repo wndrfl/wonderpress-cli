@@ -74,7 +74,7 @@ export function addBlock(themeDir, name) {
 	try {
 		params = partial.paramsFromManifest(manifest);
 		params.emit.block = true;
-		partial.validateParams(params);
+		partial.validateParams(params, themeDir);
 	} catch (err) {
 		log.error(`Cannot wrap "${name}" in a block: ${err.message}`);
 		return false;

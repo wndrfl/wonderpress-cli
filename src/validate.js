@@ -6,6 +6,7 @@
  **/
 
 import path from 'path';
+import { readPartialEmbedProperties } from './partial-manifests.js';
 
 // The property types Wonderpress can validate and render.
 export const PROP_TYPES = [
@@ -24,7 +25,17 @@ export const PROP_TYPES = [
  * Property types a dual partial (ACF + block) may use today.
  * Tier B types require block inspector work — see docs/dual-authorable-types.md.
  */
-export const DUAL_AUTHORABLE_TYPES = ['string', 'boolean', 'email', 'select', 'image', 'link', 'post_object', 'repeater'];
+export const DUAL_AUTHORABLE_TYPES = [
+	'string',
+	'boolean',
+	'email',
+	'select',
+	'image',
+	'link',
+	'post_object',
+	'repeater',
+	'partial',
+];
 
 // What a repeater row may contain. Nested repeaters are a later slice.
 export const REPEATER_SUB_TYPES = ['boolean', 'email', 'image', 'link', 'partial', 'select', 'string'];
@@ -391,7 +402,12 @@ export function isDualExposure(subject) {
  *
  * @param {Parameters<typeof isDualExposure>[0]} subject
  */
-function assertDualAuthorableProperty(prop, pathLabel) {
+/**
+ * @param {object} prop
+ * @param {string} [pathLabel]
+ * @param {{ themeDir?: string|null, visitingPartialSlugs?: Set<string> }} [ctx]
+ */
+function assertDualAuthorableProperty(prop, pathLabel, ctx = {}) {
 	if (!prop?.name || !prop?.type) {
 		return;
 	}
@@ -399,33 +415,60 @@ function assertDualAuthorableProperty(prop, pathLabel) {
 	if (!DUAL_AUTHORABLE_TYPES.includes(prop.type)) {
 		throw new Error(
 			`Dual partials (--acf + --block) require dual-authorable property types. ` +
-				`Property "${label}" has type "${prop.type}". Allowed top-level: ${DUAL_AUTHORABLE_TYPES.join(', ')}. ` +
+				`Property "${label}" has type "${prop.type}". Allowed: ${DUAL_AUTHORABLE_TYPES.join(', ')}. ` +
 				`See docs/dual-authorable-types.md.`,
 		);
 	}
+
 	if (prop.type === 'repeater') {
 		const subs = Array.isArray(prop.properties) ? prop.properties : [];
 		for (const sub of subs) {
-			if (!sub?.name || !sub?.type) {
-				continue;
-			}
-			if (!DUAL_AUTHORABLE_TYPES.includes(sub.type)) {
-				throw new Error(
-					`Dual partials (--acf + --block): repeater "${label}" sub-field "${sub.name}" has type "${sub.type}". ` +
-						`Allowed sub-types for dual repeaters: ${DUAL_AUTHORABLE_TYPES.filter((t) => t !== 'repeater').join(', ')}. ` +
-						`See docs/dual-authorable-types.md.`,
-				);
-			}
+			assertDualAuthorableProperty(sub, `${label}.${sub?.name || '?'}`, ctx);
 		}
+		return;
+	}
+
+	if (prop.type === 'partial') {
+		const slug = prop.partial;
+		if (!slug || !isSafeSlug(slug)) {
+			throw new Error(
+				`Dual partials (--acf + --block): partial property "${label}" must declare a valid partial slug.`,
+			);
+		}
+
+		const visiting = ctx.visitingPartialSlugs || new Set();
+		if (visiting.has(slug)) {
+			throw new Error(
+				`Dual partials (--acf + --block): partial embed cycle detected at "${label}" (slug "${slug}").`,
+			);
+		}
+
+		visiting.add(slug);
+		const refProps = readPartialEmbedProperties(ctx.themeDir ?? null, slug);
+		if (!refProps?.length) {
+			visiting.delete(slug);
+			throw new Error(
+				`Dual partials (--acf + --block): partial property "${label}" references unknown or empty partial "${slug}".`,
+			);
+		}
+
+		for (const ref of refProps) {
+			assertDualAuthorableProperty(ref, `${label}.${ref?.name || '?'}`, { ...ctx, visitingPartialSlugs: visiting });
+		}
+		visiting.delete(slug);
 	}
 }
 
-export function assertDualAuthorable(subject) {
+export function assertDualAuthorable(subject, options = {}) {
 	if (!isDualExposure(subject)) {
 		return;
 	}
+	const ctx = {
+		themeDir: options.themeDir ?? null,
+		visitingPartialSlugs: new Set(),
+	};
 	for (const prop of subject.properties) {
-		assertDualAuthorableProperty(prop);
+		assertDualAuthorableProperty(prop, prop?.name, ctx);
 	}
 }
 
