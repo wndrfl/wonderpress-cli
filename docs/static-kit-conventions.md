@@ -142,7 +142,7 @@ subscription until something concrete makes the maths worth that.
 | Artifact | Owner | How |
 |---|---|---|
 | PHP partial class + view template | **CLI** (the spine) | `partial create` |
-| `.wonderpress/manifest/*.json` (always) | **CLI** (the spine) | `partial create` |
+| `.wonderpress/manifest/partials/*.json` (always) | **CLI** (the spine) | `partial create` |
 | `blocks/<slug>/{block.json,render.php}` (opt-in) | **CLI** (the spine) | `partial create --block` |
 | per-**component** SCSS/JS partial | **Static Kit** | `staticCli.component.create(...)` — the CLI *delegates* |
 | per-**page** SCSS/JS entry | **Static Kit** | `staticCli.template.create(...)` — via `template create` |

@@ -1,0 +1,24 @@
+wonderpress template — WordPress page templates
+
+A page template is a theme PHP file WordPress exposes in the page editor,
+plus a manifest under `.wonderpress/manifest/page-templates/` that records
+editor locks, native UI toggles, and which partials compose the page.
+
+COMMANDS
+  template create           Scaffold the PHP file, manifest, and Static Kit entries
+  template list             List every page template recorded in this theme
+  template remove [<Name>]  Delete a template and its manifest. With no name,
+                            pick from what the theme has.
+
+CREATE OPTIONS
+  --name <Name>             Template name (e.g. Landing → template-landing.php)
+  --dir <path>              Project root (default: current directory)
+  --lock <level>            Editor lock: all, insert, contentOnly, or false
+  --section <id:partial>    Composition row, repeatable (e.g. hero-main:landing-hero)
+
+REMOVE OPTIONS
+  --name <Name>             Same as a positional name
+  --theme <name>            Target a theme by name instead of the active one
+  --no-static               Skip removing delegated Static Kit JS/SCSS entries
+
+Run `wonderpress partial help` for partials that templates compose from.

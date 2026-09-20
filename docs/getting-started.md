@@ -108,6 +108,136 @@ this cannot accidentally unlock something.
 `contentOnly` is the interesting one and the one most agencies skip: the client
 edits words, the layout does not move.
 
+## 5b. Locate ACF groups on the templates that own them
+
+`--acf` records that a partial may register an ACF field group. Core reads the
+manifest on `acf/init` and registers the group **only where you locate it**.
+Partial manifests declare **fields only** — not ACF location rules. A group
+with no location is skipped — otherwise a Hero metabox and a Hero block would
+appear on the same screen.
+
+**Locate partials** in either of these ways:
+
+1. **Template composition** (preferred) — list the partial in
+   `.wonderpress/manifest/page-templates/*.json` `composition`. Core derives
+   page-template location from that file.
+2. **`wonderpress_template_fields` filter** — explicit PHP map when you are not
+   using composition:
+
+```php
+add_filter( 'wonderpress_template_fields', function () {
+	return array(
+		'template-landing.php' => array( 'hero', 'testimonials' ),
+	);
+} );
+```
+
+Do **not** use the `default` key unless you want those partials on every page
+that uses WordPress’s default template.
+
+That landing page hydrates from ACF and typically locks `'all'`:
+
+```php
+( new \Wonderpress\Partials\Hero( wonder_partial_props( 'hero' ) ) )->render();
+```
+
+`wonder_partial_props( 'hero' )` is `array( 'acf' => get_field( 'hero' ) )`.
+On a blog post you insert the Hero block instead; the group does not show.
+
+Property types `string`, `boolean`, `email`, `select`, `post_object`, `image`,
+`link`, and `repeater` become ACF fields. Optional `label`, `when`
+(conditionals by sibling property name), and whitelisted `acf` overrides are
+supported (Pass 1).
+
+Dual partials (`--acf` and `--block` together) use **dual-authorable** types
+(image, link, post_object, repeater, partial embed, and Tier A scalars) — see
+[dual-authorable-types.md](dual-authorable-types.md) and
+[property-value-shapes.md](property-value-shapes.md).
+
+**Manifest-first:** field definitions live in
+`.wonderpress/manifest/partials/*.json`, not in the PHP class. After editing a
+manifest, run `wonderpress partial sync <Name>` so `$_properties` and
+`block.json` stay aligned. See [manifest-first-partials.md](manifest-first-partials.md).
+
+Nested `type: "link"` on another partial still maps to a **simple** four-field
+link group. To embed the **rich** Link primitive inside another partial, use
+`type: "partial"` and `partial: "link"` (fields come from core
+`manifest/partials/link.json`):
+
+```json
+{
+  "name": "cta",
+  "type": "partial",
+  "partial": "link",
+  "label": "Call to action"
+}
+```
+
+In PHP, render with `wonder_render_partial_ref( 'link', $this->cta )` or
+`new \Wonderpress_Core\Partials\Link( [ 'acf' => $this->cta ] )`.
+
+The standalone **Link** primitive manifest is also available via:
+
+```bash
+wonderpress partial install-manifest link
+```
+
+Core ships `manifest/partials/link.json` (loaded automatically for ACF
+registration when the partial is located). The PHP class is
+`Wonderpress_Core\Partials\Link` in wonderpress-core. Repeaters are one level
+deep (`--sub` or nested `properties` in `--json`). Flexible content is not
+generated.
+
+## 5c. Template manifests (composition + editor contract)
+
+`wonderpress template create` writes `.wonderpress/manifest/page-templates/template-{name}.json`
+with `"schemaVersion": 1`. That file declares:
+
+- **`editor.lock`** — same values as `wonderpress_template_locks` (manifest
+  defaults; your PHP filter still wins on the same template key).
+- **`editor.acf`** — ACF field-group options for this template. Optional
+  **`tabPlacement`**: `left` (sidebar tabs) or `top` (horizontal tabs) for
+  composition tab rows; omit to auto-pick (left when there is one tab row, top
+  when there are two or more).
+- **`editor.native`** — which editor panels appear (`blockEditor: false` switches
+  to the classic screen; `featuredImage: false` removes featured-image support
+  on that template). After you change **Page →
+  Template**, **Update** the page and reload the edit screen so PHP can apply the
+  manifest (editor mode, ACF, locks).
+- **`composition`** — ordered rows:
+  - **partial** — `{ "id", "partial" }` renders via `wonder_render_template_sections()`
+    and maps to an ACF group (partial manifest properties).
+  - **fields** — `{ "id", "label"?, "properties": [ … ] }` editor-only ACF group
+    using the same property types as partial manifests (`string`, `boolean`, `image`,
+    `link`, `repeater`, …). Read values with `get_field( 'your-id' )` or
+    `wonder_template_composition_field( 'your-id' )` in PHP.
+  - **tab** — `{ "id", "label", "items": [ …partial or fields rows… ] }` (ACF tabs).
+  Instance ids must be unique across the whole tree. Tab rows register as ACF tabs;
+  set `editor.acf.tabPlacement` to force **left** or **top**, or omit for the default.
+  Save manifests under `.wonderpress/manifest/page-templates/` (strict JSON).
+
+Manifest files must be **strict JSON** (no `//` comments or trailing commas). A
+parse error skips the whole file, and partials fall back to per-slug ACF groups
+from `wonderpress_template_fields` — which can look like fields “went global.”
+
+When `composition` lists ACF-compatible partials, core registers **one** field
+group on that page template; each instance id is an ACF group field name. Hydrate
+with `wonder_partial_props( 'landing-hero', 'hero-main' )` or render the stack
+with `wonder_render_template_sections()` (already in the scaffolded PHP template).
+
+Assign the page to that template in the editor (**Page** → **Template** → your
+template, then **Update**). Manifest rules apply only to pages whose saved
+`_wp_page_template` matches the manifest `template` value (e.g.
+`template-landing.php`). Pages on the default template keep the normal block
+editor.
+
+Seed sections at create time:
+
+```bash
+wonderpress template create --name Landing --lock all \
+  --section hero-main:landing-hero --section quotes:testimonials
+```
+
 ## 6. Build a component
 
 ```bash

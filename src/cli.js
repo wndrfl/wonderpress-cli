@@ -28,6 +28,7 @@ export async function cli() {
     '--theme': String,
     '--namespace': String,
     '--prop': [String],
+    '--sub': [String],
     '--json': String,
     '--block': Boolean,
     '--js': Boolean,
@@ -36,6 +37,10 @@ export async function cli() {
 
     // partial remove
     '--with-block': Boolean,
+
+    // template create
+    '--lock': String,
+    '--section': [String],
 
     // readme create
     '--project-name': String,

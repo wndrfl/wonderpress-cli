@@ -74,7 +74,7 @@ export function addBlock(themeDir, name) {
 	try {
 		params = partial.paramsFromManifest(manifest);
 		params.emit.block = true;
-		partial.validateParams(params);
+		partial.validateParams(params, themeDir);
 	} catch (err) {
 		log.error(`Cannot wrap "${name}" in a block: ${err.message}`);
 		return false;
@@ -278,7 +278,7 @@ export function removeBlock(themeDir, name) {
 		delete manifest.artifacts.render;
 	}
 
-	const file = resolveWithin(themeDir, `.wonderpress/manifest/${slug}.json`);
+	const file = resolveWithin(themeDir, `.wonderpress/manifest/partials/${slug}.json`);
 	if (!file) {
 		log.error(`Refusing to rewrite the manifest for "${slug}": that path escapes the theme directory.`);
 		return false;

@@ -9,8 +9,16 @@ Wonderpress theme. Once created it can be rendered two ways, from one source:
 COMMANDS
   partial create           Create one (class, view, style, optionally JS + block)
   partial list             List every partial, and whether a block wraps it
+  partial sync [<Name>]    Regenerate class $_properties and block.json from
+                           the manifest (after you edit properties in JSON)
+  partial check-drift [<Name>]
+                           Fail if class or block.json drift from manifest
+                           (use in CI; fix with partial sync)
   partial remove [<Name>]  Delete a partial and everything it owns. With no
                            name, pick from what the theme has.
+  partial install-manifest <slug>
+                           Copy a core primitive manifest (e.g. link) into
+                           .wonderpress/manifest/partials/
 
 CREATE OPTIONS
   <Class_Name>             The name, positionally — `partial create Hero`.
@@ -19,18 +27,29 @@ CREATE OPTIONS
                            you passed pre-answer its questions rather than being
                            asked again.
   --prop <name:type[:required]>
-                           A property, repeatable. Types: string, int, bool,
-                           array, object
+                           A property, repeatable. Types: string, boolean,
+                           image, link, repeater, array, object
+  --sub <parent:name:type[:required]>
+                           A sub-field of a repeater property (repeatable)
   --block                  Also expose it in the editor (off by default —
                            most partials are compositional, not blocks)
   --js                     Also scaffold a JS behavior class (off by default)
-  --acf                    Mark the partial ACF compatible
+  --acf                    Register an ACF field group from the manifest
+                           (requires the manifest; locate it with template
+                           composition or wonderpress_template_fields)
   --template-name <file>   Name the view template, e.g. my-view.php
   --no-template            Class only, no view template
   --no-style               Skip the SCSS stub
-  --no-manifest            Skip the manifest (cannot be combined with --block)
+  --no-manifest            Skip the manifest (cannot be combined with --block
+                           or --acf)
   --json <spec|@file>      Create from a JSON spec instead of flags
   --theme <name>           Target a theme by name, skipping the active lookup
+
+SYNC OPTIONS
+  --all                    Sync every partial manifest in the theme
+  --slug <slug>            Partial slug (alternative to positional name)
+  --dry-run                Print what would be written, without changing files
+  --properties-only        Update class + block.json only (skip render.php)
 
 REMOVE OPTIONS
   --with-block             Also remove the block wrapping this partial.
@@ -39,5 +58,9 @@ REMOVE OPTIONS
 EXAMPLES
   wonderpress partial create --name Testimonial --prop quote:string:required
   wonderpress partial create --name Hero --block --js
+  wonderpress partial create --name Testimonials --acf --prop items:repeater --sub items:quote:string:required
+  wonderpress partial sync Scalar_Demo
+  wonderpress partial sync --all
+  wonderpress partial check-drift --all
   wonderpress partial create
       No flags runs the interactive wizard, which asks the same questions.

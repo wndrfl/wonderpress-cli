@@ -122,7 +122,7 @@ routes produce byte-identical output.
 refuses and tells you the way out. `block remove` is the safe demote — the
 wrapper goes, the partial stays. `partial remove --with-block` removes both.
 
-**The manifest is the index.** `.wonderpress/manifest/<slug>.json` is what
+**Partial manifests are the index.** `.wonderpress/manifest/partials/<slug>.json` is what
 `list` reads and what `remove` deletes by. Open one. Every path it advertises
 should exist on disk — nothing is recorded that was not actually written.
 

@@ -64,24 +64,28 @@ A partial is a rendering primitive (a button, a section) — it is **not** a Gut
 | --- | --- |
 | `--name <Class_Name>` | The partial's PHP class name (headless; omit for the wizard). |
 | `--json <@file\|string>` | Create from a JSON spec instead of flags. |
-| `--prop <name:type[:required]>` | Declare a property (repeatable). |
-| `--acf` | Configure the partial as ACF compatible. |
+| `--prop <name:type[:required]>` | Declare a property (repeatable). Types: `string`, `boolean`, `image`, `link`, `repeater`, `array`, `object`. |
+| `--sub <parent:name:type[:required]>` | A sub-field of a repeater (repeatable). |
+| `--acf` | Mark the partial ACF compatible. Core registers a field group from the manifest when ACF is present and the partial is located (template composition or `wonderpress_template_fields`). Cannot be combined with `--no-manifest`. |
 | `--block` | Also expose the partial as a Gutenberg block (`block.json` + a `render.php` that delegates back to the partial). Opt-in. |
 | `--js` | Also scaffold a JS behavior class for the partial (`static/src/js/lib/partials/<Name>.js`, delegated to Static Kit). Opt-in — most partials have no behavior. |
 | `--template-name <name.php>` | Name the view template. |
 | `--no-template` | Skip the view template. |
 | `--no-style` | Skip the delegated SCSS style stub. |
-| `--no-manifest` | Skip the manifest. Cannot be combined with `--block`. |
+| `--no-manifest` | Skip the manifest. Cannot be combined with `--block` or `--acf`. |
 | `--theme <name>` / `--dir <path>` | Target a specific theme / environment root. |
 
-Two combinations are worth knowing: `--block --no-manifest` is refused (the
-manifest is the index that makes a block manageable), and `--js --no-template`
-emits no behavior class, because a behavior stub is only scaffolded for a
-partial that renders a view.
+Three combinations are worth knowing: `--block --no-manifest` is refused (the
+manifest is the index that makes a block manageable), `--acf --no-manifest` is
+refused (core reads the manifest to register the field group), and
+`--js --no-template` emits no behavior class, because a behavior stub is only
+scaffolded for a partial that renders a view. `--block` and `--acf` may be
+combined: the block uses Gutenberg attributes, the PHP caller uses ACF. Do not
+locate the ACF group on a page that also inserts the block.
 
 #### `wonderpress partial list`
 
-List every partial in the theme (name, slug, and the block wrapping it, if any). Reads `.wonderpress/manifest/*.json` — the manifest directory is the CLI's index.
+List every partial in the theme (name, slug, and the block wrapping it, if any). Reads `.wonderpress/manifest/partials/*.json` — the partial manifest directory is the CLI's index.
 
 #### `wonderpress partial remove <Name>`
 
@@ -109,7 +113,18 @@ Starts a web server to run WordPress locally. (uses [WP CLI](https://developer.w
 
 #### `wonderpress template create`
 
-Create a Wonderpress custom page template.
+Create a Wonderpress custom page template, a matching `.wonderpress/manifest/page-templates/*.json`
+manifest (`schemaVersion` 1), and Static Kit page assets. Optional `--lock` and
+repeatable `--section id:partial` seed composition.
+
+#### `wonderpress template list`
+
+List page templates recorded under `.wonderpress/manifest/page-templates/`.
+
+#### `wonderpress template remove <Name>`
+
+Remove the template PHP file, its manifest, and the delegated Static Kit JS/SCSS
+entries (pass `--no-static` to keep static files).
 
 ## [Architecture](#architecture)
 

@@ -1,7 +1,8 @@
 # Plan: editor JavaScript — visual fidelity without duplicating markup
 
-Status: not started. The arc ROADMAP.md deferred ("no `edit.js`, no editor
-bundle") and the requirement that ends the deferral.
+Status: in progress (Phase 2b). Tier A inspector controls, ServerSideRender
+preview, and `image` MediaUpload ship buildless from wonderpress-core
+(`editor-preview.js`). Tier B types follow the rollout in property-value-shapes.md.
 
 ## Why the deferral has to end
 

@@ -12,6 +12,9 @@ import {
 	isValidTemplateName,
 	isValidPropType,
 	parsePropFlag,
+	parseSubFlag,
+	normalizeProperty,
+	phpFormatForType,
 	classNameToFileSlug,
 	classNameToSlug,
 	humanizeClassName,
@@ -23,10 +26,21 @@ import {
 	isValidNamespace,
 	PROP_TYPES,
 	PROP_TYPE_TO_BLOCK,
+	REPEATER_SUB_TYPES,
+	assertDualAuthorable,
 	LEGACY_NAMESPACE,
+	validateManifestProperty,
+	partialManifestPath,
+	PARTIAL_MANIFEST_DIR,
 } from './validate.js';
 import * as config from './config.js';
 import { pickOne } from './prompt.js';
+import {
+	CORE_PARTIAL_MANIFEST_SLUGS,
+	installCorePartialManifest,
+	resolveCoreBundledPartialManifest,
+} from './partial-manifests.js';
+import { checkPartialDrift } from './partial-drift.js';
 
 /**
  * Accept and route a command.
@@ -41,6 +55,15 @@ export async function command(subcommand, args) {
 			break;
 		case 'remove':
 			await remove(args);
+			break;
+		case 'install-manifest':
+			await installManifest(args);
+			break;
+		case 'sync':
+			await sync(args);
+			break;
+		case 'check-drift':
+			await checkDrift(args);
 			break;
 		default:
 			// No subcommand (or an unrecognised one) means the user is looking for
@@ -179,7 +202,7 @@ export async function create(args) {
 			// away what had been explicitly asked for.
 			params = await runWizard(themeDir, args);
 		}
-		validateParams(params);
+		validateParams(params, themeDir);
 	} catch (err) {
 		log.error(err.message);
 		return false;
@@ -203,7 +226,7 @@ export function paramsFromFlags(args) {
 		is_acf_compatible: !!args['--acf'],
 		has_partial_template: !args['--no-template'],
 		partial_template_name: args['--template-name'] || defaultTemplateName(className),
-		properties: (args['--prop'] || []).map(parsePropFlag),
+		properties: attachSubFields((args['--prop'] || []).map(parsePropFlag), args['--sub'] || []),
 		emit: {
 			// A partial is not a block. block.json + register_block_type is a
 			// formal Gutenberg registration, so it's opt-IN — only partials you
@@ -216,6 +239,45 @@ export function paramsFromFlags(args) {
 			script: !!args['--js'],
 		},
 	};
+}
+
+/**
+ * Attach --sub rows onto the matching repeater properties.
+ **/
+export function attachSubFields(properties, subs = []) {
+	if (!subs.length) {
+		return properties;
+	}
+
+	const names = new Map(properties.map((p) => [p.name, p]));
+	const byParent = {};
+	for (const raw of subs) {
+		const parsed = parseSubFlag(raw);
+		const parent = names.get(parsed.parent);
+		if (!parent) {
+			throw new Error(`--sub refers to unknown property "${parsed.parent}".`);
+		}
+		if (parent.type !== 'repeater') {
+			throw new Error(`--sub parent "${parsed.parent}" is type "${parent.type}", not repeater.`);
+		}
+		if (!byParent[parsed.parent]) {
+			byParent[parsed.parent] = [];
+		}
+		byParent[parsed.parent].push({
+			name: parsed.name,
+			type: parsed.type,
+			required: parsed.required,
+			description: parsed.description,
+		});
+	}
+
+	return properties.map((p) => {
+		if (p.type !== 'repeater') {
+			return p;
+		}
+		const extra = byParent[p.name] || [];
+		return { ...p, properties: [ ...(p.properties || []), ...extra ] };
+	});
 }
 
 /**
@@ -243,12 +305,7 @@ export function paramsFromJson(raw) {
 		is_acf_compatible: !!spec.acf_compatible,
 		has_partial_template: spec.template !== false,
 		partial_template_name: spec.template_name || (className ? defaultTemplateName(className) : ''),
-		properties: (spec.properties || []).map((p) => ({
-			name: p.name,
-			type: p.type,
-			required: !!p.required,
-			description: p.description || '',
-		})),
+		properties: (spec.properties || []).map(normalizeProperty),
 		emit: {
 			// Opt-in (see paramsFromFlags): a block is only emitted when the
 			// spec explicitly asks for it.
@@ -284,7 +341,7 @@ export function paramsFromManifest(manifest) {
 		is_acf_compatible: !!manifest.acf_compatible,
 		has_partial_template: hasView,
 		partial_template_name: hasView ? path.basename(artifacts.view) : defaultTemplateName(manifest.name),
-		properties: manifest.properties || [],
+		properties: (manifest.properties || []).map(normalizeProperty),
 		emit: {
 			block: !!manifest.block,
 			manifest: true,
@@ -299,20 +356,22 @@ export function paramsFromManifest(manifest) {
 /**
  * Validate a fully-assembled params object. Throws with a clear message.
  **/
-export function validateParams(params) {
+export function validateParams(params, themeDir = null) {
 	if (!params.class_name || !isValidClassName(params.class_name)) {
 		throw new Error(`Invalid class name "${params.class_name || ''}". Must be WordPress snake-case, e.g. Example_Class.`);
 	}
 	if (params.has_partial_template && !isValidTemplateName(params.partial_template_name)) {
 		throw new Error(`Invalid template name "${params.partial_template_name}". Use lowercase letters and dashes ending in .php, e.g. my-template.php.`);
 	}
+	const siblingNames = new Set(params.properties.filter((prop) => prop?.name).map((prop) => prop.name));
 	for (const p of params.properties) {
-		if (!p.name) {
-			throw new Error('Every property must have a name.');
-		}
-		if (!isValidPropType(p.type)) {
-			throw new Error(`Invalid property type "${p.type}" for property "${p.name}". Valid types: ${PROP_TYPES.join(', ')}.`);
-		}
+		validateManifestProperty(p, { siblingNames });
+	}
+
+	if (params.acf?.location) {
+		throw new Error(
+			'Partial manifests no longer support acf.location. Locate the field group via template composition or the wonderpress_template_fields filter.',
+		);
 	}
 
 	// A block that is not in the index is unmanageable: `block list`,
@@ -322,6 +381,14 @@ export function validateParams(params) {
 	if (emit.block && emit.manifest === false) {
 		throw new Error('A block requires the manifest (it is the index that makes the block manageable). Drop --no-manifest or --block.');
 	}
+
+	// An ACF-compatible partial without a manifest cannot register a field
+	// group: core reads `.wonderpress/manifest/partials/*.json` on acf/init.
+	if (params.is_acf_compatible && emit.manifest === false) {
+		throw new Error('ACF compatibility requires the manifest (it is what core reads to register the field group). Drop --no-manifest or --acf.');
+	}
+
+	assertDualAuthorable(params, { themeDir });
 }
 
 /**
@@ -329,22 +396,39 @@ export function validateParams(params) {
  * Pure execution: no prompts, no network. Given identical params + themeDir it
  * produces identical output whether called from the flag path or the wizard.
  **/
-export async function writePartial(params, themeDir) {
-
+/**
+ * Regenerate the partial PHP class from manifest properties ($_properties).
+ * Overwrites the class file; custom methods in that file are not preserved.
+ *
+ * @param {ReturnType<typeof paramsFromManifest>} params
+ * @param {string} themeDir
+ * @returns {string} Absolute path written.
+ */
+export function writePartialClass(params, themeDir) {
 	const partialTemplatePath = './partials/' + params.partial_template_name;
-
-	// The class
 	const classTemplate = fs.readFileSync(new URL('./templates/partial.class.mustache', import.meta.url), 'utf8');
+	const slug = classNameToSlug(params.class_name);
 	const classOutput = mustache.render(classTemplate, {
 		class_name: params.class_name,
 		is_acf_compatible: params.is_acf_compatible,
 		has_partial_template: params.has_partial_template,
 		partial_template_path: partialTemplatePath,
-		properties: params.properties,
+		manifest_rel_path: `.wonderpress/manifest/partials/${slug}.json`,
+		sync_command: `wonderpress partial sync ${params.class_name}`,
+		properties: params.properties.map((p) => ({
+			...p,
+			format: phpFormatForType(p.type),
+		})),
 	});
 	const classFilePath = `${themeDir}/src/partials/${classNameToFileSlug(params.class_name)}.php`;
 	fs.ensureDirSync(path.dirname(classFilePath));
 	fs.writeFileSync(classFilePath, classOutput);
+	return classFilePath;
+}
+
+export async function writePartial(params, themeDir) {
+
+	const classFilePath = writePartialClass(params, themeDir);
 	log.success(`Partial class created at: ${classFilePath}`);
 
 	// The view template (optional)
@@ -467,13 +551,22 @@ export function staticArtifacts(params, apiAvailable) {
  * markup of its own — so this is the single code path behind both
  * `partial create --block` and `block create`.
  **/
-export function writeBlock(params, themeDir) {
+/**
+ * @param {ReturnType<typeof paramsFromManifest>} params
+ * @param {string} themeDir
+ * @param {{ skipRender?: boolean }} [options]
+ */
+export function writeBlock(params, themeDir, options = {}) {
 
 	const slug = classNameToSlug(params.class_name);
 
 	const attributes = {};
 	for (const p of params.properties) {
-		attributes[p.name] = { type: PROP_TYPE_TO_BLOCK[p.type] || 'string' };
+		const attr = { type: PROP_TYPE_TO_BLOCK[p.type] || 'string' };
+		if (p.type === 'select' && p.choices && typeof p.choices === 'object' && !Array.isArray(p.choices)) {
+			attr.enum = Object.keys(p.choices);
+		}
+		attributes[p.name] = attr;
 	}
 	// The project's namespace, not the tool's — see resolveNamespace(). The
 	// category rides along with it so the inserter groups a project's blocks
@@ -494,15 +587,17 @@ export function writeBlock(params, themeDir) {
 	fs.writeFileSync(`${blockDir}/block.json`, JSON.stringify(block, null, 2) + '\n');
 	log.success(`Block metadata created at: ${blockDir}/block.json`);
 
-	// Server render: delegate to the partial (block == partial-in-the-editor).
-	const renderTemplate = fs.readFileSync(new URL('./templates/block.render.mustache', import.meta.url), 'utf8');
-	const renderOutput = mustache.render(renderTemplate, {
-		slug,
-		namespace,
-		class_name: params.class_name,
-	});
-	fs.writeFileSync(`${blockDir}/render.php`, renderOutput);
-	log.success(`Block render created at: ${blockDir}/render.php`);
+	if (!options.skipRender) {
+		// Server render: delegate to the partial (block == partial-in-the-editor).
+		const renderTemplate = fs.readFileSync(new URL('./templates/block.render.mustache', import.meta.url), 'utf8');
+		const renderOutput = mustache.render(renderTemplate, {
+			slug,
+			namespace,
+			class_name: params.class_name,
+		});
+		fs.writeFileSync(`${blockDir}/render.php`, renderOutput);
+		log.success(`Block render created at: ${blockDir}/render.php`);
+	}
 
 	return blockDir;
 }
@@ -563,7 +658,7 @@ export function writeManifest(params, themeDir, written = {}) {
  * Path to a component's manifest file within a theme.
  **/
 export function manifestPath(themeDir, slug) {
-	return `${themeDir}/.wonderpress/manifest/${slug}.json`;
+	return partialManifestPath(themeDir, slug);
 }
 
 /**
@@ -609,12 +704,12 @@ export function readManifest(themeDir, slug) {
 /**
  * Read every manifest in a theme, sorted by slug.
  *
- * `.wonderpress/manifest/` is the CLI's index — `list` and `remove` read it
+ * `.wonderpress/manifest/partials/` is the CLI's index — `list` and `remove` read it
  * rather than scanning (and guessing at) source files.
  **/
 export function readManifests(themeDir) {
 
-	const dir = `${themeDir}/.wonderpress/manifest`;
+	const dir = `${themeDir}/${PARTIAL_MANIFEST_DIR}`;
 	if (!fs.existsSync(dir)) {
 		return [];
 	}
@@ -679,6 +774,187 @@ export function listPartials(themeDir) {
 /**
  * List every partial the manifest index knows about.
  **/
+/**
+ * Apply manifest contract to derived artifacts (class $_properties, block.json, manifest index).
+ *
+ * @param {object} manifest Parsed partial manifest.
+ * @param {string} themeDir Theme root.
+ * @param {{ dryRun?: boolean, propertiesOnly?: boolean }} [options]
+ */
+export function syncPartialFromManifest(manifest, themeDir, options = {}) {
+	const artifacts = manifest.artifacts || {};
+	const params = paramsFromManifest(manifest);
+	params.namespace = resolveNamespace(themeDir);
+
+	validateParams(params, themeDir);
+
+	const dryRun = !!options.dryRun;
+	const propertiesOnly = !!options.propertiesOnly;
+
+	if (dryRun) {
+		log.info(`Would sync partial class from manifest (${params.properties.length} properties).`);
+		if (artifacts.class) {
+			log.info(`  class: ${artifacts.class}`);
+		}
+		if (params.emit.block) {
+			log.info(`  block: blocks/${classNameToSlug(params.class_name)}/block.json`);
+			if (!propertiesOnly) {
+				log.info(`  render: blocks/${classNameToSlug(params.class_name)}/render.php`);
+			}
+		}
+		log.info(`  manifest: ${PARTIAL_MANIFEST_DIR}/${manifest.slug}.json (normalize)`);
+		return true;
+	}
+
+	const classPath = writePartialClass(params, themeDir);
+	log.success(`Synced partial class: ${classPath}`);
+
+	if (params.emit.block) {
+		writeBlock(params, themeDir, { skipRender: propertiesOnly });
+		log.success(
+			propertiesOnly
+				? 'Synced block.json attributes from manifest.'
+				: 'Synced block wrapper (block.json + render.php) from manifest.',
+		);
+	}
+
+	writeManifest(params, themeDir, {
+		style: !!artifacts.style,
+		script: !!artifacts.script,
+	});
+	log.success(`Manifest normalized at: ${manifestPath(themeDir, manifest.slug)}`);
+	return true;
+}
+
+/**
+ * Sync derived partial artifacts from `.wonderpress/manifest/partials/*.json`.
+ **/
+export async function sync(args) {
+	const themeDir = await resolveThemeDir(args);
+	if (!themeDir) {
+		return false;
+	}
+
+	const dryRun = args['--dry-run'] === true;
+	const propertiesOnly = args['--properties-only'] === true;
+	const syncAll = args['--all'] === true;
+
+	if (syncAll) {
+		const manifests = readManifests(themeDir);
+		if (!manifests.length) {
+			log.info(`No partial manifests in ${themeDir}.`);
+			return true;
+		}
+		for (const manifest of manifests) {
+			log.info(`Syncing ${manifest.name} (${manifest.slug})...`);
+			try {
+				syncPartialFromManifest(manifest, themeDir, { dryRun, propertiesOnly });
+			} catch (err) {
+				log.error(`${manifest.slug}: ${err.message}`);
+				return false;
+			}
+		}
+		log.info(`Synced ${manifests.length} partial${manifests.length === 1 ? '' : 's'}.`);
+		return true;
+	}
+
+	const name = (args._ && args._[2]) || args['--name'] || args['--slug'];
+	if (!name) {
+		log.error('Pass a partial name or slug, or use --all. Example: wonderpress partial sync Scalar_Demo');
+		return false;
+	}
+
+	const lookupSlug = nameToSlug(name);
+	if (!isSafeSlug(lookupSlug)) {
+		log.error(`Invalid partial name "${name}".`);
+		return false;
+	}
+
+	const manifest = readManifest(themeDir, lookupSlug);
+	if (!manifest) {
+		log.error(`No partial manifest for "${name}". Run \`wonderpress partial list\`.`);
+		return false;
+	}
+
+	try {
+		syncPartialFromManifest(manifest, themeDir, { dryRun, propertiesOnly });
+	} catch (err) {
+		log.error(err.message);
+		return false;
+	}
+
+	if (!dryRun) {
+		log.warn(
+			'The partial class file was regenerated from the manifest template. Custom code in that class is not preserved — keep custom logic in separate helpers or the view template.',
+		);
+	}
+
+	return true;
+}
+
+/**
+ * Fail when manifest-derived artifacts drift (class $_properties, block.json).
+ **/
+export async function checkDrift(args) {
+	const themeDir = await resolveThemeDir(args);
+	if (!themeDir) {
+		return false;
+	}
+
+	const checkAll = args['--all'] === true;
+	const name = (args._ && args._[2]) || args['--name'] || args['--slug'];
+
+	const manifests = checkAll
+		? readManifests(themeDir)
+		: (() => {
+				if (!name) {
+					log.error('Pass a partial name or slug, or use --all. Example: wonderpress partial check-drift Scalar_Demo');
+					return null;
+				}
+				const lookupSlug = nameToSlug(name);
+				if (!isSafeSlug(lookupSlug)) {
+					log.error(`Invalid partial name "${name}".`);
+					return null;
+				}
+				const manifest = readManifest(themeDir, lookupSlug);
+				if (!manifest) {
+					log.error(`No partial manifest for "${name}".`);
+					return null;
+				}
+				return [manifest];
+			})();
+
+	if (!manifests) {
+		return false;
+	}
+	if (!manifests.length) {
+		log.info(`No partial manifests in ${themeDir}.`);
+		return true;
+	}
+
+	let failed = false;
+	for (const manifest of manifests) {
+		const result = checkPartialDrift(manifest, themeDir);
+		if (result.ok) {
+			log.success(`${manifest.slug}: in sync with manifest.`);
+			continue;
+		}
+		failed = true;
+		log.error(`${manifest.slug}: drift detected.`);
+		for (const issue of result.issues) {
+			log.error(`  • ${issue.message}`);
+		}
+	}
+
+	if (failed) {
+		process.exitCode = 1;
+		return false;
+	}
+
+	log.info(`${manifests.length} partial${manifests.length === 1 ? '' : 's'} checked.`);
+	return true;
+}
+
 export async function list(args) {
 
 	const themeDir = await resolveThemeDir(args);
@@ -764,7 +1040,7 @@ export function removePartial(themeDir, name, options = {}) {
 		removeBlockDir(themeDir, slug);
 	}
 
-	const file = resolveWithin(themeDir, `.wonderpress/manifest/${slug}.json`);
+	const file = resolveWithin(themeDir, `${PARTIAL_MANIFEST_DIR}/${slug}.json`);
 	if (!file) {
 		log.error(`Refusing to remove the manifest for "${slug}": that path escapes the theme directory.`);
 		return false;
@@ -772,6 +1048,43 @@ export function removePartial(themeDir, name, options = {}) {
 
 	fs.removeSync(file);
 	log.success(`Removed manifest: ${file}`);
+	return true;
+}
+
+/**
+ * Copy a core-bundled primitive manifest into the theme (Pass 2: Link).
+ **/
+export async function installManifest(args) {
+	const themeDir = await resolveThemeDir(args);
+	if (!themeDir) {
+		return false;
+	}
+
+	const slug = args._ && args._[2] ? nameToSlug(args._[2]) : nameToSlug(args['--slug'] || '');
+	if (!slug) {
+		log.error('Usage: wonderpress partial install-manifest <slug> (e.g. link)');
+		log.info(`Available core primitives: ${CORE_PARTIAL_MANIFEST_SLUGS.join(', ')}`);
+		return false;
+	}
+
+	if (!CORE_PARTIAL_MANIFEST_SLUGS.includes(slug)) {
+		log.error(`Unknown core primitive "${slug}". Available: ${CORE_PARTIAL_MANIFEST_SLUGS.join(', ')}`);
+		return false;
+	}
+
+	if (!resolveCoreBundledPartialManifest(themeDir, slug)) {
+		log.error(`Could not find bundled manifest for "${slug}" in wonderpress-core. Is the package installed?`);
+		return false;
+	}
+
+	const dest = installCorePartialManifest(themeDir, slug);
+	if (!dest) {
+		log.error(`Failed to install manifest for "${slug}".`);
+		return false;
+	}
+
+	log.success(`Installed core manifest: ${dest}`);
+	log.info('Add the partial to a template composition or wonderpress_template_fields so ACF registers the field group where editors need it.');
 	return true;
 }
 
@@ -850,7 +1163,9 @@ export function mergeWizardAnswers(step1, args = {}, properties = []) {
 		partial_template_name: hasTemplate
 			? (templateName || defaultTemplateName(step1.class_name))
 			: defaultTemplateName(step1.class_name),
-		properties: properties.length ? properties : (args['--prop'] || []).map(parsePropFlag),
+		properties: properties.length
+			? properties
+			: attachSubFields((args['--prop'] || []).map(parsePropFlag), args['--sub'] || []),
 		emit: {
 			block: step1.emit_block ?? flagged.emit_block ?? false,
 			manifest: !args['--no-manifest'],
@@ -887,8 +1202,8 @@ async function runWizard(themeDir, args = {}) {
 		{
 			type: 'confirm',
 			name: 'is_acf_compatible',
-			message: 'Should this partial be configured as ACF compatible?',
-			suffix: '\nIf you don\'t know, type "N":',
+			message: 'Should this partial register an ACF field group?',
+			suffix: '\nCore reads the manifest and registers the group when ACF is present. Say "N" unless a PHP template will hydrate this partial via ACF:',
 			default: false,
 			when: () => asked('is_acf_compatible'),
 		},
@@ -1000,7 +1315,76 @@ async function runWizard(themeDir, args = {}) {
 			log.info('Property configuration is complete. Moving on...');
 			addAnother = false;
 		} else {
-			properties.push({
+			const property = {
+				name: answers.name,
+				type: answers.type,
+				required: answers.required,
+				description: answers.description || '',
+			};
+			if (answers.type === 'repeater') {
+				property.properties = await promptRepeaterSubs(answers.name);
+			}
+			properties.push(property);
+		}
+	}
+
+	return mergeWizardAnswers(step1, args, properties);
+}
+
+/**
+ * Collect the rows of a repeater. Same questions as a top-level property,
+ * but the type list is the subset a repeater row may honestly hold.
+ **/
+async function promptRepeaterSubs(parentName) {
+	const subs = [];
+	let addAnother = true;
+
+	log.instructions(`Repeater "${parentName}" needs at least one sub-field — the shape of each row.`);
+
+	while (addAnother) {
+		const addMessage = subs.length
+			? `Add another sub-field to "${parentName}"?`
+			: `Add a sub-field to "${parentName}"?`;
+
+		const answers = await inquirer.prompt([
+			{
+				type: 'confirm',
+				name: 'add_another',
+				message: addMessage,
+				default: subs.length === 0,
+			},
+			{
+				type: 'input',
+				name: 'name',
+				message: 'Sub-field name?',
+				when: (a) => a.add_another,
+			},
+			{
+				type: 'list',
+				name: 'type',
+				message: 'Sub-field type?',
+				choices: REPEATER_SUB_TYPES,
+				default: 'string',
+				when: (a) => a.add_another,
+			},
+			{
+				type: 'input',
+				name: 'description',
+				message: 'Briefly describe the sub-field',
+				when: (a) => a.add_another,
+			},
+			{
+				type: 'confirm',
+				name: 'required',
+				message: 'Required?',
+				when: (a) => a.add_another,
+			},
+		]);
+
+		if (!answers.add_another) {
+			addAnother = false;
+		} else {
+			subs.push({
 				name: answers.name,
 				type: answers.type,
 				required: answers.required,
@@ -1009,5 +1393,5 @@ async function runWizard(themeDir, args = {}) {
 		}
 	}
 
-	return mergeWizardAnswers(step1, args, properties);
+	return subs;
 }

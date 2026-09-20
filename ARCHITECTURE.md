@@ -32,7 +32,7 @@ enforced by the `node_modules` rule in the shipped
 | Concern | Owner | Where it lives |
 | --- | --- | --- |
 | PHP partials & templates (the render layer) | **WonderPress CLI** | `wp-content/themes/wonderpress/partials`, `.../src` |
-| Component manifests (always emitted) | **WonderPress CLI** | `.../.wonderpress/manifest/*.json` |
+| Partial manifests (always emitted) | **WonderPress CLI** | `.../.wonderpress/manifest/partials/*.json` |
 | `block.json` + `render.php` (opt-in Gutenberg wrapper — `--block`) | **WonderPress CLI** | `.../blocks/<slug>/` |
 | The `static/` tree (layout, `.staticrc`) | **Static Kit** | `wp-content/themes/wonderpress/static` |
 | Component **style stubs** (token-only SCSS) | **Static Kit** | `static/` (created via delegation) |
@@ -118,13 +118,43 @@ metadata to things that have no business carrying it.
 Blocks are dynamic and server-rendered: `render.php` news up the partial class
 and echoes `->render()`. There is no `edit.js` and no editor bundle.
 
-### The manifest is the index
+### The manifest tree
 
-`.wonderpress/manifest/<slug>.json` is the CLI's record of what a component is
+All WonderPress manifests live under `.wonderpress/manifest/`, typed by path:
+`partials/` for components, `page-templates/` for page-template contracts.
+
+### Partial manifests are the index
+
+`.wonderpress/manifest/partials/<slug>.json` is the CLI's record of what a component is
 and what was written for it. `partial list`, `partial remove`, `block create`,
 `block list`, and `block remove` all read it rather than scanning (and guessing
 at) source files — so the manifest is authoritative, and the deletion list for a
 removal is exactly what creation recorded.
+
+wonderpress-core reads manifests at runtime in `inc/manifests.php`
+(`wonder_load_theme_manifests()`). ACF is one consumer: `inc/acf.php` registers
+a field group on `acf/init` for every `acf_compatible` manifest that is located
+via template composition and/or `wonderpress_template_fields`. That is parallel
+to how core registers `blocks/<slug>/block.json`. The CLI still owns the files;
+core never writes them. Partial manifests declare fields only; page-template
+manifests and the theme filter declare placement.
+
+**Dual-authorable types:** When a partial is both ACF-compatible and exposed as
+a block, every property type must be authorable in ACF and in the block editor
+with the same value shape. Tier A (scalars) is enforced by the CLI today; Tier B
+(structured types) is backlog. See [docs/dual-authorable-types.md](docs/dual-authorable-types.md)
+and [docs/property-value-shapes.md](docs/property-value-shapes.md).
+
+**Page-template manifests** (`.wonderpress/manifest/page-templates/<template>.json`, integer
+`schemaVersion`) declare the editor contract (`editor.lock`, `editor.native`) and
+an ordered `composition`: partial instances (`id` + `partial`), inline field
+groups (`id` + `properties[]`, no render), and optional tab rows (`id`, `label`,
+`items[]`) that group instances as ACF tabs (root instances have no tab wrapper).
+Core merges locks with
+`wonderpress_template_locks`, registers one ACF group per template when
+composition lists ACF-compatible partials (field names = instance ids), and
+renders via `wonder_render_template_sections()`. Partial manifests stay the
+component dictionary; template manifests are the page-template sentence.
 
 ```json
 {

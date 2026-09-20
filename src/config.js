@@ -14,7 +14,7 @@ function isFile(path) {
  * Determine if a config file exists in a directory.
  *
  * Both markers must be *files*. `.wonderpress` especially: the CLI writes a
- * `.wonderpress/manifest/` directory into every theme it touches, and
+ * `.wonderpress/manifest/partials/` into every theme it touches, and
  * existsSync() is true for a directory — so an existence check alone makes
  * every theme look like an environment root, and a walk up from
  * `themes/wonderpress/partials` stops at the theme instead of the environment.

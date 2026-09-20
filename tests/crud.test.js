@@ -55,7 +55,7 @@ function tmpThemeNoStatic() {
 }
 
 function manifestOf(dir, slug) {
-	return JSON.parse(fs.readFileSync(path.join(dir, `.wonderpress/manifest/${slug}.json`), 'utf8'));
+	return JSON.parse(fs.readFileSync(path.join(dir, `.wonderpress/manifest/partials/${slug}.json`), 'utf8'));
 }
 
 // --- the opt-in JS behavior half ---
@@ -191,7 +191,7 @@ test('--block and a later `block create` produce identical output', async () => 
 		await writePartial(paramsFromFlags(flags), t2);
 		assert.equal(addBlock(t2, 'Testimonial'), true);
 
-		for (const rel of ['blocks/testimonial/block.json', 'blocks/testimonial/render.php', '.wonderpress/manifest/testimonial.json']) {
+		for (const rel of ['blocks/testimonial/block.json', 'blocks/testimonial/render.php', '.wonderpress/manifest/partials/testimonial.json']) {
 			assert.equal(fs.readFileSync(path.join(t1, rel), 'utf8'), fs.readFileSync(path.join(t2, rel), 'utf8'), rel);
 		}
 	} finally {
@@ -210,7 +210,7 @@ test('partial remove refuses while a block still wraps the partial', async () =>
 		assert.equal(removePartial(dir, 'Testimonial'), false);
 		assert.ok(fs.existsSync(path.join(dir, 'src/partials/class-testimonial.php')), 'the partial survives the refusal');
 		assert.ok(fs.existsSync(path.join(dir, 'blocks/testimonial/block.json')));
-		assert.ok(fs.existsSync(path.join(dir, '.wonderpress/manifest/testimonial.json')));
+		assert.ok(fs.existsSync(path.join(dir, '.wonderpress/manifest/partials/testimonial.json')));
 	} finally {
 		fs.removeSync(dir);
 	}
@@ -226,7 +226,7 @@ test('partial remove --with-block cascades over every recorded artifact', async 
 
 		assert.equal(removePartial(dir, 'Testimonial', { withBlock: true }), true);
 
-		for (const rel of ['src/partials/class-testimonial.php', 'partials/testimonial.php', 'static/src/scss/partials/_testimonial.scss', 'static/src/js/lib/partials/Testimonial.js', 'blocks/testimonial', '.wonderpress/manifest/testimonial.json']) {
+		for (const rel of ['src/partials/class-testimonial.php', 'partials/testimonial.php', 'static/src/scss/partials/_testimonial.scss', 'static/src/js/lib/partials/Testimonial.js', 'blocks/testimonial', '.wonderpress/manifest/partials/testimonial.json']) {
 			assert.ok(!fs.existsSync(path.join(dir, rel)), `${rel} should be gone`);
 		}
 	} finally {
@@ -258,8 +258,8 @@ test('block remove leaves the partial intact and strips the block from the manif
 
 		// Unwrapping must leave exactly the manifest a never-blocked partial has.
 		assert.equal(
-			fs.readFileSync(path.join(dir, '.wonderpress/manifest/testimonial.json'), 'utf8'),
-			fs.readFileSync(path.join(plain, '.wonderpress/manifest/testimonial.json'), 'utf8')
+			fs.readFileSync(path.join(dir, '.wonderpress/manifest/partials/testimonial.json'), 'utf8'),
+			fs.readFileSync(path.join(plain, '.wonderpress/manifest/partials/testimonial.json'), 'utf8')
 		);
 
 		// ...and it is idempotent-friendly: a second removal is a clear no.
@@ -359,7 +359,7 @@ test('removePartial refuses an artifact path that escapes the theme', async () =
 		await writePartial(paramsFromFlags({ '--name': 'Hero' }), dir);
 
 		// Poison the index the way a crafted or corrupted manifest would.
-		const file = path.join(dir, '.wonderpress/manifest/hero.json');
+		const file = path.join(dir, '.wonderpress/manifest/partials/hero.json');
 		const manifest = JSON.parse(fs.readFileSync(file, 'utf8'));
 		manifest.artifacts.style = '../outside.txt';
 		fs.writeFileSync(file, JSON.stringify(manifest, null, 2) + '\n');
@@ -394,7 +394,7 @@ test('a malformed manifest is skipped by list and refused by remove', async () =
 	const dir = tmpTheme();
 	try {
 		await writePartial(paramsFromFlags({ '--name': 'Hero' }), dir);
-		fs.writeFileSync(path.join(dir, '.wonderpress/manifest/junk.json'), '[]\n');
+		fs.writeFileSync(path.join(dir, '.wonderpress/manifest/partials/junk.json'), '[]\n');
 
 		assert.deepEqual(listPartials(dir), [{ name: 'Hero', slug: 'hero', block: null }], 'junk rows never reach the table');
 		assert.deepEqual(listBlocks(dir), []);
@@ -421,6 +421,48 @@ test('a block without the manifest is refused: the index is what makes it manage
 	// Either half alone is still fine.
 	validateParams(paramsFromFlags({ '--name': 'Hero', '--no-manifest': true }));
 	validateParams(paramsFromFlags({ '--name': 'Hero', '--block': true }));
+});
+
+test('ACF without the manifest is refused: core reads the manifest to register the group', () => {
+	assert.throws(
+		() => validateParams(paramsFromFlags({ '--name': 'Hero', '--acf': true, '--no-manifest': true })),
+		/ACF compatibility requires the manifest/
+	);
+	assert.throws(
+		() => validateParams(paramsFromJson(JSON.stringify({ name: 'Hero', acf_compatible: true, manifest: false }))),
+		/ACF compatibility requires the manifest/
+	);
+
+	validateParams(paramsFromFlags({ '--name': 'Hero', '--acf': true }));
+});
+
+test('a repeater without sub-fields is refused', () => {
+	assert.throws(
+		() => validateParams(paramsFromFlags({ '--name': 'Testimonials', '--prop': ['items:repeater'] })),
+		/must declare at least one sub-field/
+	);
+});
+
+test('--sub attaches rows to a repeater; a bare --sub on a non-repeater is refused', () => {
+	const p = paramsFromFlags({
+		'--name': 'Testimonials',
+		'--prop': ['items:repeater'],
+		'--sub': ['items:quote:string:required', 'items:photo:image'],
+	});
+	assert.deepEqual(p.properties[0].properties, [
+		{ name: 'quote', type: 'string', required: true, description: '' },
+		{ name: 'photo', type: 'image', required: false, description: '' },
+	]);
+	validateParams(p);
+
+	assert.throws(
+		() => paramsFromFlags({
+			'--name': 'Hero',
+			'--prop': ['headline:string'],
+			'--sub': ['headline:quote:string'],
+		}),
+		/not repeater/
+	);
 });
 
 // --- blocks the CLI did not write ---

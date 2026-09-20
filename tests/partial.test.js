@@ -7,6 +7,7 @@ import {
 	paramsFromFlags,
 	paramsFromJson,
 	writePartial,
+	syncPartialFromManifest,
 	validateParams,
 	resolveNamespace,
 	seedFromFlags,
@@ -95,10 +96,138 @@ test('a partial is not a block: no block.json/render.php by default', async () =
 		assert.ok(!fs.existsSync(path.join(dir, 'blocks/testimonial/block.json')), 'no block.json without --block');
 		assert.ok(!fs.existsSync(path.join(dir, 'blocks/testimonial/render.php')), 'no render.php without --block');
 		// the manifest is still written, and does not advertise a block.
-		const m = JSON.parse(fs.readFileSync(path.join(dir, '.wonderpress/manifest/testimonial.json'), 'utf8'));
+		const m = JSON.parse(fs.readFileSync(path.join(dir, '.wonderpress/manifest/partials/testimonial.json'), 'utf8'));
 		assert.equal(m.block, undefined, 'manifest must not name a block that was not emitted');
 		assert.equal(m.artifacts.block, undefined);
 		assert.equal(m.artifacts.render, undefined);
+	} finally {
+		fs.removeSync(dir);
+	}
+});
+
+test('--block maps image/link/repeater onto object/array attributes', async () => {
+	const dir = tmpTheme();
+	try {
+		const params = paramsFromFlags({
+			'--name': 'Gallery',
+			'--block': true,
+			'--prop': ['photo:image', 'cta:link', 'items:repeater'],
+			'--sub': ['items:quote:string'],
+		});
+		validateParams(params);
+		await writePartial(params, dir);
+		const block = JSON.parse(fs.readFileSync(path.join(dir, 'blocks/gallery/block.json'), 'utf8'));
+		assert.equal(block.attributes.photo.type, 'object');
+		assert.equal(block.attributes.cta.type, 'object');
+		assert.equal(block.attributes.items.type, 'array');
+	} finally {
+		fs.removeSync(dir);
+	}
+});
+
+test('syncPartialFromManifest updates class $_properties and block.json from manifest', async () => {
+	const dir = tmpTheme();
+	try {
+		const params = paramsFromFlags({
+			'--name': 'Scalar_Demo',
+			'--acf': true,
+			'--block': true,
+			'--prop': ['headline:string:required'],
+		});
+		await writePartial(params, dir);
+		const manifestPath = path.join(dir, '.wonderpress/manifest/partials/scalar-demo.json');
+		const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
+		manifest.properties.push({
+			name: 'rich_link',
+			type: 'partial',
+			partial: 'link',
+			required: false,
+			description: '',
+		});
+		fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2) + '\n');
+
+		syncPartialFromManifest(manifest, dir);
+
+		const classSrc = fs.readFileSync(path.join(dir, 'src/partials/class-scalar-demo.php'), 'utf8');
+		assert.match(classSrc, /'rich_link'/);
+		assert.match(classSrc, /'format' => 'array'/);
+
+		const block = JSON.parse(fs.readFileSync(path.join(dir, 'blocks/scalar-demo/block.json'), 'utf8'));
+		assert.equal(block.attributes.rich_link.type, 'object');
+		assert.equal(block.attributes.headline.type, 'string');
+	} finally {
+		fs.removeSync(dir);
+	}
+});
+
+test('syncPartialFromManifest --dry-run does not write files', async () => {
+	const dir = tmpTheme();
+	try {
+		const params = paramsFromFlags({
+			'--name': 'Hero',
+			'--prop': ['title:string:required'],
+		});
+		await writePartial(params, dir);
+		const manifestPath = path.join(dir, '.wonderpress/manifest/partials/hero.json');
+		const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
+		manifest.properties.push({ name: 'dek', type: 'string', required: false, description: '' });
+		fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2) + '\n');
+
+		const classBefore = fs.readFileSync(path.join(dir, 'src/partials/class-hero.php'), 'utf8');
+		syncPartialFromManifest(manifest, dir, { dryRun: true });
+		const classAfter = fs.readFileSync(path.join(dir, 'src/partials/class-hero.php'), 'utf8');
+		assert.equal(classBefore, classAfter);
+		assert.ok(!classAfter.includes("'dek'"));
+	} finally {
+		fs.removeSync(dir);
+	}
+});
+
+test('validateParams allows dual exposure with core Link partial embed', () => {
+	assert.doesNotThrow(() =>
+		validateParams({
+			class_name: 'Hero',
+			has_partial_template: true,
+			partial_template_name: 'hero.php',
+			is_acf_compatible: true,
+			properties: [
+				{
+					name: 'rich_link',
+					type: 'partial',
+					partial: 'link',
+					required: false,
+					description: '',
+				},
+			],
+			emit: { block: true, manifest: true },
+		}),
+	);
+});
+
+test('--block emits enum on select choices', async () => {
+	const dir = tmpTheme();
+	try {
+		const params = paramsFromJson(
+			JSON.stringify({
+				name: 'Banner',
+				acf_compatible: true,
+				template: true,
+				block: true,
+				properties: [
+					{
+						name: 'style',
+						type: 'select',
+						required: false,
+						description: '',
+						choices: { solid: 'Solid', outline: 'Outline' },
+					},
+				],
+			}),
+		);
+		validateParams(params);
+		await writePartial(params, dir);
+		const block = JSON.parse(fs.readFileSync(path.join(dir, 'blocks/banner/block.json'), 'utf8'));
+		assert.deepEqual(block.attributes.style.enum, ['solid', 'outline']);
 	} finally {
 		fs.removeSync(dir);
 	}
@@ -131,7 +260,7 @@ test('writePartial emits an agent manifest mirroring properties + artifact paths
 	const dir = tmpTheme();
 	try {
 		await writePartial(paramsFromFlags({ '--name': 'My_Cool_Thing', '--block': true, '--acf': true, '--prop': ['body:string:required'] }), dir);
-		const m = JSON.parse(fs.readFileSync(path.join(dir, '.wonderpress/manifest/my-cool-thing.json'), 'utf8'));
+		const m = JSON.parse(fs.readFileSync(path.join(dir, '.wonderpress/manifest/partials/my-cool-thing.json'), 'utf8'));
 		assert.equal(m.name, 'My_Cool_Thing');
 		assert.equal(m.slug, 'my-cool-thing');
 		assert.equal(m.block, 'wonderpress/my-cool-thing');
@@ -150,7 +279,7 @@ test('emit opt-outs: default suppresses block, --no-manifest suppresses manifest
 	try {
 		await writePartial(paramsFromFlags({ '--name': 'Solo', '--no-manifest': true }), dir);
 		assert.ok(!fs.existsSync(path.join(dir, 'blocks/solo/block.json')));
-		assert.ok(!fs.existsSync(path.join(dir, '.wonderpress/manifest/solo.json')));
+		assert.ok(!fs.existsSync(path.join(dir, '.wonderpress/manifest/partials/solo.json')));
 		assert.ok(fs.existsSync(path.join(dir, 'src/partials/class-solo.php')));
 	} finally {
 		fs.removeSync(dir);
@@ -170,7 +299,7 @@ test('block + manifest are identical across flag and json paths', async () => {
 	try {
 		await writePartial(paramsFromFlags(flags), t1);
 		await writePartial(paramsFromJson(JSON.stringify(spec)), t2);
-		for (const rel of ['blocks/testimonial/block.json', 'blocks/testimonial/render.php', '.wonderpress/manifest/testimonial.json']) {
+		for (const rel of ['blocks/testimonial/block.json', 'blocks/testimonial/render.php', '.wonderpress/manifest/partials/testimonial.json']) {
 			assert.equal(fs.readFileSync(path.join(t1, rel), 'utf8'), fs.readFileSync(path.join(t2, rel), 'utf8'), rel);
 		}
 	} finally {
@@ -251,7 +380,7 @@ test('namespace: it reaches block.json, its category, and the manifest together'
 		assert.equal(block.name, 'acme/testimonial');
 		assert.equal(block.category, 'acme', 'the inserter groups a project under the project');
 
-		const m = JSON.parse(fs.readFileSync(path.join(dir, '.wonderpress/manifest/testimonial.json'), 'utf8'));
+		const m = JSON.parse(fs.readFileSync(path.join(dir, '.wonderpress/manifest/partials/testimonial.json'), 'utf8'));
 		assert.equal(m.block, 'acme/testimonial', 'the manifest records it, so it can be read back');
 	} finally {
 		fs.removeSync(dir);
@@ -275,7 +404,7 @@ test('namespace: a writer called without one resolves it, rather than defaulting
 		assert.equal(block.name, 'acme/hero');
 		assert.equal(block.category, 'acme');
 
-		const m = JSON.parse(fs.readFileSync(path.join(themeDir, '.wonderpress/manifest/hero.json'), 'utf8'));
+		const m = JSON.parse(fs.readFileSync(path.join(themeDir, '.wonderpress/manifest/partials/hero.json'), 'utf8'));
 		assert.equal(m.block, 'acme/hero', 'block.json and the manifest must never disagree');
 	} finally {
 		fs.removeSync(root);
@@ -376,6 +505,81 @@ test('--no-template survives the merge, template name and all', () => {
 	const params = mergeWizardAnswers({ class_name: 'Hero' }, { '--no-template': true });
 	assert.equal(params.has_partial_template, false);
 	assert.equal(params.partial_template_name, 'hero.php', 'still named, just not created');
+});
+
+test('paramsFromFlags + --sub and paramsFromJson agree on a repeater', () => {
+	const flags = paramsFromFlags({
+		'--name': 'Testimonials',
+		'--acf': true,
+		'--prop': ['items:repeater'],
+		'--sub': ['items:quote:string:required', 'items:author:string'],
+	});
+	const json = paramsFromJson(JSON.stringify({
+		name: 'Testimonials',
+		acf_compatible: true,
+		properties: [{
+			name: 'items',
+			type: 'repeater',
+			required: false,
+			properties: [
+				{ name: 'quote', type: 'string', required: true },
+				{ name: 'author', type: 'string' },
+			],
+		}],
+	}));
+	assert.deepEqual(flags.properties, json.properties);
+});
+
+test('writePartial maps image/link/repeater formats for ACF-compatible partials', async () => {
+	const dir = tmpTheme();
+	try {
+		const spec = {
+			name: 'Hero',
+			acf_compatible: true,
+			properties: [
+				{ name: 'headline', type: 'string', required: true },
+				{ name: 'photo', type: 'image' },
+				{ name: 'cta', type: 'link' },
+				{
+					name: 'items',
+					type: 'repeater',
+					properties: [{ name: 'quote', type: 'string', required: true }],
+				},
+			],
+		};
+		const params = paramsFromJson(JSON.stringify(spec));
+		validateParams(params);
+		await writePartial(params, dir);
+
+		const m = JSON.parse(fs.readFileSync(path.join(dir, '.wonderpress/manifest/partials/hero.json'), 'utf8'));
+		assert.equal(m.acf_compatible, true);
+		assert.equal(m.acf, undefined);
+		assert.equal(m.properties.find((p) => p.name === 'items').properties[0].name, 'quote');
+
+		const php = fs.readFileSync(path.join(dir, 'src/partials/class-hero.php'), 'utf8');
+		assert.match(php, /'photo' => array\([\s\S]*'format' => 'array'/);
+		assert.match(php, /'cta' => array\([\s\S]*'format' => 'array'/);
+		assert.match(php, /'items' => array\([\s\S]*'format' => 'array'/);
+		assert.match(php, /'headline' => array\([\s\S]*'format' => 'string'/);
+		assert.ok(!fs.existsSync(path.join(dir, 'blocks/hero/block.json')));
+	} finally {
+		fs.removeSync(dir);
+	}
+});
+
+test('validateParams rejects acf.location on partial manifests', () => {
+	assert.throws(
+		() => validateParams({
+			class_name: 'Hero',
+			has_partial_template: true,
+			partial_template_name: 'hero.php',
+			properties: [{ name: 'headline', type: 'string', required: false, description: '' }],
+			acf: { location: [[{ param: 'page_template', operator: '==', value: 'page-landing.php' }]] },
+			is_acf_compatible: true,
+			emit: { manifest: true },
+		}),
+		/acf\.location/,
+	);
 });
 
 test('properties typed in the wizard win; --prop fills in when none were', () => {
