@@ -27,6 +27,7 @@ export async function command(subcommand, args) {
     case 'create':
       await create(args['--name'] || null, {
         dir: args['--dir'] || null,
+        theme: args['--theme'] || null,
         lock: args['--lock'] ?? null,
         sections: args['--section'] || [],
       });
@@ -301,8 +302,16 @@ export async function create(templateName, opts) {
   const templateNameFileFriendly = templateNameLower.replaceAll('_', '-');
   const templateSlug = templateNameLower.replaceAll('_', '-');
 
-  const theme = await wordpress.getActiveTheme();
-  const themeDir = await wordpress.pathToThemesDir + '/' + theme.name;
+  let themeName = opts.theme || null;
+  if (!themeName) {
+    const theme = await wordpress.getActiveTheme();
+    if (!theme?.name) {
+      log.error('Could not determine the active theme. Pass --theme <name> (e.g. wonderpress).');
+      return false;
+    }
+    themeName = theme.name;
+  }
+  const themeDir = `${wordpress.pathToThemesDir}/${themeName}`;
 
   const templateTemplate = fs.readFileSync(new URL('./templates/template.mustache', import.meta.url), 'utf8');
   const templateFilePath = themeDir;

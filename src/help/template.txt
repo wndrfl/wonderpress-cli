@@ -13,6 +13,7 @@ COMMANDS
 CREATE OPTIONS
   --name <Name>             Template name (e.g. Landing → template-landing.php)
   --dir <path>              Project root (default: current directory)
+  --theme <name>            Theme slug when WordPress is not reachable (e.g. wp-env-only workflows)
   --lock <level>            Editor lock: all, insert, or false
   --section <id:partial>    Composition row, repeatable (e.g. hero-main:landing-hero)
 
