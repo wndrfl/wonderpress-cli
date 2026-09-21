@@ -170,7 +170,11 @@ export function parseSubFlag(str) {
  * image / link / repeater are stored as arrays (ACF payloads / row lists).
  **/
 export function phpFormatForType(type) {
-	if (type === 'image' || type === 'link' || type === 'partial' || type === 'repeater' || type === 'post_object') {
+	if (type === 'post_object') {
+		// ACF often returns WP_Post; blocks normalize to a post ID (int).
+		return 'object|array|integer';
+	}
+	if (type === 'image' || type === 'link' || type === 'partial' || type === 'repeater') {
 		return 'array';
 	}
 	if (type === 'select' || type === 'email') {

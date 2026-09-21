@@ -195,6 +195,7 @@ test('phpFormatForType maps media and repeaters to array', () => {
 	assert.equal(phpFormatForType('boolean'), 'boolean');
 	assert.equal(phpFormatForType('image'), 'array');
 	assert.equal(phpFormatForType('link'), 'array');
+	assert.equal(phpFormatForType('post_object'), 'object|array|integer');
 	assert.equal(phpFormatForType('repeater'), 'array');
 });
 
