@@ -21,16 +21,34 @@ someone else for. Owning an implementation decays. Owning an interface compounds
 
 | Phase | State |
 |---|---|
-| 0 — Re-home the plumbing | **Mostly done** — one item left (Vite) |
-| 1 — Formalize core + contract | **Mostly done** — one item left (core as a versioned package) |
-| 2 — Fire the spine + constrain the editor | **Mostly done** — theme.json, wrapper attributes and the curated suite shipped; the page lock dial is left |
-| 2b — Editor JavaScript | In progress — buildless editor-preview; Tier B rollout (`image`, `link`, `post_object` done) |
-| 3 — The AI layer | Not started |
+| 0 — Re-home the plumbing | **Mostly done** — one item left (Static Kit → Vite) |
+| 1 — Formalize core + contract | **Done** — core is a Composer dependency of the theme |
+| 2 — Fire the spine + constrain the editor | **Mostly done** — theme.json, wrappers, curated suite, page lock shipped; `contentOnly` withdrawn as a page-lock value; user Global Styles still leak |
+| 2b — Editor JavaScript | **Mostly done** — buildless `editor-preview.js`, dual types, and SSR fidelity pass shipped; InnerBlocks remains |
+| 3 — The AI layer | Not started — blocked on correctness primitives |
 | 4 — Optional Figma | Not started |
 
-Last verified: 2026-09-15, against CLI 2.6.0 / Static Kit 2.13.0.
+Last verified: 2026-09-21, against CLI 2.9.0 / core 2.2.0 / Static Kit 2.13.0.
 Phase 2 re-scoped 2026-09-14: block theme → hybrid theme.
 Lock dial split into page-lock and block-lock 2026-09-15.
+Product decisions below, 2026-09-21.
+
+### Decisions, 2026-09-21
+
+1. **Frozen layout, editable text is a page promise.** It is not what Gutenberg
+   does with `templateLock: 'contentOnly'` on the root. Until InnerBlocks exist
+   and text attributes carry `role: "content"`, page lock accepts only `'all'`,
+   `'insert'`, or `false`.
+2. **WordPress floor stays 6.6.** One custom `edit` for every WonderPress block.
+   WP 7 `supports.autoRegister` is not the inspector path (it cannot author
+   `object` / `array` attributes).
+3. **Strip user Global Styles** so `theme.json` wins. Opt-out per project. Not
+   shipped yet.
+4. **Curation stays off** until a project turns `WONDERPRESS_CURATE_BLOCKS` on.
+   `wonderpress init` does not enable it.
+5. **Order of work:** editor contract (docs matching code, then SSR fidelity)
+   → correctness primitives → Phase 3. The editor contract shipped later that
+   day; correctness primitives are now the gate.
 
 ---
 
@@ -44,13 +62,11 @@ Lock dial split into page-lock and block-lock 2026-09-15.
 | Local environment → wp-env / DDEV | ✅ **CLI 2.6.0** — `init --env wp-env`, opt-in |
 | Static Kit engine → Vite | ❌ still esbuild + sass directly |
 
-**Remaining: Vite.** Deferred on the rule "re-home it when something forces the
-question, not before" — the forcing function being `edit.js` / editor bundles.
-**As of Sep 2026 that has arrived**: visual fidelity in the editor requires an
-editor bundle (Phase 2b), and that bundle is a genuinely different job from
-Static Kit's site bundles — it resolves `@wordpress/*` against WordPress's own
-script registry as externals. Settle Vite deliberately as part of that arc
-rather than bolting another esbuild invocation on.
+**Remaining: Vite, for Static Kit, when Static Kit forces it.** Editor JavaScript
+did **not** force this. Phase 2b shipped buildless against WordPress's `wp.*`
+globals (`editor-preview.js` in wonderpress-core). There is no per-block
+`editorScript` and no editor bundler. Do not re-home Static Kit "because
+`edit.js`" — that justification is withdrawn.
 
 ### On the environment backend (shipped 2.6.0)
 
@@ -94,7 +110,7 @@ upgrade lever. See [ARCHITECTURE.md](ARCHITECTURE.md) for the full contract.
 
 ---
 
-## Phase 2 — Fire the spine, ship the slate
+## Phase 2 — Fire the spine, constrain the editor
 
 ### The spine fires ✅
 
@@ -110,19 +126,18 @@ wp-env run cli wp eval \
   'var_dump( WP_Block_Type_Registry::get_instance()->is_registered("wonderpress/testimonial") );'
 ```
 
-### Constraining the editor ⚠️ — mostly shipped, one piece left
+### Constraining the editor — mostly shipped
 
-The shipped theme was a classic PHP theme emitting blocks into an editor we had
-never constrained. As of Sep 2026 it has a constrained `theme.json`, blocks that
-carry their wrapper attributes, blocks published under the **project's**
-namespace rather than WonderPress's, and an opt-in curated suite. **The page
-lock dial is what remains.**
+The shipped theme is a classic PHP theme with a constrained `theme.json`, blocks
+that carry wrapper attributes, blocks published under the **project's**
+namespace rather than WonderPress's, an opt-in curated suite, and a page lock
+dial. See [docs/hybrid-theme-plan.md](docs/hybrid-theme-plan.md).
 
 > **Superseded, Sep 2026.** This arc was framed as "the slate": `theme.json`
 > *plus* `templates/` *plus* `parts/` — becoming a block theme, on the premise
 > that we could "adopt the block theme file format and refuse the Site Editor
 > workflow." Those turn out not to be cleanly separable, and the framing is
-> withdrawn. See [docs/hybrid-theme-plan.md](docs/hybrid-theme-plan.md).
+> withdrawn.
 
 `templates/index.html` is the single switch that makes WordPress treat a theme
 as a block theme, and it brings three things with it: the Site Editor appears,
@@ -153,46 +168,68 @@ classic theme does by default. `get_header()`, `the_content()`, `get_footer()`.
   `defaultSpacingSizes`; those flags govern what the **editor offers**, not what
   CSS is generated. The win is constraint, not bytes. Trimming the emitted CSS
   is a separate problem with a separate mechanism, and is not yet planned.
+
+  **User styles.** Decision (not shipped): filter `wp_theme_json_data_user` so
+  a client cannot write DB styles that outrank the file. Opt-out per project.
 - **The curated suite** — ✅ **Shipped**, wonderpress-core#7. Opt-in via
-  `WONDERPRESS_CURATE_BLOCKS`; 117 blocks become 6. The list comes from what
-  core actually registered, **not** from the manifests as originally planned:
-  the manifest indexes partials, the allowed list wants blocks, and core already
-  has them. That also keeps hand-written blocks working, which a
-  manifest-derived list would have left registered but un-insertable.
-- **The lock dial** — two dials, not one. *Page* lock (can this page be composed
-  at all) is a fact about the page and rides on the page template, via
-  `block_editor_settings_all`: `'all'` for code-rendered pages, `'contentOnly'`
-  for client-editable content in a frozen layout (the sweet spot most agencies
-  skip), `false` for open composition. *Block* lock (can this block's inner
-  content be rearranged) is a fact about the component and rides in the
-  manifest — but it governs `InnerBlocks`, which our blocks do not yet have, so
-  it waits on Phase 2b. The earlier framing put the page decision in the
-  component manifest; a page has one lock level and its components would each
-  claim one, with no rule to resolve the conflict.
-- **Wrapper attributes** — `render.php` must emit
-  `get_block_wrapper_attributes()`, or our blocks carry no standard block class
-  and any support we ever enable is inert.
+  `WONDERPRESS_CURATE_BLOCKS`; 117 blocks become 6. **Off until a project turns
+  it on** — including new `init`. The list comes from what WordPress actually
+  registered, **not** from the manifests: the manifest indexes partials, the
+  allowed list wants blocks. That also keeps hand-written blocks working.
+- **The lock dial** — two dials, not one. *Page* lock is a fact about the page
+  and rides on the page template via `block_editor_settings_all` /
+  `wonderpress_template_locks` / page-template manifests (`editor.lock`).
+  **Shipped.** Use `'all'` (nothing moves), `'insert'` (reorder only), or
+  `false` (open composition). `'contentOnly'` is **not** a page-lock value: at
+  the root, Gutenberg still allows add/remove/move. Frozen layout with
+  editable text waits on InnerBlocks plus `role: "content"` (Phase 2b). The
+  PHP validator still lists `contentOnly` until the lock pass removes it —
+  do not add new mappings that use it. *Block* lock (can this
+  block's inner content be rearranged) is a fact about the component and rides
+  in the manifest — it also waits on InnerBlocks.
+- **Wrapper attributes** — ✅ `render.php` emits
+  `get_block_wrapper_attributes()`.
 
 `templates/` and `parts/` are **dropped, not deferred**. The burden of proof is
 on anything that wants to reintroduce them.
 
 **Why the environment work came first:** none of this can be verified by
-asserting on emitted files. "Does `contentOnly` actually freeze layout" is
-load-and-click work, so this arc's cost is dominated by manual verification
-cycles. `./sandbox/bootstrap.sh --env wp-env --fresh` is now the loop.
+asserting on emitted files. Lock behaviour is load-and-click work.
+`./sandbox/bootstrap.sh --env wp-env --fresh` is the loop.
 
-### Editor JavaScript ❌ — newly forced
+### Editor JavaScript — shipped buildless; fidelity remaining
 
-A block registered only on the server has **no editor preview**: the client sees
-a placeholder, not the design. So "be as visual as possible in the editor, while
-still supporting full bespoke" cannot be met by the arc above, and it ends the
-"no `edit.js`, no editor bundle" deferral that the block work took on
-deliberately.
+A block registered only on the server has **no client `edit`**: WordPress stores
+the server metadata, but the inserter and canvas need `registerBlockType()` with
+an `edit`. Phase 2b ended the "no editor JavaScript" deferral.
 
-The approach — `ServerSideRender` for an accurate preview, locked `InnerBlocks`
-for in-place text editing, neither of which duplicates the partial's markup — is
-planned in [docs/editor-js-plan.md](docs/editor-js-plan.md). This is also the
-thing that forces the Vite question in Phase 0.
+**What shipped.** One buildless script in wonderpress-core
+(`assets/js/editor-preview.js`), enqueued on `enqueue_block_editor_assets`. It
+registers each theme block on the client, draws Inspector Controls from
+`window.wonderpressBlockSchemas` (manifest property types), and previews via
+`ServerSideRender` so the PHP partial stays the only source of HTML. Generated
+`block.json` has no `editorScript`. Dual-authorable types through `image`,
+`link`, `post_object`, `repeater`, and `partial` embeds are in
+`DUAL_AUTHORABLE_TYPES` with PHP normalization
+(`wonder_normalize_property_value`). Details:
+[docs/editor-js-plan.md](docs/editor-js-plan.md),
+[docs/property-value-shapes.md](docs/property-value-shapes.md).
+
+**Fidelity pass shipped, 2026-09-21.**
+
+- SSR uses POST for structured attributes, strips block-support attributes from
+  the response to avoid double wrappers, disables interactive preview HTML,
+  supplies a named error state, and warns when a required `wp.*` global is
+  absent. `ServerSideRender` already adds the current editor `post_id`; no
+  generated `usesContext` metadata is needed for preview parity.
+
+**What remains in this arc.**
+
+- InnerBlocks + content roles — the actual mechanism for "frozen layout,
+  editable text" and for block lock.
+- Attribute rename/retype migration (`partial sync --migrate`).
+
+Vite is not on this list.
 
 ### Correctness primitives ⚠️ — seeded, not built
 
@@ -214,9 +251,9 @@ dialog/disclosure behavior, visually-hidden, skip-link, heading-level manager,
 icon wrapper. "Card" or "Hero" have crossed into opinion — those are components,
 generate them.
 
-**Build these before Phase 3.** The argument for primitives is that an agent
-cannot ship an inaccessible button because the only button that exists is the
-correct one. That guardrail has to exist before the agent does.
+**Build these after the editor contract is honest, before Phase 3.** An agent
+that reads a stale ARCHITECTURE will invent a second editor. An agent that
+generates a Hero before a correct `img` exists will invent an inaccessible one.
 
 ---
 
@@ -239,8 +276,8 @@ The flag-driven refactor (Phase 1) was the hinge this turns on, and it is done.
 ## Phase 4 — Optional Figma
 
 Not started. **Tokens first** (Figma variables ↔ `theme.json`) — stable,
-structured, high-ROI, and it feeds the slate directly. Component-level Code
-Connect is the second, more advanced move, behind an opt-in flag.
+structured, high-ROI. Component-level Code Connect is the second, more advanced
+move, behind an opt-in flag.
 
 Hold the line at **handoff clarity**. Code stays canonical; Figma is a view onto
 the contract, never a dependency of it. Figma-as-production-source is the tar
@@ -255,6 +292,10 @@ pit — do not promise it internally.
 - Page builders. Never.
 - Headless WordPress — that need routes to Sanity instead.
 - Figma as a production source.
+- A Vite (or any) bundler for the block editor script, unless a future
+  constraint actually requires one.
+- WordPress 7 `autoRegister` as the WonderPress inspector.
+- `templates/` and `parts/`.
 
 **Platform boundary:** WordPress when an integrated CMS with WYSIWYG fidelity for
 non-technical clients is the point. Sanity when structured content with a custom
@@ -264,20 +305,14 @@ front end is the point.
 
 ## Recommended order
 
-1. **`theme.json`** (Phase 2) — cheap, reversible, and an immediate win on the
-   core blocks clients actually use. It cannot break "classic-capable," because
-   it does not change the theme's type.
-2. **Wrapper attributes in `render.php`** — small, self-contained, and it
-   unblocks everything downstream.
-3. **The curated suite and the lock dial** — the pieces that make the editor
-   ours rather than WordPress's.
-4. **Correctness primitives** into `[core]` — small, boring, high leverage, and
-   the guardrail Phase 3 depends on.
-5. ~~**Package wonderpress-core**~~ ✅ done — it is a Composer dependency of the
-   theme now, so `[core]` and `[base]` version together through one lock file.
-6. **Editor JavaScript** (Phase 2b) — the large one, and the one that takes the
-   Vite question with it.
-7. **Phase 3**, then Phase 4.
+1. ~~**`theme.json`**~~ ✅
+2. ~~**Wrapper attributes in `render.php`**~~ ✅
+3. ~~**Curated suite (opt-in) and page lock (`all` / `insert` / `false`)**~~ ✅
+4. ~~**Package wonderpress-core**~~ ✅
+5. ~~**Editor contract** — docs match code; SSR fidelity pass shipped.~~ ✅
+6. **Correctness primitives** into `[core]`.
+7. **InnerBlocks** — page-level frozen layout + block lock.
+8. **Phase 3**, then Phase 4.
 
 The wp-env default flip stays opportunistic: take it when something forces the
-question.
+question. Static Kit → Vite the same way.

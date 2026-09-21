@@ -95,8 +95,8 @@ once:
 ```php
 add_filter( 'wonderpress_template_locks', function () {
 	return array(
-		'page-landing.php' => 'all',          // bespoke, code-rendered
-		'default'          => 'contentOnly',  // text editable, layout frozen
+		'page-landing.php' => 'all',     // bespoke, code-rendered — nothing moves
+		'default'          => false,     // open composition
 	);
 } );
 ```
@@ -105,8 +105,10 @@ add_filter( 'wonderpress_template_locks', function () {
 left exactly as WordPress configured it — absent is not the same as `false`, so
 this cannot accidentally unlock something.
 
-`contentOnly` is the interesting one and the one most agencies skip: the client
-edits words, the layout does not move.
+Accepted values: `'all'` (nothing moves), `'insert'` (reorder only), `false`
+(open). Do not use `'contentOnly'` here — at the root of the editor Gutenberg
+still allows add/remove/move. Frozen layout with editable text is a later
+InnerBlocks feature, not a page-template lock.
 
 ## 5b. Locate ACF groups on the templates that own them
 

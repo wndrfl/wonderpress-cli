@@ -5,24 +5,19 @@ must produce the **same canonical value** on flat partial properties after
 construction. See [dual-authorable-types.md](dual-authorable-types.md) for the
 platform rule and tier rollout.
 
-Status: Tier A implemented. Tier B `image`, `link`, and `post_object` have block
-controls and PHP normalization; repeater and partial embeds remain backlog.
+Status: Tier A and Tier A+ implemented (`image`, `link`, `post_object`,
+`repeater`, `partial` embeds — see rollout checklist). Rich Link primitive
+(`partial: "link"`) remains a deferred profile.
 
 ## Hydration pipeline
 
 Partials should read **flat properties** (`$title`, `$photo`, …). Views must not
 branch on whether data came from ACF or from a block.
 
-| Path | Today | Target (Tier B) |
-| --- | --- | --- |
-| **ACF** | `wonder_partial_props()` → `{ acf: get_field( … ) }` → `attempt_acf_ingestion()` copies keys onto flat props | Unchanged |
-| **Block** | `new Partial( $attributes )` assigns flat keys from block JSON | Structured attributes **normalized** to the same shapes ACF ingestion produces |
-
-Planned hook (not implemented yet):
-
-`wonder_normalize_property_value( string $type, mixed $value, array $prop_def ): mixed`
-
-Call from block render or `Abstract_Partial` when hydrating from attributes.
+| Path | Today |
+| --- | --- |
+| **ACF** | `wonder_partial_props()` → `{ acf: get_field( … ) }` → `attempt_acf_ingestion()` copies keys onto flat props |
+| **Block** | `wonder_normalize_block_attributes()` / `wonder_normalize_property_value()` then `new Partial( $attributes )` — structured attributes reduced to the same shapes ACF ingestion produces |
 
 ## Global conventions
 

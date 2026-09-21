@@ -116,7 +116,13 @@ Emitting `block.json` for every low-level partial would hand editor-registration
 metadata to things that have no business carrying it.
 
 Blocks are dynamic and server-rendered: `render.php` news up the partial class
-and echoes `->render()`. There is no `edit.js` and no editor bundle.
+and echoes `->render()`. The PHP partial is the only source of HTML. Editor
+presence is one buildless script in wonderpress-core
+(`assets/js/editor-preview.js`): it calls `registerBlockType()` with an `edit`
+that draws Inspector Controls from the manifest schema and previews via
+`ServerSideRender`. Generated `block.json` has no `editorScript`. There is no
+per-block JSX and no editor bundler. See
+[docs/editor-js-plan.md](docs/editor-js-plan.md).
 
 ### The manifest tree
 
@@ -141,9 +147,11 @@ manifests and the theme filter declare placement.
 
 **Dual-authorable types:** When a partial is both ACF-compatible and exposed as
 a block, every property type must be authorable in ACF and in the block editor
-with the same value shape. Tier A (scalars) is enforced by the CLI today; Tier B
-(structured types) is backlog. See [docs/dual-authorable-types.md](docs/dual-authorable-types.md)
-and [docs/property-value-shapes.md](docs/property-value-shapes.md).
+with the same value shape. Tier A (scalars) and Tier A+ (`image`, `link`,
+`post_object`, `repeater`, `partial` embeds) are enforced by the CLI and
+normalized on the block path by `wonder_normalize_property_value()`. See
+[docs/dual-authorable-types.md](docs/dual-authorable-types.md) and
+[docs/property-value-shapes.md](docs/property-value-shapes.md).
 
 **Page-template manifests** (`.wonderpress/manifest/page-templates/<template>.json`, integer
 `schemaVersion`) declare the editor contract (`editor.lock`, `editor.native`) and

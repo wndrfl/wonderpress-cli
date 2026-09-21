@@ -1,6 +1,9 @@
 # Plan: the hybrid theme — a constrained editor, without becoming a block theme
 
-Status: not started. Replaces the "slate" framing in ROADMAP.md Phase 2.
+Status: mostly shipped. Replaces the "slate" framing in ROADMAP.md Phase 2.
+`theme.json`, curated suite, wrapper attributes, and page lock (`all` /
+`insert` / `false`) are in. Remaining: strip user Global Styles; do not treat
+`contentOnly` as a page-lock value (see §3a).
 
 ## The correction
 
@@ -154,24 +157,25 @@ page. A fact about the page, so it belongs to the page template: a bespoke
 landing page is locked, a standard content page is not.
 
 `block_editor_settings_all` receives the post being edited, so this is a small
-mapping in PHP from page template to lock level, declared once:
+mapping in PHP from page template to lock level, declared once. **Shipped**
+(`wonder_page_lock`, page-template `editor.lock`, `wonderpress_template_locks`).
+
+Accepted values (2026-09-21):
 
 - `templateLock: 'all'` — bespoke, code-rendered. Nothing moves.
-- `templateLock: 'contentOnly'` — client-editable content in a frozen layout.
-  The sweet spot most agencies skip.
+- `templateLock: 'insert'` — blocks may be reordered but not added or removed.
 - `templateLock: false` — open composition.
+
+Do not use `'contentOnly'` as a page-lock value. At the **root**, Gutenberg
+still allows add, remove, and move when `templateLock` is `contentOnly`. Frozen
+layout with editable text is a **page** promise; it is delivered later as a
+locked InnerBlocks container plus `role: "content"` on text attributes, not as
+this setting. `wonder_page_lock` still *accepts* the string until a lock pass
+removes it from the validator — that is debt, not a feature. See
+[editor-js-plan.md](editor-js-plan.md).
 
 Coarser structural locking, where a whole post type must have a fixed shape,
 uses `register_post_type`'s `template` and `template_lock` arguments.
-
-This still meets the goal the original section was reaching for — editability
-set at the contract rather than rediscovered per page. The contract for *page*
-editability is simply the page template, not the component. Declare it once, and
-every page on that template inherits it.
-
-**To verify, not assume:** `contentOnly` is well-established at the
-container/`InnerBlocks` level. Whether it behaves as wanted at post-type level
-needs a real editor session, not a reading of the docs.
 
 #### 3b. Block lock — can this block's insides be rearranged?
 
@@ -191,9 +195,9 @@ the `InnerBlocks` work in [editor-js-plan.md](editor-js-plan.md); shipping a
 
 #### Sequencing
 
-Build **3a now** — it is self-contained, PHP-side, and the piece that actually
-answers "bespoke pages and client-composed pages in one theme". Build **3b with
-`InnerBlocks`**, not before.
+**3a shipped** (without page-level `contentOnly`). Build **3b with
+`InnerBlocks`**, not before. Manifests or filters that already set
+`contentOnly` need an explicit migrate to `'all'`, `'insert'`, or `false`.
 
 ### 4. Wrapper attributes — the prerequisite
 
@@ -234,15 +238,16 @@ belongs to the component.
 
 ## Sequencing
 
-1. `theme.json` — cheap, reversible, immediate win on core blocks, and it
-   cannot break "classic-capable" because it does not touch the theme's type.
-2. Wrapper attributes in `render.php` — small, unblocks everything downstream.
-3. The curated suite off the manifests.
-4. The lock dial, manifest `lock` field, and `--lock`.
+1. ~~`theme.json`~~ ✅
+2. ~~Wrapper attributes in `render.php`~~ ✅
+3. ~~The curated suite (opt-in, off until a project turns it on)~~ ✅
+4. ~~Page lock (`all` / `insert` / `false`)~~ ✅ — block `lock` / `--lock` waits
+   on InnerBlocks.
+5. Strip user Global Styles (`wp_theme_json_data_user`) so the repo stays
+   canonical. Opt-out per project. Not shipped.
 
-Then the editor-JS arc, which is the genuinely large one — see
-[editor-js-plan.md](editor-js-plan.md). Visual fidelity in the editor is the one
-requirement none of the above delivers.
+Editor JS (preview + inspector) shipped buildless; remaining work is in
+[editor-js-plan.md](editor-js-plan.md).
 
 ## Repos
 
