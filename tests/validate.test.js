@@ -241,6 +241,21 @@ test('buildDefaultTemplateManifest includes schemaVersion and template filename'
 	assert.equal(data.editor.native.blockEditor, false);
 });
 
+test('page template locks reject contentOnly at the root', () => {
+	assert.throws(
+		() => buildDefaultTemplateManifest('template-landing.php', { lock: 'contentOnly' }),
+		/Use: all, insert, or false/,
+	);
+
+	const result = validateTemplateManifest({
+		schemaVersion: TEMPLATE_MANIFEST_SCHEMA_VERSION,
+		template: 'template-landing.php',
+		editor: { lock: 'contentOnly' },
+	});
+	assert.equal(result.ok, false);
+	assert.ok(result.errors.includes('editor.lock must be all, insert, or false.'));
+});
+
 test('validateTemplateManifest rejects bad schemaVersion and unknown partials', () => {
 	const good = validateTemplateManifest(
 		buildDefaultTemplateManifest('template-landing.php', {

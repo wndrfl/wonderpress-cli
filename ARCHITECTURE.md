@@ -81,6 +81,12 @@ Design surface stays in the theme: templates, `theme.json`, the partial view
 files, `style.css`, and the per-project decisions inside `inc/setup.php`
 (navigation locations, image sizes, text domain).
 
+Core keeps `theme.json` authoritative by replacing the user origin on
+`wp_theme_json_data_user`; otherwise a `wp_global_styles` database record can
+outrank the file without producing a diff. A project intentionally using
+database-backed Global Styles opts out through
+`wonderpress_strip_user_global_styles`.
+
 **Anything moved into the package ships with the filter that lets a project opt
 out.** `wonderpress_asset_candidates` replaces the bundle paths,
 `wonderpress_theme_supports` declines or adds a support,

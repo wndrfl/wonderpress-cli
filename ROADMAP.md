@@ -23,7 +23,7 @@ someone else for. Owning an implementation decays. Owning an interface compounds
 |---|---|
 | 0 — Re-home the plumbing | **Mostly done** — one item left (Static Kit → Vite) |
 | 1 — Formalize core + contract | **Done** — core is a Composer dependency of the theme |
-| 2 — Fire the spine + constrain the editor | **Mostly done** — theme.json, wrappers, curated suite, page lock shipped; `contentOnly` withdrawn as a page-lock value; user Global Styles still leak |
+| 2 — Fire the spine + constrain the editor | **Done** — hybrid theme, wrappers, opt-in curated suite, page lock, and repo-authoritative Global Styles |
 | 2b — Editor JavaScript | **Mostly done** — buildless `editor-preview.js`, dual types, and SSR fidelity pass shipped; InnerBlocks remains |
 | 3 — The AI layer | Not started — blocked on correctness primitives |
 | 4 — Optional Figma | Not started |
@@ -42,8 +42,8 @@ Product decisions below, 2026-09-21.
 2. **WordPress floor stays 6.6.** One custom `edit` for every WonderPress block.
    WP 7 `supports.autoRegister` is not the inspector path (it cannot author
    `object` / `array` attributes).
-3. **Strip user Global Styles** so `theme.json` wins. Opt-out per project. Not
-   shipped yet.
+3. **Strip user Global Styles** so `theme.json` wins. ✅ Shipped; opt out per
+   project with `wonderpress_strip_user_global_styles`.
 4. **Curation stays off** until a project turns `WONDERPRESS_CURATE_BLOCKS` on.
    `wonderpress init` does not enable it.
 5. **Order of work:** editor contract (docs matching code, then SSR fidelity)
@@ -169,8 +169,9 @@ classic theme does by default. `get_header()`, `the_content()`, `get_footer()`.
   CSS is generated. The win is constraint, not bytes. Trimming the emitted CSS
   is a separate problem with a separate mechanism, and is not yet planned.
 
-  **User styles.** Decision (not shipped): filter `wp_theme_json_data_user` so
-  a client cannot write DB styles that outrank the file. Opt-out per project.
+  **User styles.** ✅ Core filters `wp_theme_json_data_user` so database-backed
+  styles cannot outrank the file. A project that intentionally uses the Global
+  Styles UI opts out through `wonderpress_strip_user_global_styles`.
 - **The curated suite** — ✅ **Shipped**, wonderpress-core#7. Opt-in via
   `WONDERPRESS_CURATE_BLOCKS`; 117 blocks become 6. **Off until a project turns
   it on** — including new `init`. The list comes from what WordPress actually
@@ -182,9 +183,8 @@ classic theme does by default. `get_header()`, `the_content()`, `get_footer()`.
   **Shipped.** Use `'all'` (nothing moves), `'insert'` (reorder only), or
   `false` (open composition). `'contentOnly'` is **not** a page-lock value: at
   the root, Gutenberg still allows add/remove/move. Frozen layout with
-  editable text waits on InnerBlocks plus `role: "content"` (Phase 2b). The
-  PHP validator still lists `contentOnly` until the lock pass removes it —
-  do not add new mappings that use it. *Block* lock (can this
+  editable text waits on InnerBlocks plus `role: "content"` (Phase 2b).
+  PHP and CLI reject `contentOnly` in page-template mappings. *Block* lock (can this
   block's inner content be rearranged) is a fact about the component and rides
   in the manifest — it also waits on InnerBlocks.
 - **Wrapper attributes** — ✅ `render.php` emits

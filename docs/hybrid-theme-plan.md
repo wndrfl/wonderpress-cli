@@ -1,9 +1,9 @@
 # Plan: the hybrid theme — a constrained editor, without becoming a block theme
 
-Status: mostly shipped. Replaces the "slate" framing in ROADMAP.md Phase 2.
-`theme.json`, curated suite, wrapper attributes, and page lock (`all` /
-`insert` / `false`) are in. Remaining: strip user Global Styles; do not treat
-`contentOnly` as a page-lock value (see §3a).
+Status: shipped. Replaces the "slate" framing in ROADMAP.md Phase 2.
+`theme.json`, repo-authoritative Global Styles, curated suite, wrapper
+attributes, and page lock (`all` / `insert` / `false`) are in. `contentOnly`
+is rejected as a page-lock value (see §3a).
 
 ## The correction
 
@@ -25,6 +25,15 @@ begin the moment `templates/index.html` exists:
   that the repo tells the whole story.
 - Header and footer become editable template parts. We would be opening
   something classic never opened, then spending effort locking it back down.
+
+Classic themes can still acquire user-origin Global Styles through WordPress
+UI or APIs. wonderpress-core closes that remaining leak by replacing
+`wp_theme_json_data_user` with an empty user origin. Projects that intentionally
+want database-backed styles opt out with:
+
+```php
+add_filter( 'wonderpress_strip_user_global_styles', '__return_false' );
+```
 
 Meanwhile the requirement that looked like it needed a block theme — *clients
 compose a full page, but not the header or footer* — is the classic model
@@ -166,13 +175,11 @@ Accepted values (2026-09-21):
 - `templateLock: 'insert'` — blocks may be reordered but not added or removed.
 - `templateLock: false` — open composition.
 
-Do not use `'contentOnly'` as a page-lock value. At the **root**, Gutenberg
+`'contentOnly'` is rejected as a page-lock value. At the **root**, Gutenberg
 still allows add, remove, and move when `templateLock` is `contentOnly`. Frozen
 layout with editable text is a **page** promise; it is delivered later as a
 locked InnerBlocks container plus `role: "content"` on text attributes, not as
-this setting. `wonder_page_lock` still *accepts* the string until a lock pass
-removes it from the validator — that is debt, not a feature. See
-[editor-js-plan.md](editor-js-plan.md).
+this setting. See [editor-js-plan.md](editor-js-plan.md).
 
 Coarser structural locking, where a whole post type must have a fixed shape,
 uses `register_post_type`'s `template` and `template_lock` arguments.
@@ -243,8 +250,8 @@ belongs to the component.
 3. ~~The curated suite (opt-in, off until a project turns it on)~~ ✅
 4. ~~Page lock (`all` / `insert` / `false`)~~ ✅ — block `lock` / `--lock` waits
    on InnerBlocks.
-5. Strip user Global Styles (`wp_theme_json_data_user`) so the repo stays
-   canonical. Opt-out per project. Not shipped.
+5. ~~Strip user Global Styles (`wp_theme_json_data_user`) so the repo stays
+   canonical. Opt-out per project.~~ ✅
 
 Editor JS (preview + inspector) shipped buildless; remaining work is in
 [editor-js-plan.md](editor-js-plan.md).

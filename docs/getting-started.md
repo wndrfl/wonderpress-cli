@@ -71,6 +71,14 @@ derived colour as its own `theme.json` slot. Full reasoning in
 > if you want the editor constrained, but expect to maintain them alongside the
 > SCSS until that is resolved.
 
+WonderPress also discards database-backed user Global Styles, which otherwise
+outrank this file without producing a repository diff. A project that
+intentionally uses the Global Styles UI can opt out:
+
+```php
+add_filter( 'wonderpress_strip_user_global_styles', '__return_false' );
+```
+
 ## 4. Curate the editor
 
 A stock WordPress offers 117 blocks. Once you know which ones the client
