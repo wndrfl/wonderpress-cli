@@ -1,10 +1,13 @@
 import arg from 'arg';
+import * as agents from './agents.js';
 import * as block from './block.js';
 import * as core from './core.js';
 import * as env from './env/index.js';
+import * as format from './format.js';
 import * as help from './help.js';
 import * as lint from './lint.js';
 import * as log from './log.js';
+import * as mcp from './mcp.js';
 import * as partial from './partial.js';
 import * as readme from './readme.js';
 import * as server from './server.js';
@@ -34,9 +37,19 @@ export async function cli() {
     '--js': Boolean,
     '--no-manifest': Boolean,
     '--no-style': Boolean,
+    '--all': Boolean,
+    '--dry-run': Boolean,
+    '--properties-only': Boolean,
+    '--slug': String,
+    '--format': String,
 
     // partial remove
     '--with-block': Boolean,
+    '--confirm': Boolean,
+
+    // lint
+    '--axe': Boolean,
+    '--budget': Boolean,
 
     // template create
     '--lock': String,
@@ -82,7 +95,22 @@ export async function cli() {
     }
   );
 
+  format.configure(args);
+
+  if (args['--format'] && args['--format'] !== 'json') {
+    log.error(`Unknown --format "${args['--format']}" (expected json, or omit for human output).`);
+    process.exitCode = format.EXIT_USAGE;
+    return format.fail(
+      { code: 'usage', message: `Unknown --format "${args['--format']}"`, hint: 'Use --format json or omit the flag.' },
+      format.EXIT_USAGE,
+    );
+  }
+
   let cmd = args._[0];
+
+  if (cmd === 'mcp') {
+    format.setMcp();
+  }
 
   // Handle for no cmd
   if (cmd == undefined) {
@@ -121,8 +149,12 @@ export async function cli() {
 
   if (resolution.unknown) {
     log.error(`Unknown environment backend: ${resolution.unknown} (expected one of: ${env.names().join(', ')})`);
-    process.exitCode = 1;
-    return;
+    process.exitCode = format.EXIT_FAIL;
+    return format.fail({
+      code: 'env',
+      message: `Unknown environment backend: ${resolution.unknown}`,
+      hint: `Expected one of: ${env.names().join(', ')}`,
+    });
   }
 
   if (resolution.mismatch) {
@@ -159,8 +191,12 @@ export async function cli() {
       };
       const reasons = unsupported.map((f) => why[f] || 'its database is fixed at root/password/wordpress');
       log.error(`The ${backend.name} backend cannot honor ${unsupported.join(', ')} — ${[...new Set(reasons)].join('; ')}.\nDrop the flag, or use the host backend (omit --env).`);
-      process.exitCode = 1;
-      return;
+      process.exitCode = format.EXIT_FAIL;
+      return format.fail({
+        code: 'env',
+        message: `The ${backend.name} backend cannot honor ${unsupported.join(', ')}`,
+        hint: 'Drop the flag, or use the host backend (omit --env).',
+      });
     }
   }
 
@@ -192,12 +228,25 @@ export async function cli() {
     case 'version':
       await core.command('version', args);
       break;
+    case 'agents':
+      await agents.command(args._[1], args);
+      break;
+    case 'mcp':
+      await mcp.command(args);
+      break;
     default:
       // Unknown commands used to fall through to nothing at all: no message, no
       // non-zero exit. A typo looked exactly like success.
       log.error(`Unknown command: ${cmd}`);
-      help.show();
-      process.exitCode = 1;
+      if (!format.isJson()) {
+        help.show();
+      }
+      process.exitCode = format.EXIT_FAIL;
+      format.fail({
+        code: 'unknown_command',
+        message: `Unknown command: ${cmd}`,
+        hint: 'Run `wonderpress help`.',
+      });
       break;
   }
 }

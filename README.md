@@ -48,7 +48,17 @@ Sets up (or initializes) a "Wonderpress" flavored WordPress Development Environm
 
 #### `wonderpress lint [-f --fix]`
 
-Lints the current active WordPress theme against the [Wonderpress Coding Standards](https://github.com/wndrfl/wonderpress-development-environment/blob/master/phpcs.xml) (which is a slightly modified flavor of the [WordPress Coding Standards](https://developer.wordpress.org/coding-standards/wordpress-coding-standards/php/)). Optionally, Wonderpress can attempt to automatically "fix" lightweight issues if the `fix` or `-f` arguments are passed.
+Lints the current active WordPress theme against the [Wonderpress Coding Standards](https://github.com/wndrfl/wonderpress-development-environment/blob/master/phpcs.xml) (phpcs) **and** `partial check-drift`. Optionally, Wonderpress can attempt to automatically "fix" lightweight phpcs issues if the `fix` or `-f` arguments are passed. `--format json` prints `{ ok, data, error }`. `--axe` and `--budget` are reserved (currently skipped).
+
+Exit codes: `0` success, `1` phpcs or drift failure, `2` usage (for example, which theme is ambiguous).
+
+#### `wonderpress agents write`
+
+Writes `AGENTS.md` at the environment root from conventions plus live manifests, and a one-line `CLAUDE.md` that points at it. Regenerated after `init`, `partial create` / `sync`, and `template create`.
+
+#### `wonderpress mcp`
+
+Starts an MCP stdio server in this package. Tools call the same operations as the CLI. See `wonderpress mcp help`.
 
 #### `wonderpress readme create`
 

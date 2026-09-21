@@ -1,5 +1,6 @@
 import fs from 'fs-extra';
 import path from 'path';
+import * as format from './format.js';
 import * as log from './log.js';
 import mustache from 'mustache';
 import * as core from './core.js';
@@ -41,7 +42,12 @@ export async function command(subcommand, args) {
     default:
       if (subcommand) {
         log.error(`Unknown template subcommand: ${subcommand}`);
-        process.exitCode = 1;
+        process.exitCode = format.EXIT_FAIL;
+        format.fail({
+          code: 'unknown_command',
+          message: `Unknown template subcommand: ${subcommand}`,
+          hint: 'Run `wonderpress template help`.',
+        });
       }
       help.show('template');
       break;
@@ -225,10 +231,17 @@ export function removePageTemplate(themeDir, query, options = {}) {
 export async function list(args) {
   const themeDir = await resolveThemeDir(args);
   if (!themeDir) {
-    return false;
+    return format.fail({
+      code: 'theme',
+      message: 'Could not resolve the theme directory',
+      hint: 'Pass --theme <name> and --dir <env-root>.',
+    });
   }
 
   const rows = listPageTemplates(themeDir);
+  if (format.isJson()) {
+    return format.ok({ templates: rows });
+  }
   if (!rows.length) {
     log.info(`No page templates found in ${themeDir}. Create one with \`wonderpress template create --name <Name>\`.`);
     return true;
@@ -360,6 +373,23 @@ export async function create(templateName, opts) {
   log.success(`Template manifest created: ${manifestPath}`);
 
   await staticCli.template.create(`${themeDir}/static`, templateNameFileFriendly);
+
+  try {
+    const agents = await import('./agents.js');
+    agents.writeAgentFiles({ root: process.cwd(), themeDir });
+  } catch (err) {
+    log.warn(`Could not refresh AGENTS.md: ${err.message}`);
+  }
+
+  if (format.isJson()) {
+    return format.ok({
+      template: fileName,
+      lock: validated.data.editor?.lock ?? null,
+      sections: flattenTemplateComposition(validated.data.composition || []).length,
+    });
+  }
+
+  return true;
 }
 
 /**

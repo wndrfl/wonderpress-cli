@@ -3,6 +3,7 @@ import * as config from './config.js';
 import * as env from './env/index.js';
 import fs from 'fs-extra';
 import inquirer from 'inquirer';
+import * as format from './format.js';
 import * as log from './log.js';
 import os from 'os';
 import path from 'path';
@@ -100,7 +101,7 @@ export async function command(subcommand, args) {
       await init(args['--dir'] || null, resolveInitConfig(args, process.env));
       break;
     case 'version':
-      await version({});
+      version(args);
       break;
   }
 
@@ -492,6 +493,19 @@ export async function init(dir, initConfig) {
 
   reportWhereTheSiteIs(backend, initConfig);
 
+  try {
+    const agents = await import('./agents.js');
+    const themeName = (initConfig && initConfig.theme) || wordpress.themesOnDisk()[0];
+    if (themeName) {
+      agents.writeAgentFiles({
+        root: process.cwd(),
+        themeDir: `${wordpress.pathToThemesDir}/${themeName}`,
+      });
+    }
+  } catch (err) {
+    log.warn(`Could not write AGENTS.md: ${err.message}`);
+  }
+
   return true;
 }
 
@@ -750,7 +764,15 @@ export async function setCwdToEnvironmentRoot() {
 /**
  * Get the current version.
  **/
-export function version() {
+export function version(args = {}) {
+  const data = {
+    name: pkg.name,
+    version: pkg.version,
+  };
+  if (format.isJson()) {
+    return format.ok(data);
+  }
   log.raw(`Wonderpress CLI ${pkg.version}`);
+  return true;
 }
 

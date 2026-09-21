@@ -1,0 +1,19 @@
+wonderpress agents — generate the agent instruction file
+
+Writes AGENTS.md at the environment root from conventions plus the live
+manifests. CLAUDE.md is a one-line pointer at AGENTS.md.
+
+Do not hand-edit the generated index; run `agents write` (or create/sync a
+partial) to refresh it.
+
+COMMANDS
+  agents write             Write AGENTS.md and CLAUDE.md
+
+OPTIONS
+  --theme <name>           Theme to index (otherwise the only theme on disk)
+  --dir <path>             Environment root
+  --format json            Machine-readable envelope
+
+EXAMPLES
+  wonderpress agents write
+  wonderpress agents write --theme acme --format json

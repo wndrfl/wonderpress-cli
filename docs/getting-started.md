@@ -299,6 +299,32 @@ the PHP partial stays the only source of markup.
   ordinary WordPress behaviour for theme-provided blocks, but it is worth
   knowing before you switch a live site.
 
+## 8. Agents
+
+`wonderpress init` writes `AGENTS.md` at the environment root (and a one-line
+`CLAUDE.md` that points at it). Refresh with `wonderpress agents write` after
+you invent components by hand; `partial create` / `sync` and `template create`
+already regenerate it.
+
+`--format json` on list, check-drift, lint, and version prints
+`{ "ok", "data", "error" }` on stdout and nothing else. Exit `0` / `1` / `2`.
+
+To drive the same operations from Cursor, add `.cursor/mcp.json`:
+
+```json
+{
+  "mcpServers": {
+    "wonderpress": {
+      "command": "wonderpress",
+      "args": ["mcp"]
+    }
+  }
+}
+```
+
+Run Cursor from the environment root. `wonderpress mcp help` lists the tools.
+Removes require `confirm: true`. `init`, `destroy`, and `server` are not tools.
+
 ## Upgrading wonderpress-core
 
 wonderpress-core is a Composer dependency of the theme, declared in

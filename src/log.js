@@ -1,4 +1,5 @@
 import colors from 'colors';
+import * as format from './format.js';
 
 // Stylize console output
 colors.setTheme({
@@ -10,20 +11,31 @@ colors.setTheme({
 	error: ['bold','red']
 });
 
+function write(line) {
+	if (format.isJson()) {
+		return;
+	}
+	if (format.isMcp()) {
+		process.stderr.write(`${line}\n`);
+		return;
+	}
+	console.log(line);
+}
+
 export function error(msg) {
-	console.log(`Wonderpress ${'ERROR'.meta}: ${msg.error}`);
+	write(`Wonderpress ${'ERROR'.meta}: ${msg.error}`);
 }
 
 export function info(msg) {
-	console.log(`Wonderpress ${'INFO'.meta}: ${msg.info}`);
+	write(`Wonderpress ${'INFO'.meta}: ${msg.info}`);
 }
 
 export function instructions(msg) {
-	console.log(`Wonderpress ${'INSTRUCTIONS'.instructions}:  ${msg.instructions}`);
+	write(`Wonderpress ${'INSTRUCTIONS'.instructions}:  ${msg.instructions}`);
 }
 
 export function raw(msg) {
-  console.log(`${msg.info}`);
+  write(`${msg.info}`);
 }
 
 /**
@@ -31,6 +43,9 @@ export function raw(msg) {
  * Used by the `list` commands so their output stays scannable.
  **/
 export function table(headers, rows) {
+	if (format.quietStdout()) {
+		return;
+	}
 	const widths = headers.map((header, i) => Math.max(String(header).length, ...rows.map((row) => String(row[i] ?? '').length)));
 	const line = (cells) => cells.map((cell, i) => String(cell ?? '').padEnd(widths[i])).join('  ').trimEnd();
 
@@ -41,9 +56,9 @@ export function table(headers, rows) {
 }
 
 export function success(msg) {
-  console.log(`Wonderpress ${'SUCCESS'.meta}: ${msg.success}`);
+	write(`Wonderpress ${'SUCCESS'.meta}: ${msg.success}`);
 }
 
 export function warn(msg) {
-	console.log(`Wonderpress ${'WARNING'.warn}: ${msg.warn}`);
+	write(`Wonderpress ${'WARNING'.warn}: ${msg.warn}`);
 }

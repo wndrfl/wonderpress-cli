@@ -30,6 +30,7 @@
   "author": "Johnnie Munger",
   "license": "MIT",
   "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.30.0",
     "@wndrfl/static-kit-cli": "^2.13.0",
     "arg": "^5.0.2",
     "colors": "^1.4.0",
@@ -40,6 +41,7 @@
     "open": "^9.1.0",
     "rc": "^1.2.8",
     "shelljs": "^0.8.5",
-    "sqlstring": "^2.3.3"
+    "sqlstring": "^2.3.3",
+    "zod": "^4.6.5"
   }
 }

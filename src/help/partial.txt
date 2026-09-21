@@ -44,6 +44,8 @@ CREATE OPTIONS
                            or --acf)
   --json <spec|@file>      Create from a JSON spec instead of flags
   --theme <name>           Target a theme by name, skipping the active lookup
+  --format json            Machine-readable envelope (list, sync --dry-run,
+                           check-drift)
 
 SYNC OPTIONS
   --all                    Sync every partial manifest in the theme

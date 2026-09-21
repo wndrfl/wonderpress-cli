@@ -1,0 +1,28 @@
+wonderpress mcp — MCP stdio server
+
+Exposes the same deterministic CLI operations as Model Context Protocol tools
+so an agent is a second client of the CLI, not a second codebase.
+
+Reads: partial_list, block_list, template_list, partial_get,
+partial_check_drift, lint_theme.
+
+Writes: partial_create, partial_sync, block_create, template_create.
+Removes require confirm: true. init, destroy, and server are not tools.
+
+Resources: manifest://partials/{slug}, manifest://page-templates/{id}
+
+Cursor (project .cursor/mcp.json):
+
+  {
+    "mcpServers": {
+      "wonderpress": {
+        "command": "wonderpress",
+        "args": ["mcp"]
+      }
+    }
+  }
+
+Run from the environment root so --dir defaults to cwd.
+
+EXAMPLES
+  wonderpress mcp

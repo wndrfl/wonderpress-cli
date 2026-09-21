@@ -1,6 +1,7 @@
 import fs from 'fs-extra';
 import path from 'path';
 import * as help from './help.js';
+import * as format from './format.js';
 import * as log from './log.js';
 import * as core from './core.js';
 import inquirer from 'inquirer';
@@ -34,7 +35,7 @@ import {
 	PARTIAL_MANIFEST_DIR,
 } from './validate.js';
 import * as config from './config.js';
-import { pickOne } from './prompt.js';
+import { pickOne, canAsk } from './prompt.js';
 import {
 	CORE_PARTIAL_MANIFEST_SLUGS,
 	installCorePartialManifest,
@@ -70,7 +71,12 @@ export async function command(subcommand, args) {
 			// the shape of this command group, not silence.
 			if (subcommand) {
 				log.error(`Unknown partial subcommand: ${subcommand}`);
-				process.exitCode = 1;
+				process.exitCode = format.EXIT_FAIL;
+				format.fail({
+					code: 'unknown_command',
+					message: `Unknown partial subcommand: ${subcommand}`,
+					hint: 'Run `wonderpress partial help`.',
+				});
 			}
 			help.show('partial');
 			break;
@@ -109,6 +115,15 @@ export async function resolveThemeDir(args) {
 	}
 
 	return wordpress.pathToThemesDir + '/' + themeName;
+}
+
+async function refreshAgents(themeDir) {
+	try {
+		const agents = await import('./agents.js');
+		agents.writeAgentFiles({ root: process.cwd(), themeDir });
+	} catch (err) {
+		log.warn(`Could not refresh AGENTS.md: ${err.message}`);
+	}
 }
 
 /**
@@ -196,16 +211,20 @@ export async function create(args) {
 		} else if (name) {
 			params = paramsFromFlags({ ...args, '--name': name });
 		} else {
-			// Seeded, not ignored. Flags passed alongside no name used to be
-			// discarded silently — `partial create --block` asked whether to make
-			// a block, with the default set to No, so answering out of habit threw
-			// away what had been explicitly asked for.
+			if (!canAsk(args)) {
+				log.error('No name provided. Usage: wonderpress partial create --name <Name> (or --json @spec.json).');
+				return format.fail({
+					code: 'usage',
+					message: 'partial create requires --name, --json, or an interactive TTY',
+					hint: 'wonderpress partial create --name Hero --prop title:string',
+				}, format.EXIT_USAGE);
+			}
 			params = await runWizard(themeDir, args);
 		}
 		validateParams(params, themeDir);
 	} catch (err) {
 		log.error(err.message);
-		return false;
+		return format.fail({ code: 'validation', message: err.message });
 	}
 
 	// The namespace is a property of the project, not of this invocation, so it
@@ -213,6 +232,14 @@ export async function create(args) {
 	params.namespace = resolveNamespace(themeDir);
 
 	await writePartial(params, themeDir);
+	await refreshAgents(themeDir);
+	if (format.isJson()) {
+		return format.ok({
+			name: params.class_name,
+			slug: classNameToSlug(params.class_name),
+			block: params.emit.block ? `${params.namespace}/${classNameToSlug(params.class_name)}` : null,
+		});
+	}
 	return true;
 }
 
@@ -792,18 +819,30 @@ export function syncPartialFromManifest(manifest, themeDir, options = {}) {
 	const propertiesOnly = !!options.propertiesOnly;
 
 	if (dryRun) {
+		const slug = classNameToSlug(params.class_name);
+		const plan = {
+			slug: manifest.slug,
+			name: manifest.name,
+			properties: params.properties.length,
+			files: {
+				class: artifacts.class || null,
+				block: params.emit.block ? `blocks/${slug}/block.json` : null,
+				render: params.emit.block && !propertiesOnly ? `blocks/${slug}/render.php` : null,
+				manifest: `${PARTIAL_MANIFEST_DIR}/${manifest.slug}.json`,
+			},
+		};
 		log.info(`Would sync partial class from manifest (${params.properties.length} properties).`);
 		if (artifacts.class) {
 			log.info(`  class: ${artifacts.class}`);
 		}
 		if (params.emit.block) {
-			log.info(`  block: blocks/${classNameToSlug(params.class_name)}/block.json`);
+			log.info(`  block: blocks/${slug}/block.json`);
 			if (!propertiesOnly) {
-				log.info(`  render: blocks/${classNameToSlug(params.class_name)}/render.php`);
+				log.info(`  render: blocks/${slug}/render.php`);
 			}
 		}
 		log.info(`  manifest: ${PARTIAL_MANIFEST_DIR}/${manifest.slug}.json (normalize)`);
-		return true;
+		return plan;
 	}
 
 	const classPath = writePartialClass(params, themeDir);
@@ -832,61 +871,94 @@ export function syncPartialFromManifest(manifest, themeDir, options = {}) {
 export async function sync(args) {
 	const themeDir = await resolveThemeDir(args);
 	if (!themeDir) {
-		return false;
+		return format.fail({
+			code: 'theme',
+			message: 'Could not resolve the theme directory',
+			hint: 'Pass --theme <name> and --dir <env-root>.',
+		});
 	}
 
 	const dryRun = args['--dry-run'] === true;
 	const propertiesOnly = args['--properties-only'] === true;
 	const syncAll = args['--all'] === true;
+	const plans = [];
 
 	if (syncAll) {
 		const manifests = readManifests(themeDir);
 		if (!manifests.length) {
+			if (format.isJson()) {
+				return format.ok({ synced: [], dryRun });
+			}
 			log.info(`No partial manifests in ${themeDir}.`);
 			return true;
 		}
 		for (const manifest of manifests) {
 			log.info(`Syncing ${manifest.name} (${manifest.slug})...`);
 			try {
-				syncPartialFromManifest(manifest, themeDir, { dryRun, propertiesOnly });
+				const result = syncPartialFromManifest(manifest, themeDir, { dryRun, propertiesOnly });
+				if (dryRun && result && result.slug) {
+					plans.push(result);
+				}
 			} catch (err) {
 				log.error(`${manifest.slug}: ${err.message}`);
-				return false;
+				return format.fail({ code: 'sync', message: `${manifest.slug}: ${err.message}` });
 			}
 		}
+		if (format.isJson()) {
+			return format.ok(dryRun ? { dryRun: true, plans } : { dryRun: false, synced: manifests.map((m) => m.slug) });
+		}
 		log.info(`Synced ${manifests.length} partial${manifests.length === 1 ? '' : 's'}.`);
+		if (!dryRun) {
+			await refreshAgents(themeDir);
+		}
 		return true;
 	}
 
 	const name = (args._ && args._[2]) || args['--name'] || args['--slug'];
 	if (!name) {
 		log.error('Pass a partial name or slug, or use --all. Example: wonderpress partial sync Scalar_Demo');
-		return false;
+		return format.fail({
+			code: 'usage',
+			message: 'Pass a partial name or slug, or use --all',
+			hint: 'wonderpress partial sync Scalar_Demo',
+		}, format.EXIT_USAGE);
 	}
 
 	const lookupSlug = nameToSlug(name);
 	if (!isSafeSlug(lookupSlug)) {
 		log.error(`Invalid partial name "${name}".`);
-		return false;
+		return format.fail({ code: 'usage', message: `Invalid partial name "${name}"` }, format.EXIT_USAGE);
 	}
 
 	const manifest = readManifest(themeDir, lookupSlug);
 	if (!manifest) {
 		log.error(`No partial manifest for "${name}". Run \`wonderpress partial list\`.`);
-		return false;
+		return format.fail({
+			code: 'not_found',
+			message: `No partial manifest for "${name}"`,
+			hint: 'wonderpress partial list',
+		});
 	}
 
 	try {
-		syncPartialFromManifest(manifest, themeDir, { dryRun, propertiesOnly });
+		const result = syncPartialFromManifest(manifest, themeDir, { dryRun, propertiesOnly });
+		if (dryRun && result && result.slug) {
+			plans.push(result);
+		}
 	} catch (err) {
 		log.error(err.message);
-		return false;
+		return format.fail({ code: 'sync', message: err.message });
 	}
 
 	if (!dryRun) {
 		log.warn(
 			'The partial class file was regenerated from the manifest template. Custom code in that class is not preserved — keep custom logic in separate helpers or the view template.',
 		);
+		await refreshAgents(themeDir);
+	}
+
+	if (format.isJson()) {
+		return format.ok(dryRun ? { dryRun: true, plans } : { dryRun: false, synced: [manifest.slug] });
 	}
 
 	return true;
@@ -898,7 +970,11 @@ export async function sync(args) {
 export async function checkDrift(args) {
 	const themeDir = await resolveThemeDir(args);
 	if (!themeDir) {
-		return false;
+		return format.fail({
+			code: 'theme',
+			message: 'Could not resolve the theme directory',
+			hint: 'Pass --theme <name> and --dir <env-root>.',
+		});
 	}
 
 	const checkAll = args['--all'] === true;
@@ -925,16 +1001,25 @@ export async function checkDrift(args) {
 			})();
 
 	if (!manifests) {
-		return false;
+		return format.fail({
+			code: 'usage',
+			message: name ? `No partial manifest for "${name}"` : 'Pass a partial name or slug, or use --all',
+			hint: 'wonderpress partial check-drift --all',
+		}, name && isSafeSlug(nameToSlug(name)) ? format.EXIT_FAIL : format.EXIT_USAGE);
 	}
 	if (!manifests.length) {
+		if (format.isJson()) {
+			return format.ok({ results: [] });
+		}
 		log.info(`No partial manifests in ${themeDir}.`);
 		return true;
 	}
 
 	let failed = false;
+	const results = [];
 	for (const manifest of manifests) {
 		const result = checkPartialDrift(manifest, themeDir);
+		results.push(result);
 		if (result.ok) {
 			log.success(`${manifest.slug}: in sync with manifest.`);
 			continue;
@@ -947,8 +1032,19 @@ export async function checkDrift(args) {
 	}
 
 	if (failed) {
-		process.exitCode = 1;
+		process.exitCode = format.EXIT_FAIL;
+		if (format.isJson()) {
+			return format.fail(
+				{ code: 'drift', message: 'One or more partials drifted from their manifests', hint: 'wonderpress partial sync --all' },
+				format.EXIT_FAIL,
+				{ results },
+			);
+		}
 		return false;
+	}
+
+	if (format.isJson()) {
+		return format.ok({ results });
 	}
 
 	log.info(`${manifests.length} partial${manifests.length === 1 ? '' : 's'} checked.`);
@@ -959,10 +1055,17 @@ export async function list(args) {
 
 	const themeDir = await resolveThemeDir(args);
 	if (!themeDir) {
-		return false;
+		return format.fail({
+			code: 'theme',
+			message: 'Could not resolve the theme directory',
+			hint: 'Pass --theme <name> and --dir <env-root>.',
+		});
 	}
 
 	const rows = listPartials(themeDir);
+	if (format.isJson()) {
+		return format.ok({ partials: rows });
+	}
 	if (!rows.length) {
 		log.info(`No partials found in ${themeDir}. Create one with \`wonderpress partial create --name <Name>\`.`);
 		return true;

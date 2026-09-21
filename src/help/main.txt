@@ -7,8 +7,10 @@ ENVIRONMENT
   init          Build a new environment: WordPress, the theme, and Static Kit
   server        Start (or `server stop`) the local development environment
   destroy       Tear the environment down, keeping the theme and its files
-  lint          Run phpcs over the theme
+  lint          Run phpcs and manifest drift over the theme
   version       Print the installed version
+  agents        Write AGENTS.md from conventions and manifests
+  mcp           MCP stdio server (same operations, agent client)
 
 AUTHORING
   partial       Reusable render primitives — the unit of markup in a theme

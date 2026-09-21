@@ -25,7 +25,7 @@ someone else for. Owning an implementation decays. Owning an interface compounds
 | 1 — Formalize core + contract | **Done** — core is a Composer dependency of the theme |
 | 2 — Fire the spine + constrain the editor | **Done** — hybrid theme, wrappers, opt-in curated suite, page lock, and repo-authoritative Global Styles |
 | 2b — Editor JavaScript | **Done** — buildless SSR preview, manifest-driven controls, dual types, and fidelity hardening |
-| 3 — The AI layer | Not started — Image/Link v1 is in; remaining primitives are not a gate |
+| 3 — The AI layer | **Shipped (v1)** — JSON CLI, generated AGENTS.md, MCP stdio; axe/budget specified not built |
 | 4 — Optional Figma | Not started |
 
 Last verified: 2026-09-21, against CLI 2.9.0 / core 2.2.0 / Static Kit 2.13.0.
@@ -287,15 +287,23 @@ should compose the Image primitive rather than invent an `<img>`.
 
 ## Phase 3 — The AI layer
 
-Not started. Wrap the deterministic operations as an MCP server; ship a
-`CLAUDE.md` generated from conventions + manifests; grow `lint` with an axe
-(a11y) pass and a Static Kit performance budget so standards are enforced rather
-than merely available.
+**v1 shipped.** The CLI is the API; an agent is a second client. Judgment
+(the PHP view and SCSS) stays with the author. Deterministic work stays in
+the CLI. No agent, or an agent you do not trust yet, and `wonderpress` still
+works.
 
-The division that makes this work: **one right answer → deterministic op.
-Judgment → agent.** The CLI is the API and the agent is one of two clients
-driving it — never two codebases. It degrades gracefully: no agent, agent
-offline, or a junior dev who does not trust it yet, and the CLI still works.
+| Slice | State |
+|---|---|
+| `--format json` envelope + exit `0`/`1`/`2` | ✅ list, check-drift, sync --dry-run, lint, version |
+| Generated `AGENTS.md` (`CLAUDE.md` pointer) | ✅ `wonderpress agents write`; refreshed on init/create/sync |
+| MCP stdio in this package | ✅ `wonderpress mcp` — same ops, not a second validator |
+| `lint` includes manifest drift | ✅ phpcs then `check-drift --all` |
+| axe pass | Specified — `wonderpress lint --axe` skips with a warning until implemented |
+| Static Kit dist budget | Specified — `wonderpress lint --budget` skips with a warning until implemented |
+
+MCP write tools: `partial_create`, `partial_sync`, `block_create`,
+`template_create`. Removes require `confirm: true`. `init` / `destroy` /
+`server` are not tools.
 
 The flag-driven refactor (Phase 1) was the hinge this turns on, and it is done.
 
@@ -339,7 +347,7 @@ front end is the point.
 4. ~~**Package wonderpress-core**~~ ✅
 5. ~~**Editor contract** — docs match code; SSR fidelity pass shipped.~~ ✅
 6. ~~**Correctness primitives**~~ ✅ v1 — Image/Link raised to spec; visually-hidden in Static Kit; skip-link stays theme chrome; heading manager deferred.
-7. **Phase 3**, then Phase 4.
+7. ~~**Phase 3**~~ ✅ v1 — JSON CLI, AGENTS.md, MCP stdio, lint+drift. axe and dist budget remain specified.
 
 The wp-env default flip stays opportunistic: take it when something forces the
 question. Static Kit → Vite the same way.
