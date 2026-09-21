@@ -177,14 +177,14 @@ Accepted values (2026-09-21):
 
 `'contentOnly'` is rejected as a page-lock value. At the **root**, Gutenberg
 still allows add, remove, and move when `templateLock` is `contentOnly`. Frozen
-layout with editable text is a **page** promise; it is delivered later as a
-locked InnerBlocks container plus `role: "content"` on text attributes, not as
-this setting. See [editor-js-plan.md](editor-js-plan.md).
+layout with in-place text editing is not part of the v1 contract; block content
+is authored through the sidebar. See
+[editor-js-plan.md](editor-js-plan.md).
 
 Coarser structural locking, where a whole post type must have a fixed shape,
 uses `register_post_type`'s `template` and `template_lock` arguments.
 
-#### 3b. Block lock — can this block's insides be rearranged?
+#### 3b. Block lock — deferred
 
 Whether the client may restructure a block's **inner** content: in a testimonial
 holding a quote and a citation, can the citation move above the quote, or only
@@ -194,17 +194,18 @@ create` / `block create`, carried through to `block.json`. Additive, so existing
 manifests without it read as the default and `static-kit-contract.test.js` stays
 untouched.
 
-**But it has nothing to act on yet.** A block's `templateLock` governs its
-`InnerBlocks`, and our blocks have none — they are server-rendered from the
-partial, with no inner content for a client to rearrange. So this half waits on
-the `InnerBlocks` work in [editor-js-plan.md](editor-js-plan.md); shipping a
-`--lock` flag before then would write a field nothing reads.
+**It has nothing to act on.** A block's `templateLock` governs its
+`InnerBlocks`, and WonderPress blocks deliberately use ServerSideRender plus
+sidebar attributes. Server-rendered HTML is inert; React `InnerBlocks` cannot
+mount inside its PHP shell without duplicating the shell in JavaScript or
+building a custom portal system. Neither trade belongs in v1. Do not ship a
+`--lock` flag that writes a field nothing reads.
 
 #### Sequencing
 
-**3a shipped** (without page-level `contentOnly`). Build **3b with
-`InnerBlocks`**, not before. Manifests or filters that already set
-`contentOnly` need an explicit migrate to `'all'`, `'insert'`, or `false`.
+**3a shipped** (without page-level `contentOnly`). **3b is deferred.**
+Manifests or filters that already set `contentOnly` need an explicit migrate to
+`'all'`, `'insert'`, or `false`.
 
 ### 4. Wrapper attributes — the prerequisite
 
@@ -248,8 +249,8 @@ belongs to the component.
 1. ~~`theme.json`~~ ✅
 2. ~~Wrapper attributes in `render.php`~~ ✅
 3. ~~The curated suite (opt-in, off until a project turns it on)~~ ✅
-4. ~~Page lock (`all` / `insert` / `false`)~~ ✅ — block `lock` / `--lock` waits
-   on InnerBlocks.
+4. ~~Page lock (`all` / `insert` / `false`)~~ ✅ — block `lock` / `--lock` is
+   deferred with InnerBlocks.
 5. ~~Strip user Global Styles (`wp_theme_json_data_user`) so the repo stays
    canonical. Opt-out per project.~~ ✅
 

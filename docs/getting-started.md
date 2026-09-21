@@ -115,8 +115,9 @@ this cannot accidentally unlock something.
 
 Accepted values: `'all'` (nothing moves), `'insert'` (reorder only), `false`
 (open). Do not use `'contentOnly'` here — at the root of the editor Gutenberg
-still allows add/remove/move. Frozen layout with editable text is a later
-InnerBlocks feature, not a page-template lock.
+still allows add/remove/move. Frozen layout with in-place text editing is not
+part of WonderPress's v1 editor contract; content is edited through block
+sidebar controls.
 
 ## 5b. Locate ACF groups on the templates that own them
 
@@ -288,8 +289,10 @@ the PHP partial stays the only source of markup.
 
 - **Type and spacing tokens are not connected** to Static Kit. Colour is.
 - **Blocks have no inner content.** They render from the partial and take their
-  values from the sidebar; a client cannot type directly into one. Locking a
-  block's *inner* structure therefore has nothing to act on yet.
+  values from the sidebar; a client cannot type directly into one.
+  ServerSideRender's HTML is inert, so live React InnerBlocks cannot occupy a
+  slot inside that PHP shell without duplicating markup. This is deferred by
+  design, not an unfinished flag.
 - **A theme switch takes the blocks with it.** wonderpress-core registers the
   blocks in the *active* theme's `blocks/` directory, so switching themes leaves
   already-published block content rendering as its raw HTML fallback. That is

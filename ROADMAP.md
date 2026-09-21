@@ -24,7 +24,7 @@ someone else for. Owning an implementation decays. Owning an interface compounds
 | 0 — Re-home the plumbing | **Mostly done** — one item left (Static Kit → Vite) |
 | 1 — Formalize core + contract | **Done** — core is a Composer dependency of the theme |
 | 2 — Fire the spine + constrain the editor | **Done** — hybrid theme, wrappers, opt-in curated suite, page lock, and repo-authoritative Global Styles |
-| 2b — Editor JavaScript | **Mostly done** — buildless `editor-preview.js`, dual types, and SSR fidelity pass shipped; InnerBlocks remains |
+| 2b — Editor JavaScript | **Done** — buildless SSR preview, manifest-driven controls, dual types, and fidelity hardening |
 | 3 — The AI layer | Not started — blocked on correctness primitives |
 | 4 — Optional Figma | Not started |
 
@@ -35,10 +35,10 @@ Product decisions below, 2026-09-21.
 
 ### Decisions, 2026-09-21
 
-1. **Frozen layout, editable text is a page promise.** It is not what Gutenberg
-   does with `templateLock: 'contentOnly'` on the root. Until InnerBlocks exist
-   and text attributes carry `role: "content"`, page lock accepts only `'all'`,
-   `'insert'`, or `false`.
+1. **Frozen layout with in-place text editing is not a v1 promise.** Root
+   `contentOnly` does not freeze page composition, and React `InnerBlocks`
+   cannot mount inside inert ServerSideRender HTML. Page lock accepts only
+   `'all'`, `'insert'`, or `false`; content remains sidebar-authored.
 2. **WordPress floor stays 6.6.** One custom `edit` for every WonderPress block.
    WP 7 `supports.autoRegister` is not the inspector path (it cannot author
    `object` / `array` attributes).
@@ -182,11 +182,8 @@ classic theme does by default. `get_header()`, `the_content()`, `get_footer()`.
   `wonderpress_template_locks` / page-template manifests (`editor.lock`).
   **Shipped.** Use `'all'` (nothing moves), `'insert'` (reorder only), or
   `false` (open composition). `'contentOnly'` is **not** a page-lock value: at
-  the root, Gutenberg still allows add/remove/move. Frozen layout with
-  editable text waits on InnerBlocks plus `role: "content"` (Phase 2b).
-  PHP and CLI reject `contentOnly` in page-template mappings. *Block* lock (can this
-  block's inner content be rearranged) is a fact about the component and rides
-  in the manifest — it also waits on InnerBlocks.
+  the root, Gutenberg still allows add/remove/move. PHP and CLI reject
+  `contentOnly` in page-template mappings.
 - **Wrapper attributes** — ✅ `render.php` emits
   `get_block_wrapper_attributes()`.
 
@@ -223,13 +220,18 @@ registers each theme block on the client, draws Inspector Controls from
   absent. `ServerSideRender` already adds the current editor `post_id`; no
   generated `usesContext` metadata is needed for preview parity.
 
-**What remains in this arc.**
+**Explicitly deferred, not Phase 2b gates.**
 
-- InnerBlocks + content roles — the actual mechanism for "frozen layout,
-  editable text" and for block lock.
-- Attribute rename/retype migration (`partial sync --migrate`).
+- **InnerBlocks / in-place editing.** ServerSideRender produces inert RawHTML;
+  Gutenberg's React `InnerBlocks` cannot occupy a slot inside that PHP shell.
+  Revisit only if WordPress provides a server-shell slot API, or if WonderPress
+  deliberately relaxes its no-duplicate-markup rule.
+- **Stored attribute migrations.** Renaming or retyping a property in live
+  block content still requires a project migration. A future versioned manifest
+  design may automate this; `partial sync --migrate` is not specified enough to
+  ship honestly.
 
-Vite is not on this list.
+Vite is not part of this arc.
 
 ### Correctness primitives ⚠️ — seeded, not built
 
@@ -311,8 +313,7 @@ front end is the point.
 4. ~~**Package wonderpress-core**~~ ✅
 5. ~~**Editor contract** — docs match code; SSR fidelity pass shipped.~~ ✅
 6. **Correctness primitives** into `[core]`.
-7. **InnerBlocks** — page-level frozen layout + block lock.
-8. **Phase 3**, then Phase 4.
+7. **Phase 3**, then Phase 4.
 
 The wp-env default flip stays opportunistic: take it when something forces the
 question. Static Kit → Vite the same way.

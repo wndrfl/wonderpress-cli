@@ -1,11 +1,11 @@
 # Plan: editor JavaScript — visual fidelity without duplicating markup
 
-Status: mostly shipped (Phase 2b). wonderpress-core enqueues one buildless
+Status: shipped (Phase 2b). wonderpress-core enqueues one buildless
 `editor-preview.js`: client `registerBlockType()`, ServerSideRender preview,
 Inspector Controls for every dual-authorable type (scalars plus `image`,
 `link`, `post_object`, `repeater`, `partial`). SSR fidelity pass shipped
-2026-09-21; InnerBlocks remains. Vite is not part of this arc — see ROADMAP
-Phase 0.
+2026-09-21. In-place InnerBlocks editing is explicitly deferred; Vite is not
+part of this arc — see ROADMAP Phase 0.
 
 ## Why the deferral has to end
 
@@ -48,19 +48,20 @@ This is the default for every emitted block. It is generic — the same edit
 component works for every WonderPress block, parameterized by name and
 attributes — which means **one shared editor bundle, not one per block.**
 
-### `InnerBlocks` with `templateLock` — in-place text editing
+### Why `InnerBlocks` is deferred
 
 What `ServerSideRender` cannot do is let someone type directly into the design.
-For that, the block renders its shell in PHP and nests real core blocks inside
-for the text: a locked shell with a quote paragraph and a citation heading in
-it. The client types in place, sees the actual design, and cannot restructure
-anything.
+The earlier plan claimed the PHP shell could nest live core blocks while staying
+the only source of markup. Gutenberg does not expose that composition:
+ServerSideRender inserts inert RawHTML, while `<InnerBlocks>` must exist in the
+React `edit` tree. It cannot mount into an arbitrary slot in the PHP response.
 
-The shell stays in PHP. The text is core blocks. Nothing is duplicated.
-
-Together these get close to full fidelity: layout and shells rendered by our
-PHP, text edited in place, everything else in the sidebar against a live
-preview.
+The available alternatives all violate a stronger constraint: reproduce the
+shell in JavaScript, or maintain a custom portal/slot layer over server HTML.
+WonderPress does neither in v1. Content is edited through the sidebar against
+the accurate PHP preview. Revisit only if WordPress adds a supported
+server-rendered shell slot, or if the no-duplicate-markup rule changes
+deliberately.
 
 ## Work
 
@@ -72,11 +73,9 @@ preview.
 3. **Client-side registration.** ✅ `register_block_type()` on the server plus
    `registerBlockType()` in the core script. No `editorScript` in generated
    `block.json` — core enqueues the script once for all theme blocks.
-4. **Opt-in `InnerBlocks`.** Not started. A partial declares that it accepts
-   inner content; the emitted block renders the shell and locks the children.
-   This is also how "frozen layout, editable text" is delivered at page level
-   (`role: "content"` on text attributes). Page-level `contentOnly` is not a
-   substitute — see ROADMAP decisions 2026-09-21.
+4. **Opt-in `InnerBlocks`.** Deferred for the architectural reason above.
+   Page-level `contentOnly` is not a substitute — see ROADMAP decisions
+   2026-09-21.
 5. **Keep the no-JS path working.** Front-end `render.php` still works if the
    editor script fails to load. The inserter will not, because WordPress still
    needs a client `edit`. Missing WordPress globals now name themselves in a
@@ -102,5 +101,5 @@ attributes get no auto-inspector).
 ## Dependencies
 
 Wrapper attributes (`get_block_wrapper_attributes()` in `render.php`) shipped.
-Hybrid page lock shipped with `'all'` / `'insert'` / `false`. InnerBlocks wait
-on this file's remaining work, not the reverse.
+Hybrid page lock shipped with `'all'` / `'insert'` / `false`. This arc has no
+remaining implementation gate.
