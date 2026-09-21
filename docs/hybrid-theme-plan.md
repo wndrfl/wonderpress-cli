@@ -270,5 +270,6 @@ Editor JS (preview + inspector) shipped buildless; remaining work is in
 
 - `templates/` and `parts/`. Dropped, not deferred. They arrive only if
   something concrete demands them, and the burden of proof is on them.
-- Correctness primitives — the next arc.
+- Correctness primitives — Image/Link v1 and a11y contracts shipped after this
+  arc; heading-level manager remains deferred.
 - Editor JavaScript — its own plan.

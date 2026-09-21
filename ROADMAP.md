@@ -25,7 +25,7 @@ someone else for. Owning an implementation decays. Owning an interface compounds
 | 1 — Formalize core + contract | **Done** — core is a Composer dependency of the theme |
 | 2 — Fire the spine + constrain the editor | **Done** — hybrid theme, wrappers, opt-in curated suite, page lock, and repo-authoritative Global Styles |
 | 2b — Editor JavaScript | **Done** — buildless SSR preview, manifest-driven controls, dual types, and fidelity hardening |
-| 3 — The AI layer | Not started — blocked on correctness primitives |
+| 3 — The AI layer | Not started — Image/Link v1 is in; remaining primitives are not a gate |
 | 4 — Optional Figma | Not started |
 
 Last verified: 2026-09-21, against CLI 2.9.0 / core 2.2.0 / Static Kit 2.13.0.
@@ -48,7 +48,8 @@ Product decisions below, 2026-09-21.
    `wonderpress init` does not enable it.
 5. **Order of work:** editor contract (docs matching code, then SSR fidelity)
    → correctness primitives → Phase 3. The editor contract shipped later that
-   day; correctness primitives are now the gate.
+   day; correctness primitives v1 (Image, Link, visually-hidden/skip-link
+   contracts) shipped after it. Heading-level manager stays deferred.
 
 ---
 
@@ -233,10 +234,7 @@ registers each theme block on the client, draws Inspector Controls from
 
 Vite is not part of this arc.
 
-### Correctness primitives ⚠️ — seeded, not built
-
-`wonderpress-core` has `link` and `image`, but they predate the brief and do not
-meet its bar (`image` has no `loading`/`decoding`).
+### Correctness primitives — v1 shipped (Image, Link, contracts)
 
 "Unopinionated" spans three axes and conflating them is the trap: **aesthetics**
 → ship nothing. **Architecture** → ship structure. **Correctness (a11y,
@@ -247,15 +245,43 @@ A primitive must pass all three tests: one correct implementation that is
 project-invariant; zero visual opinion; and removing it would make every project
 re-derive the same correctness and some would get it wrong.
 
-Candidate set, small and boring on purpose: link, button, form inputs, `img`
-(dimensions reserved → no CLS, `loading`/`decoding`, responsive srcset),
-dialog/disclosure behavior, visually-hidden, skip-link, heading-level manager,
-icon wrapper. "Card" or "Hero" have crossed into opinion — those are components,
-generate them.
+They are not all `Abstract_Partial` clones. Split the list:
 
-**Build these after the editor contract is honest, before Phase 3.** An agent
-that reads a stale ARCHITECTURE will invent a second editor. An agent that
-generates a Hero before a correct `img` exists will invent an inaccessible one.
+**Markup primitives (core partials)**
+
+- **Image** — default `loading="lazy"` and `decoding="async"`; width/height
+  when known (ACF size dims, never invented); native `srcset`/`sizes` from
+  `wp_get_attachment_image_*` unless the caller passes an art-direction
+  **array** (that is the only `<picture>` path); `fetchpriority` via attributes
+  only. kses allows `decoding`, `srcset`, `sizes`, `fetchpriority`.
+- **Link** — new-tab `rel` merges `noopener noreferrer` with caller tokens
+  (e.g. `nofollow`); `type` builds `mailto:` / `tel:` / permalink hrefs. No
+  visual variants. Simple `type: link` stays a property shape, distinct from
+  `partial: "link"`.
+
+**Contracts (not authorable partials)**
+
+- **Visually hidden** — Static Kit `static/src/scss/lib/_utilities.scss`,
+  WordPress class `.screen-reader-text`, `@use`'d from every page entry.
+- **Skip-link** — theme boilerplate in `header.php` (`href="#main"` after
+  `wp_body_open`). `:focus` reveal stays in theme `style.css`. Not a core
+  helper or manifest.
+
+**Deferred — harmful if naive**
+
+- **Heading-level manager** — do not ship a global counter or default
+  components to `h1`. Page title owns `h1`; reusable partials start at `h2`
+  unless passed a tag. A correct manager would be an explicit region helper,
+  not a side effect of `render()`. Until generated partials exist in volume,
+  document the convention only.
+- Later markup/behavior candidates: button (element choice, not styles), form
+  inputs, dialog/disclosure, icon wrapper (`aria-hidden` vs labelled SVG).
+
+"Card" or "Hero" have crossed into opinion — those are components, generate
+them.
+
+**Phase 3 is no longer blocked on Image/Link.** An agent that generates a Hero
+should compose the Image primitive rather than invent an `<img>`.
 
 ---
 
@@ -312,7 +338,7 @@ front end is the point.
 3. ~~**Curated suite (opt-in) and page lock (`all` / `insert` / `false`)**~~ ✅
 4. ~~**Package wonderpress-core**~~ ✅
 5. ~~**Editor contract** — docs match code; SSR fidelity pass shipped.~~ ✅
-6. **Correctness primitives** into `[core]`.
+6. ~~**Correctness primitives**~~ ✅ v1 — Image/Link raised to spec; visually-hidden in Static Kit; skip-link stays theme chrome; heading manager deferred.
 7. **Phase 3**, then Phase 4.
 
 The wp-env default flip stays opportunistic: take it when something forces the
