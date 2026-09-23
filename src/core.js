@@ -12,7 +12,7 @@ import sh from 'shelljs';
 import * as wordpress from './wordpress.js';
 import { resolveInitConfig } from './init-config.js';
 import { isValidNamespace, LEGACY_NAMESPACE } from './validate.js';
-import { importStaticKit } from './static-kit.js';
+import { importStaticKit, installStaticKit } from './static-kit.js';
 import pkg from '../package.json' with { type: 'json' };
 
 /**
@@ -360,14 +360,11 @@ export async function init(dir, initConfig) {
     await fs.removeSync(tmpDir);
 
     // Install Static Kit
-    const saveCwd = process.cwd();
     const staticCli = await importStaticKit();
-    await staticCli.core.installKit(`./wp-content/themes/wonderpress/static`, {
-      compile: true,
+    await installStaticKit(staticCli, `./wp-content/themes/wonderpress/static`, {
       init: true,
       name: '404,archive,author,category,index,page,search,single,tag',
     });
-    process.chdir(saveCwd);
   }
 
   // Record which backend built this environment, as soon as there is a root to

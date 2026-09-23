@@ -23,11 +23,10 @@ Each entry `@use`s / imports **only the partials that page needs**. That import
 list *is* the tree-shaking decision — a page ships nothing it doesn't use.
 
 **Exception: accessibility utilities.** `lib/_utilities.scss` holds the
-WordPress `.screen-reader-text` hide rules (clip-path, not `display: none`).
-Core-generated markup and the skip-link use that class, so every page entry
-must `@use 'lib/utilities';`. Do not invent a second classname. Skip-link
-`:focus` reveal styles stay in the theme `style.css` (theme chrome, slightly
-opinionated). Do not duplicate the hide rules in `style.css`.
+WordPress `.screen-reader-text` hide rules (clip-path, not `display: none`)
+and the `:focus` reveal for a skip-link. Core-generated markup and the
+skip-link use that class, so every page entry `@use`s `lib/utilities`. Do not
+invent a second classname. Theme `style.css` is WordPress metadata only.
 
 ```
 src/

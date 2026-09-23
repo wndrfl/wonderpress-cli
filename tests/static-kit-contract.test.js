@@ -25,11 +25,23 @@ test('node_modules is git-ignored (nothing vendored is committed)', () => {
 });
 
 test('init installs Static Kit via the CLI, not a vendored copy', () => {
-	const core = read('src/core.js');
 	assert.match(
-		core,
-		/staticCli\.core\.installKit\(\s*`\.\/wp-content\/themes\/wonderpress\/static`/,
-		'core.js must set up static/ via staticCli.core.installKit (which runs npm install)'
+		read('src/core.js'),
+		/installStaticKit\(\s*staticCli,\s*`\.\/wp-content\/themes\/wonderpress\/static`/,
+		'core.js must set up static/ through installStaticKit'
+	);
+	// installStaticKit is a wrapper, not a reimplementation: it works around
+	// Static Kit skipping an existing directory, then hands the install itself
+	// back to Static Kit — which is what runs npm install in static/.
+	assert.match(
+		read('src/static-kit.js'),
+		/staticCli\.core\.installKit\(/,
+		'static-kit.js must install via staticCli.core.installKit'
+	);
+	assert.match(
+		read('src/static-kit.js'),
+		/staticCli\.compile\.all\(/,
+		'static-kit.js must compile via staticCli.compile.all'
 	);
 });
 

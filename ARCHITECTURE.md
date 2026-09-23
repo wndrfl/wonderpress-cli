@@ -12,8 +12,9 @@ The CLI declares `@wndrfl/static-kit-cli` as a normal dependency in
 [`package.json`](package.json). It is consumed two ways:
 
 - **Programmatically** — `wonderpress init` calls `staticCli.core.installKit()`
-  ([`src/core.js`](src/core.js)), which copies the Static Kit framework into the
-  theme's `static/` directory and runs `npm install` there.
+  through `installStaticKit()` ([`src/static-kit.js`](src/static-kit.js)), which
+  copies the Static Kit framework into the theme's `static/` directory and runs
+  `npm install` there.
 - **By delegation** — `template create` and `partial create` call into Static
   Kit (see below) rather than reaching into `static/` themselves.
 
@@ -41,7 +42,7 @@ enforced by the `node_modules` rule in the shipped
 | Block registration, partial base classes, `wonder_*` helpers | **wonderpress-core** | `wp-content/themes/wonderpress/vendor/wndrfl/wonderpress-core` |
 | Static Kit asset convention (`static/dist/{css,js}/{body_id}`) | **wonderpress-core** | `.../vendor/.../inc/assets.php` |
 | Baseline theme supports (html5, align-wide, title-tag…) | **wonderpress-core** | `.../vendor/.../inc/setup.php` |
-| Menu locations, image sizes, text domain, `style.css` | **Theme** | `.../themes/wonderpress/inc/setup.php`, `inc/assets.php` |
+| Menu locations, image sizes, text domain, `style.css` | **Theme** | `.../themes/wonderpress/inc/setup.php`, `style.css` |
 
 ### wonderpress-core is a dependency of the theme
 
@@ -78,8 +79,9 @@ an edit to every site that ever shipped. The Vite migration in ROADMAP Phase 0
 is exactly that case.
 
 Design surface stays in the theme: templates, `theme.json`, the partial view
-files, `style.css`, and the per-project decisions inside `inc/setup.php`
-(navigation locations, image sizes, text domain).
+files, and the per-project decisions inside `inc/setup.php` (navigation
+locations, image sizes, text domain). `style.css` is the WordPress theme
+identity file (headers); it is not a stylesheet.
 
 Core keeps `theme.json` authoritative by replacing the user origin on
 `wp_theme_json_data_user`; otherwise a `wp_global_styles` database record can
@@ -94,10 +96,9 @@ out.** `wonderpress_asset_candidates` replaces the bundle paths,
 behaviours. Without the filter, moving something in trades upgradability for
 the ability to change it at all, which is not a trade worth making.
 
-`style.css` is the deliberate exception: it is the theme's own file, it carries
-the accessibility baseline, and it is the one stylesheet that should still load
-when the package is absent — so the theme enqueues it itself, at priority 5 so
-it precedes the compiled bundle in the cascade.
+`style.css` is WordPress metadata (the `Theme Name:` header). It is not
+enqueued. Front-end CSS is the Static Kit bundle, including the
+`.screen-reader-text` hide/focus rules in `lib/_utilities.scss`.
 
 The version constraint lives in the theme's `composer.json` and nowhere else.
 The CLI names the package (`core.CORE_PACKAGE`) and deliberately does not
@@ -220,6 +221,21 @@ wrote, so the CLI can only confirm Static Kit's **default** layout; under a
 custom `.staticrc` src layout the delegated artifacts are recorded as not
 written (and a removal warns about the file it cannot name) rather than
 recording a path that may be wrong.
+
+#### The known asymmetry: a scaffold that seeds `static/`
+
+`installKit` reads *any* existing `static/` as proof of an installation and
+returns — no framework, no `npm install`, no compile. The theme scaffold does
+seed that directory (`lib/_utilities.scss`, the accessibility utilities every
+page entry uses), so `init` would otherwise hand back a theme with no `dist/`
+at all, and exit 0 doing it.
+
+`installStaticKit()` ([`src/static-kit.js`](src/static-kit.js)) holds the seeded
+files aside, lets Static Kit install into a clean directory, puts them back, and
+only then compiles — so what the scaffold ships reaches `dist/`. It is the
+second exception to "the CLI never writes into `static/`", and like the first it
+belongs behind Static Kit: the fix there is for `installKit` to key off its own
+`.staticrc` rather than directory existence.
 
 ### Versioning
 
