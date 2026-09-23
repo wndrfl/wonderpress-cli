@@ -1,7 +1,14 @@
-wonderpress — build WordPress themes the Wonderpress way
+wonderpress — build WordPress themes from manifests
 
 USAGE
   wonderpress <command> [subcommand] [options]
+
+GLOBAL OPTIONS
+  --dir <path>             Environment root (default: detected project root)
+  --theme <name>           Target a theme by slug
+  --env <host|wp-env>      Backend (init records this in .wonderpressrc)
+  --format json            Machine-readable { ok, data, error } envelope
+  -h, --help               Help for this command
 
 ENVIRONMENT
   init          Build a new environment: WordPress, the theme, and Static Kit
@@ -18,5 +25,6 @@ AUTHORING
   template      Page templates — create, list, and remove
   readme        Generate a project README
 
-Run `wonderpress <command> help` for detail on any of these — start with
+Run `wonderpress <command> help` for detail. Start with
 `wonderpress partial help` if you are new; almost everything begins there.
+Requires Node.js 24+, WP-CLI, PHP, and Composer.

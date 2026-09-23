@@ -2,7 +2,7 @@ wonderpress agents — generate the agent instruction file
 
 Writes AGENTS.md at the environment root from conventions plus the live
 manifests. CLAUDE.md is a one-line pointer at AGENTS.md. Also adds the
-WonderPress MCP stdio server to `.mcp.json`, `.cursor/mcp.json`,
+Wonderpress MCP stdio server to `.mcp.json`, `.cursor/mcp.json`,
 `.vscode/mcp.json`, and `.codex/config.toml` (other servers in those
 files are left alone). A new entry pins process.execPath, this package's
 bin/wonderpress.js, and cwd to the environment root.

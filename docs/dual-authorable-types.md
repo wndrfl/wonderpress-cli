@@ -51,4 +51,4 @@ Shared keys live on the **property root**, not under `acf` (see property-value-s
 ## Tier B rollout
 
 See the checklist in [property-value-shapes.md](property-value-shapes.md#rollout-checklist).
-Implementation: [editor-js-plan.md](editor-js-plan.md) and [ROADMAP.md](../ROADMAP.md) Phase 2b.
+Implementation: [editor-js-plan.md](editor-js-plan.md).

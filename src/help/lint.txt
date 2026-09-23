@@ -1,0 +1,27 @@
+wonderpress lint — phpcs and manifest drift
+
+Runs PHPCS against the Wonderpress coding standards and `partial check-drift`
+on the active theme (or `--theme` / the only theme on disk).
+
+--fix / -f runs phpcbf on lightweight PHPCS issues. It does not repair
+manifest drift — use `wonderpress partial sync` for that.
+
+--axe and --budget are reserved and currently skipped.
+
+OPTIONS
+  -f, --fix                Auto-fix lightweight phpcs issues (phpcbf)
+  --theme <name>           Theme slug
+  --dir <path>             Environment root
+  --format json            Machine-readable envelope
+  --axe                    Reserved (currently skipped)
+  --budget                 Reserved (currently skipped)
+
+EXIT CODES
+  0                        Clean
+  1                        phpcs or drift failure
+  2                        Usage (for example, which theme is ambiguous)
+
+EXAMPLES
+  wonderpress lint
+  wonderpress lint --fix
+  wonderpress lint --format json

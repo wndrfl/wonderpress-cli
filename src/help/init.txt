@@ -15,6 +15,10 @@ ENVIRONMENT BACKENDS
   building. Both still need wp-cli, php and composer on PATH: wp-env replaces
   MySQL, not the PHP toolchain. Set WONDERPRESS_ENV to override per-invocation.
 
+  --namespace is written into page content as <namespace>/<slug>. Change it
+  later and existing blocks become unrecognized. Pin it at init; it is stored
+  in .wonderpressrc and does not drift.
+
 OPTIONS
   --dir <path>             Where to build it (default: current directory)
   --env <backend>          host (default) or wp-env
@@ -28,13 +32,11 @@ OPTIONS
   --wp-title <title>       Site title
   --admin-user / --admin-email / --admin-password
                            The first admin account. Password may also come from
-                           WP_ADMIN_PASSWORD.
+                           WP_ADMIN_PASSWORD. --admin-user is refused on
+                           wp-env (the first user is always `admin`).
   --theme <name>           Theme to activate (default: wonderpress)
-  --namespace <slug>       Block namespace for this project, recorded in
-                           .wonderpressrc. Blocks are emitted as
-                           <namespace>/<slug> and WordPress writes that into
-                           page content, so it is set once and never changed.
-                           Defaults to the theme slug.
+  --namespace <slug>       Block namespace for this project. Defaults to the
+                           theme slug. Set once.
   --skip-readme            Do not generate a README
 
 EXAMPLES
@@ -42,4 +44,4 @@ EXAMPLES
     --wp-url localhost:8080 --wp-title "My Site" \
     --admin-user admin --admin-email me@example.com
 
-  wonderpress init --env wp-env --yes --wp-title "My Site"
+  wonderpress init --env wp-env --yes --wp-title "My Site" --namespace acme

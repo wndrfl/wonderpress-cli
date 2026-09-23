@@ -1,0 +1,8 @@
+wonderpress version — print the installed CLI version
+
+OPTIONS
+  --format json            Machine-readable envelope
+
+EXAMPLES
+  wonderpress version
+  wonderpress --version
