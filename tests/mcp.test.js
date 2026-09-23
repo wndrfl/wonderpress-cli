@@ -73,15 +73,25 @@ test('MCP server advertises WonderPress display metadata and icon', () => {
 
 test('Static Kit is not a static import on the MCP load path', () => {
 	const staticImport = /from\s+['"]@wndrfl\/static-kit-cli['"]/;
-	for (const rel of ['core.js', 'partial.js', 'template.js']) {
+	for (const rel of ['mcp.js', 'core.js', 'partial.js', 'template.js']) {
 		const source = fs.readFileSync(path.join(SRC, rel), 'utf8');
 		assert.doesNotMatch(
 			source,
 			staticImport,
-			`${rel} must lazy-import Static Kit so MCP startup never loads sharp`,
+			`${rel} must not top-level-import Static Kit so MCP startup never loads sharp`,
 		);
-		assert.match(source, /import\(['"]@wndrfl\/static-kit-cli['"]\)/);
 	}
+	for (const rel of ['core.js', 'partial.js', 'template.js']) {
+		const source = fs.readFileSync(path.join(SRC, rel), 'utf8');
+		assert.match(
+			source,
+			/importStaticKit\(/,
+			`${rel} must load Static Kit through the lazy seam`,
+		);
+	}
+	const seam = fs.readFileSync(path.join(SRC, 'static-kit.js'), 'utf8');
+	assert.doesNotMatch(seam, staticImport);
+	assert.match(seam, /import\(['"]@wndrfl\/static-kit-cli['"]\)/);
 });
 
 test('partial_list works without needing a Static Kit write', async () => {
