@@ -6,7 +6,6 @@ import * as log from './log.js';
 import * as core from './core.js';
 import inquirer from 'inquirer';
 import mustache from 'mustache';
-import * as staticCli from '@wndrfl/static-kit-cli';
 import * as wordpress from './wordpress.js';
 import {
 	isValidClassName,
@@ -65,6 +64,9 @@ export async function command(subcommand, args) {
 			break;
 		case 'check-drift':
 			await checkDrift(args);
+			break;
+		case 'add-js':
+			await addJs(args);
 			break;
 		default:
 			// No subcommand (or an unrecognised one) means the user is looking for
@@ -486,6 +488,8 @@ export async function writePartial(params, themeDir) {
 	// That API only exists in newer static-kit-cli builds; a theme may have an
 	// older published version installed. Detect it up front so we never crash on
 	// a missing API and never record an artifact we did not actually write.
+	// Lazy-load so MCP/read paths never pull sharp at process startup.
+	const staticCli = await import('@wndrfl/static-kit-cli');
 	const componentApiAvailable = !!(staticCli.component && typeof staticCli.component.create === 'function');
 	const { wantsStyle, wantsScript, willEmitStyle, willEmitScript } = staticArtifacts(params, componentApiAvailable);
 
@@ -516,10 +520,7 @@ export async function writePartial(params, themeDir) {
 
 	const skipped = [!wroteStyle && wantsStyle ? 'style stub' : null, !wroteScript && wantsScript ? 'JS behavior class' : null].filter(Boolean).join(' and ');
 	if (skipped) {
-		const why = componentApiAvailable
-			? 'Static Kit wrote nothing at the expected default path — the theme has no configured static tree (`static/.staticrc`), or uses a custom src layout'
-			: 'the installed @wndrfl/static-kit-cli has no component.create API — upgrade Static Kit to enable per-partial static assets';
-		log.warn(`Skipped the ${skipped} for "${slug}": ${why}. It is not recorded in the manifest; the partial, block, and manifest were still written.`);
+		log.warn(`Skipped the ${skipped} for "${slug}": ${staticSkipReason(componentApiAvailable)}. It is not recorded in the manifest; the partial, block, and manifest were still written.`);
 	}
 
 	// block.json (opt-in editor wrapper) — a partial is NOT a block, so this is
@@ -568,6 +569,151 @@ export function staticArtifacts(params, apiAvailable) {
 		willEmitStyle: wantsStyle && !!apiAvailable,
 		willEmitScript: wantsScript && !!apiAvailable,
 	};
+}
+
+function staticSkipReason(apiAvailable) {
+	return apiAvailable
+		? 'Static Kit wrote nothing at the expected default path — the theme has no configured static tree (`static/.staticrc`), or uses a custom src layout'
+		: 'the installed @wndrfl/static-kit-cli has no component.create API — upgrade Static Kit to enable per-partial static assets';
+}
+
+/**
+ * Scaffold a JS behavior class onto an existing partial and record it.
+ *
+ * Same retrofit shape as `block create`: the partial already exists, the
+ * manifest is the index, and the result is identical to having passed `--js`
+ * at creation time. Unlike `block create`, this never overwrites author-owned
+ * JS — Static Kit's create always writeFileSyncs.
+ **/
+export async function addScript(themeDir, name) {
+
+	const lookupSlug = nameToSlug(name);
+	if (!isSafeSlug(lookupSlug)) {
+		log.error(`Invalid partial name "${name}". A component name resolves to a slug of lowercase letters, numbers, and dashes.`);
+		return false;
+	}
+
+	const manifest = readManifest(themeDir, lookupSlug);
+	if (!manifest) {
+		log.error(`No partial named "${name}" is recorded in this theme. A JS behavior class attaches to an existing partial, so create both at once with \`wonderpress partial create --name ${name} --js\`.`);
+		return false;
+	}
+
+	const artifacts = manifest.artifacts || {};
+	const slug = manifest.slug;
+	if (!artifacts.view) {
+		log.warn(`Skipped the JS behavior class for "${slug}": a behavior stub is only emitted for partials that render a view template.`);
+		return false;
+	}
+
+	const staticPaths = staticArtifactPaths(slug);
+	const recordedRel = artifacts.script;
+	const recordedAbs = recordedRel ? `${themeDir}/${recordedRel}` : null;
+	const defaultAbs = `${themeDir}/${staticPaths.script}`;
+	const recordedExists = !!(recordedAbs && fs.existsSync(recordedAbs));
+	const defaultExists = fs.existsSync(defaultAbs);
+
+	if (recordedRel && recordedExists) {
+		log.info(`"${manifest.name}" already has a JS behavior class at ${recordedRel}. Import and init it from the page entry that uses this partial.`);
+		return true;
+	}
+
+	let params;
+	try {
+		params = paramsFromManifest(manifest);
+		params.emit.script = true;
+		validateParams(params, themeDir);
+	} catch (err) {
+		log.error(`Cannot add JS to "${name}": ${err.message}`);
+		return false;
+	}
+
+	const staticCli = await import('@wndrfl/static-kit-cli');
+	const componentApiAvailable = !!(staticCli.component && typeof staticCli.component.create === 'function');
+
+	if (!defaultExists) {
+		if (componentApiAvailable) {
+			await staticCli.component.create(`${themeDir}/static`, slug, {
+				style: false,
+				script: true,
+			});
+		}
+	}
+
+	const wroteScript = fs.existsSync(defaultAbs);
+	if (!wroteScript) {
+		log.warn(`Skipped the JS behavior class for "${slug}": ${staticSkipReason(componentApiAvailable)}. It is not recorded in the manifest.`);
+		return false;
+	}
+
+	writeManifest(params, themeDir, {
+		style: !!artifacts.style,
+		script: true,
+	});
+	log.success(`JS behavior class ready at: ${staticPaths.script}`);
+	log.info('This file is not auto-wired. Import and construct it from the page JS entry that renders this partial.');
+	return true;
+}
+
+/**
+ * Add a JS behavior class to an existing partial (`partial add-js <Name>`).
+ **/
+export async function addJs(args) {
+
+	const themeDir = await resolveThemeDir(args);
+	if (!themeDir) {
+		return false;
+	}
+
+	let name = args._ && args._[2] ? args._[2] : args['--name'];
+
+	if (!name) {
+		const manifests = readManifests(themeDir);
+		const candidates = manifests.filter((m) => {
+			const artifacts = m.artifacts || {};
+			return !!artifacts.view && !artifacts.script;
+		});
+
+		name = await pickOne({
+			message: 'Which partial should get a JS behavior class?',
+			choices: candidates.map((p) => ({ name: `${p.name}  (${p.slug})`, value: p.name })),
+			empty: manifests.length
+				? `Every partial in this theme that has a view already has a JS behavior class (${manifests.length}). Nothing to add.`
+				: 'This theme has no partials yet. Create one first: wonderpress partial create <Name> --js',
+			usage: 'Usage: wonderpress partial add-js <Name>.',
+			args,
+		});
+
+		if (!name) {
+			return format.fail({
+				code: 'usage',
+				message: 'partial add-js requires a partial name or an interactive TTY',
+				hint: 'wonderpress partial add-js Hero',
+			}, format.EXIT_USAGE);
+		}
+	}
+
+	const ok = await addScript(themeDir, name);
+	if (!ok) {
+		return format.fail({
+			code: 'partial',
+			message: `Could not add JS to "${name}"`,
+		});
+	}
+
+	await refreshAgents(themeDir);
+
+	if (format.isJson()) {
+		const slug = nameToSlug(name);
+		const manifest = readManifest(themeDir, slug);
+		return format.ok({
+			name: manifest?.name || name,
+			slug: manifest?.slug || slug,
+			script: manifest?.artifacts?.script || null,
+		});
+	}
+
+	return true;
 }
 
 /**

@@ -54,7 +54,11 @@ Exit codes: `0` success, `1` phpcs or drift failure, `2` usage (for example, whi
 
 #### `wonderpress agents write`
 
-Writes `AGENTS.md` at the environment root from conventions plus live manifests, and a one-line `CLAUDE.md` that points at it. Regenerated after `init`, `partial create` / `sync`, and `template create`.
+Writes `AGENTS.md` at the environment root from conventions plus live manifests, a one-line `CLAUDE.md` that points at it, and MCP host configs (`.mcp.json`, `.cursor/mcp.json`, `.vscode/mcp.json`, `.codex/config.toml`). Regenerated after `init`, `partial create` / `sync`, and `template create`.
+
+The MCP files pin this machine's Node and CLI path, so they are gitignored (`agents write` adds the rules). `AGENTS.md` and `CLAUDE.md` are committed.
+
+An existing `wonderpress` MCP entry is left alone — hosts re-prompt for approval when the server config changes. Pass `--force` to regenerate it after switching Node versions or moving the checkout. The first write of a host config prints how to enable it.
 
 #### `wonderpress mcp`
 

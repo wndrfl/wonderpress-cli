@@ -302,28 +302,34 @@ the PHP partial stays the only source of markup.
 ## 8. Agents
 
 `wonderpress init` writes `AGENTS.md` at the environment root (and a one-line
-`CLAUDE.md` that points at it). Refresh with `wonderpress agents write` after
-you invent components by hand; `partial create` / `sync` and `template create`
-already regenerate it.
+`CLAUDE.md` that points at it), and upserts the MCP stdio server into
+`.mcp.json`, `.cursor/mcp.json`, `.vscode/mcp.json`, and `.codex/config.toml`.
+Those MCP files are gitignored — they pin this machine's Node and CLI path.
+`AGENTS.md` and `CLAUDE.md` are committed. Refresh with
+`wonderpress agents write` after you invent components by hand; `partial create`
+/ `sync` and `template create` already regenerate it.
 
 `--format json` on list, check-drift, lint, and version prints
 `{ "ok", "data", "error" }` on stdout and nothing else. Exit `0` / `1` / `2`.
 
-To drive the same operations from Cursor, add `.cursor/mcp.json`:
+Open the environment root in Cursor (or Claude Code / VS Code / Codex). Enable
+the `wonderpress` MCP server if the host asks. Generated MCP config pins
+`process.execPath` (the Node that ran `agents write` / `init`), the absolute
+CLI `bin/wonderpress.js`, and `cwd` set to that environment root — so the host
+does not substitute its own Node. Install with a native Node for your machine
+(`process.arch` should match the CPU).
 
-```json
-{
-  "mcpServers": {
-    "wonderpress": {
-      "command": "wonderpress",
-      "args": ["mcp"]
-    }
-  }
-}
-```
+Once that entry exists, `agents write` leaves it alone. Hosts tie their "trust
+this server" approval to the config contents, so rewriting a working entry
+makes you approve it again. Re-run with `--force` after changing Node versions
+or moving the checkout, then re-approve once. The first write prints a Cursor
+install deeplink; Claude Code approves when you run `claude`; Codex after you
+trust the folder.
 
-Run Cursor from the environment root. `wonderpress mcp help` lists the tools.
-Removes require `confirm: true`. `init`, `destroy`, and `server` are not tools.
+`wonderpress mcp help` lists the tools.
+Removes require `confirm: true`. `lint_theme` with `fix: true` runs phpcbf
+(CLI `--fix`); it does not need confirm and does not repair drift
+(`partial_sync`). `init`, `destroy`, and `server` are not tools.
 
 ## Upgrading wonderpress-core
 

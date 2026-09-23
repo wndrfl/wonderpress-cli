@@ -302,7 +302,8 @@ works.
 | Static Kit dist budget | Specified — `wonderpress lint --budget` skips with a warning until implemented |
 
 MCP write tools: `partial_create`, `partial_sync`, `block_create`,
-`template_create`. Removes require `confirm: true`. `init` / `destroy` /
+`template_create`, `lint_theme` with `fix: true` (phpcbf; no confirm; drift
+stays `partial_sync`). Removes require `confirm: true`. `init` / `destroy` /
 `server` are not tools.
 
 The flag-driven refactor (Phase 1) was the hinge this turns on, and it is done.

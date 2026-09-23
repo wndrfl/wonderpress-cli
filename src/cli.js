@@ -47,6 +47,9 @@ export async function cli() {
     '--with-block': Boolean,
     '--confirm': Boolean,
 
+    // agents write
+    '--force': Boolean,
+
     // lint
     '--axe': Boolean,
     '--budget': Boolean,

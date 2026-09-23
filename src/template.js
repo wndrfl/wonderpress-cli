@@ -7,7 +7,6 @@ import * as core from './core.js';
 import * as help from './help.js';
 import { pickOne } from './prompt.js';
 import { resolveThemeDir } from './partial.js';
-import * as staticCli from '@wndrfl/static-kit-cli';
 import * as wordpress from './wordpress.js';
 import {
   buildDefaultTemplateManifest,
@@ -372,6 +371,8 @@ export async function create(templateName, opts) {
   fs.writeFileSync(manifestPath, JSON.stringify(validated.data, null, 2) + '\n');
   log.success(`Template manifest created: ${manifestPath}`);
 
+  // Lazy-load so MCP/read paths never pull sharp at process startup.
+  const staticCli = await import('@wndrfl/static-kit-cli');
   await staticCli.template.create(`${themeDir}/static`, templateNameFileFriendly);
 
   try {

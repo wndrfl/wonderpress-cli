@@ -40,6 +40,22 @@ test('writeAgentFiles is stable and indexes partials', async () => {
 		assert.match(md, /title:string/);
 		assert.match(md, /partial sync/);
 		assert.doesNotMatch(md, /\d{4}-\d{2}-\d{2}/);
+
+		const cursor = JSON.parse(fs.readFileSync(path.join(root, '.cursor/mcp.json'), 'utf8'));
+		assert.equal(cursor.mcpServers.wonderpress.command, process.execPath);
+		assert.equal(cursor.mcpServers.wonderpress.args[1], 'mcp');
+		assert.match(cursor.mcpServers.wonderpress.args[0], /bin[/\\]wonderpress\.js$/);
+		assert.equal(cursor.mcpServers.wonderpress.cwd, path.resolve(root));
+		const vscode = JSON.parse(fs.readFileSync(path.join(root, '.vscode/mcp.json'), 'utf8'));
+		assert.equal(vscode.servers.wonderpress.type, 'stdio');
+		assert.equal(vscode.servers.wonderpress.command, process.execPath);
+		assert.equal(vscode.servers.wonderpress.cwd, path.resolve(root));
+		const ignore = fs.readFileSync(path.join(root, '.gitignore'), 'utf8');
+		assert.match(ignore, /^\.cursor\/mcp\.json$/m);
+		assert.match(ignore, /^\.codex\/config\.toml$/m);
+		const codex = fs.readFileSync(path.join(root, '.codex/config.toml'), 'utf8');
+		assert.match(codex, /\[mcp_servers\.wonderpress\]/);
+		assert.match(codex, /bin[/\\]wonderpress\.js/);
 	} finally {
 		fs.removeSync(root);
 	}
@@ -52,8 +68,93 @@ test('wonderpress agents write --format json', () => {
 		const body = parseEnvelope(result.stdout);
 		assert.equal(result.status, 0, result.stdout + result.stderr);
 		assert.equal(body.ok, true);
+		assert.equal(body.data.mcp.length, 4);
 		assert.ok(fs.existsSync(path.join(root, 'AGENTS.md')));
 		assert.ok(fs.existsSync(path.join(root, 'CLAUDE.md')));
+		assert.ok(fs.existsSync(path.join(root, '.mcp.json')));
+		assert.ok(fs.existsSync(path.join(root, '.cursor/mcp.json')));
+		assert.ok(fs.existsSync(path.join(root, '.vscode/mcp.json')));
+		assert.ok(fs.existsSync(path.join(root, '.codex/config.toml')));
+		assert.ok(body.data.gitignore.added.includes('.mcp.json'));
+	} finally {
+		fs.removeSync(root);
+	}
+});
+
+test('writeAgentFiles merges wonderpress into existing MCP configs', () => {
+	const { root, themeDir } = makeEnv();
+	try {
+		fs.ensureDirSync(path.join(root, '.cursor'));
+		fs.writeFileSync(path.join(root, '.cursor/mcp.json'), JSON.stringify({
+			mcpServers: {
+				other: { command: 'other' },
+			},
+		}) + '\n');
+		fs.writeFileSync(path.join(root, '.mcp.json'), 'not json');
+
+		writeAgentFiles({ root, themeDir });
+
+		const cursor = JSON.parse(fs.readFileSync(path.join(root, '.cursor/mcp.json'), 'utf8'));
+		assert.equal(cursor.mcpServers.other.command, 'other');
+		assert.equal(cursor.mcpServers.wonderpress.args[1], 'mcp');
+		assert.match(cursor.mcpServers.wonderpress.args[0], /bin[/\\]wonderpress\.js$/);
+		assert.equal(cursor.mcpServers.wonderpress.command, process.execPath);
+		assert.equal(cursor.mcpServers.wonderpress.cwd, path.resolve(root));
+		assert.equal(fs.readFileSync(path.join(root, '.mcp.json'), 'utf8'), 'not json');
+	} finally {
+		fs.removeSync(root);
+	}
+});
+
+test('writeAgentFiles keeps an existing wonderpress entry unless forced', () => {
+	const { root, themeDir } = makeEnv();
+	try {
+		const file = path.join(root, '.cursor/mcp.json');
+		const hand = { command: 'wonderpress', args: ['mcp'] };
+		fs.ensureDirSync(path.join(root, '.cursor'));
+		fs.writeFileSync(file, JSON.stringify({ mcpServers: { wonderpress: hand } }) + '\n');
+
+		writeAgentFiles({ root, themeDir });
+		assert.deepEqual(JSON.parse(fs.readFileSync(file, 'utf8')).mcpServers.wonderpress, hand);
+
+		writeAgentFiles({ root, themeDir, force: true });
+		const forced = JSON.parse(fs.readFileSync(file, 'utf8')).mcpServers.wonderpress;
+		assert.equal(forced.command, process.execPath);
+		assert.equal(forced.cwd, path.resolve(root));
+	} finally {
+		fs.removeSync(root);
+	}
+});
+
+test('writeAgentFiles keeps an existing Codex wonderpress table unless forced', () => {
+	const { root, themeDir } = makeEnv();
+	try {
+		const file = path.join(root, '.codex/config.toml');
+		fs.ensureDirSync(path.join(root, '.codex'));
+		fs.writeFileSync(file, '[mcp_servers.other]\ncommand = "other"\n\n[mcp_servers.wonderpress]\ncommand = "hand"\n');
+
+		writeAgentFiles({ root, themeDir });
+		const kept = fs.readFileSync(file, 'utf8');
+		assert.match(kept, /command = "hand"/);
+		assert.match(kept, /\[mcp_servers\.other\]/);
+
+		writeAgentFiles({ root, themeDir, force: true });
+		const forced = fs.readFileSync(file, 'utf8');
+		assert.match(forced, /\[mcp_servers\.other\]/);
+		assert.doesNotMatch(forced, /command = "hand"/);
+		assert.match(forced, /bin[/\\]wonderpress\.js/);
+	} finally {
+		fs.removeSync(root);
+	}
+});
+
+test('writeAgentFiles does not duplicate gitignore MCP patterns', () => {
+	const { root, themeDir } = makeEnv();
+	try {
+		writeAgentFiles({ root, themeDir });
+		writeAgentFiles({ root, themeDir });
+		const ignore = fs.readFileSync(path.join(root, '.gitignore'), 'utf8');
+		assert.equal(ignore.split('.cursor/mcp.json').length - 1, 1);
 	} finally {
 		fs.removeSync(root);
 	}

@@ -7,7 +7,7 @@ WonderPress partial **fields** are defined in JSON, not in the PHP class. ACF an
 | Safe to edit (PHP-first OK) | Edit manifest, then sync |
 | --- | --- |
 | `partials/*.php` view templates | `.wonderpress/manifest/partials/<slug>.json` |
-| SCSS / JS behavior stubs | `src/partials/class-*.php` (`$_properties`) |
+| SCSS / JS behavior stubs (`partial add-js` scaffolds JS later; sync does not) | `src/partials/class-*.php` (`$_properties`) |
 | Helpers, services, custom PHP outside generated class | `blocks/<slug>/block.json` attributes |
 
 Do **not** add new fields by editing `$_properties` or `block.json` by hand — they will drift and `partial sync` will overwrite the class.

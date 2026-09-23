@@ -74,23 +74,62 @@ async function resolveLintTheme(dir, opts) {
 }
 
 /**
+ * Run phpcbf on a theme directory (CLI `--fix` / MCP `fix: true`).
+ **/
+export function applyPhpcsFix(themeDir, opts = {}) {
+	return sh.exec('./vendor/bin/phpcbf ' + themeDir + ' -p -v --colors', {
+		silent: opts.silent === true,
+	});
+}
+
+function lintHint({ phpcsOk, driftOk, wantedFix, didFix }) {
+	if (!phpcsOk && !wantedFix) {
+		return 'lint_theme with fix: true (or wonderpress lint --fix)';
+	}
+	if (!phpcsOk && didFix) {
+		return 'wonderpress lint --fix already ran; remaining phpcs issues need a manual edit';
+	}
+	if (!driftOk) {
+		return 'partial_sync with all: true (or wonderpress partial sync --all)';
+	}
+	return undefined;
+}
+
+/**
  * Structured lint result (phpcs + drift). Used by the CLI and MCP.
+ * `opts.fix` runs phpcbf only when phpcs failed (same as the CLI).
  **/
 export async function inspectTheme(dir, opts = {}) {
 	const resolved = await resolveLintTheme(dir, opts);
 	if (!resolved.ok) {
 		return resolved;
 	}
-	const phpcs = runPhpcs(resolved.themeDir, { json: true });
+	const wantFix = opts.fix === true;
+	let phpcs = runPhpcs(resolved.themeDir, { json: true });
+	let fixed = false;
+	if (!phpcs.ok && wantFix) {
+		applyPhpcsFix(resolved.themeDir, { silent: true });
+		fixed = true;
+		phpcs = runPhpcs(resolved.themeDir, { json: true });
+	}
 	const drift = collectDrift(resolved.themeDir);
+	const ok = phpcs.ok && drift.ok;
+	const data = {
+		theme: resolved.themeName,
+		phpcs: { ok: phpcs.ok, code: phpcs.code, report: phpcs.report },
+		drift,
+	};
+	if (fixed) {
+		data.fixed = true;
+	}
+	const hint = lintHint({ phpcsOk: phpcs.ok, driftOk: drift.ok, wantedFix: wantFix, didFix: fixed });
+	if (hint) {
+		data.hint = hint;
+	}
 	return {
-		ok: phpcs.ok && drift.ok,
-		exitCode: phpcs.ok && drift.ok ? format.EXIT_OK : format.EXIT_FAIL,
-		data: {
-			theme: resolved.themeName,
-			phpcs: { ok: phpcs.ok, code: phpcs.code, report: phpcs.report },
-			drift,
-		},
+		ok,
+		exitCode: ok ? format.EXIT_OK : format.EXIT_FAIL,
+		data,
 	};
 }
 
@@ -158,8 +197,7 @@ export async function theme(dir, opts) {
 			log.success('Great! The theme passed phpcs.');
 		}
 	} else if (opts.fix) {
-		const fixCmd = './vendor/bin/phpcbf ' + themeDir + ' -p -v --colors';
-		sh.exec(fixCmd);
+		applyPhpcsFix(themeDir, { silent: format.isJson() });
 		log.info('All issues that could be fixed were fixed. Rerunning phpcs...');
 		return theme(process.cwd(), { name: themeName, axe: opts.axe, budget: opts.budget });
 	} else if (!wantJson) {

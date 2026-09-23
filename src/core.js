@@ -9,7 +9,6 @@ import os from 'os';
 import path from 'path';
 import * as readme from './readme.js';
 import sh from 'shelljs';
-import * as staticCli from '@wndrfl/static-kit-cli';
 import * as wordpress from './wordpress.js';
 import { resolveInitConfig } from './init-config.js';
 import { isValidNamespace, LEGACY_NAMESPACE } from './validate.js';
@@ -361,6 +360,7 @@ export async function init(dir, initConfig) {
 
     // Install Static Kit
     const saveCwd = process.cwd();
+    const staticCli = await import('@wndrfl/static-kit-cli');
     await staticCli.core.installKit(`./wp-content/themes/wonderpress/static`, {
       compile: true,
       init: true,

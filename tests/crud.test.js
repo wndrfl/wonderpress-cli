@@ -9,6 +9,7 @@ import fs from 'fs-extra';
 import os from 'node:os';
 import path from 'node:path';
 import {
+	addScript,
 	listPartials,
 	paramsFromFlags,
 	paramsFromJson,
@@ -340,6 +341,134 @@ test('--js with --no-template records no script artifact', async () => {
 		assert.equal(m.artifacts.script, undefined, 'a behavior class needs a view to attach to');
 		assert.equal(m.artifacts.style, undefined);
 		assert.ok(!fs.existsSync(path.join(dir, 'static/src/js/lib/partials/Hero.js')), 'nothing delegated was written');
+	} finally {
+		fs.removeSync(dir);
+	}
+});
+
+// --- retrofitting JS onto an existing partial ---
+
+test('partial add-js scaffolds a behavior class and records it', async () => {
+	const dir = tmpTheme();
+	try {
+		await writePartial(paramsFromFlags({ '--name': 'Hero' }), dir);
+		assert.ok(!fs.existsSync(path.join(dir, 'static/src/js/lib/partials/Hero.js')));
+
+		assert.equal(await addScript(dir, 'Hero'), true);
+
+		assert.ok(fs.existsSync(path.join(dir, 'static/src/js/lib/partials/Hero.js')));
+		assert.equal(manifestOf(dir, 'hero').artifacts.script, 'static/src/js/lib/partials/Hero.js');
+	} finally {
+		fs.removeSync(dir);
+	}
+});
+
+test('partial add-js does not clobber an existing SCSS stub', async () => {
+	const dir = tmpTheme();
+	try {
+		await writePartial(paramsFromFlags({ '--name': 'Hero' }), dir);
+		const stylePath = path.join(dir, 'static/src/scss/partials/_hero.scss');
+		const original = fs.readFileSync(stylePath, 'utf8');
+		fs.writeFileSync(stylePath, original + '\n/* keep me */\n');
+
+		assert.equal(await addScript(dir, 'Hero'), true);
+
+		assert.match(fs.readFileSync(stylePath, 'utf8'), /keep me/);
+		assert.equal(manifestOf(dir, 'hero').artifacts.style, 'static/src/scss/partials/_hero.scss');
+	} finally {
+		fs.removeSync(dir);
+	}
+});
+
+test('partial add-js is idempotent and does not overwrite custom JS', async () => {
+	const dir = tmpTheme();
+	try {
+		await writePartial(paramsFromFlags({ '--name': 'Hero' }), dir);
+		assert.equal(await addScript(dir, 'Hero'), true);
+
+		const jsPath = path.join(dir, 'static/src/js/lib/partials/Hero.js');
+		fs.writeFileSync(jsPath, '// custom behavior\n');
+
+		assert.equal(await addScript(dir, 'Hero'), true);
+		assert.equal(fs.readFileSync(jsPath, 'utf8'), '// custom behavior\n');
+		assert.equal(manifestOf(dir, 'hero').artifacts.script, 'static/src/js/lib/partials/Hero.js');
+	} finally {
+		fs.removeSync(dir);
+	}
+});
+
+test('partial add-js records an existing unindexed JS file without rewriting it', async () => {
+	const dir = tmpTheme();
+	try {
+		await writePartial(paramsFromFlags({ '--name': 'Hero' }), dir);
+		const jsPath = path.join(dir, 'static/src/js/lib/partials/Hero.js');
+		fs.ensureDirSync(path.dirname(jsPath));
+		fs.writeFileSync(jsPath, '// dropped by hand\n');
+
+		assert.equal(await addScript(dir, 'Hero'), true);
+		assert.equal(fs.readFileSync(jsPath, 'utf8'), '// dropped by hand\n');
+		assert.equal(manifestOf(dir, 'hero').artifacts.script, 'static/src/js/lib/partials/Hero.js');
+	} finally {
+		fs.removeSync(dir);
+	}
+});
+
+test('--js and a later add-js produce the same script path and file', async () => {
+	const t1 = tmpTheme();
+	const t2 = tmpTheme();
+	try {
+		await writePartial(paramsFromFlags({ '--name': 'Hero', '--js': true }), t1);
+		await writePartial(paramsFromFlags({ '--name': 'Hero' }), t2);
+		assert.equal(await addScript(t2, 'Hero'), true);
+
+		const rel = 'static/src/js/lib/partials/Hero.js';
+		assert.equal(fs.readFileSync(path.join(t1, rel), 'utf8'), fs.readFileSync(path.join(t2, rel), 'utf8'));
+		assert.equal(manifestOf(t1, 'hero').artifacts.script, manifestOf(t2, 'hero').artifacts.script);
+	} finally {
+		fs.removeSync(t1);
+		fs.removeSync(t2);
+	}
+});
+
+test('partial add-js refuses a missing view', async () => {
+	const dir = tmpTheme();
+	try {
+		await writePartial(paramsFromFlags({ '--name': 'Hero', '--no-template': true }), dir);
+		assert.equal(await addScript(dir, 'Hero'), false);
+		assert.equal(manifestOf(dir, 'hero').artifacts.script, undefined);
+		assert.ok(!fs.existsSync(path.join(dir, 'static/src/js/lib/partials/Hero.js')));
+	} finally {
+		fs.removeSync(dir);
+	}
+});
+
+test('partial add-js without a static tree records no script', async () => {
+	const dir = tmpThemeNoStatic();
+	try {
+		await writePartial(paramsFromFlags({ '--name': 'Hero' }), dir);
+		assert.equal(await addScript(dir, 'Hero'), false);
+		assert.equal(manifestOf(dir, 'hero').artifacts.script, undefined);
+	} finally {
+		fs.removeSync(dir);
+	}
+});
+
+test('partial add-js refuses to invent a partial that does not exist', async () => {
+	const dir = tmpTheme();
+	try {
+		assert.equal(await addScript(dir, 'Nope'), false);
+		assert.ok(!fs.existsSync(path.join(dir, 'static/src/js/lib/partials/Nope.js')));
+	} finally {
+		fs.removeSync(dir);
+	}
+});
+
+test('partial add-js accepts a slug as well as a class name', async () => {
+	const dir = tmpTheme();
+	try {
+		await writePartial(paramsFromFlags({ '--name': 'Call_To_Action' }), dir);
+		assert.equal(await addScript(dir, 'call-to-action'), true);
+		assert.equal(manifestOf(dir, 'call-to-action').artifacts.script, 'static/src/js/lib/partials/CallToAction.js');
 	} finally {
 		fs.removeSync(dir);
 	}

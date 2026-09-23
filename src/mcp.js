@@ -97,7 +97,10 @@ export const handlers = {
 	},
 
 	async lint_theme(input = {}) {
-		const inspected = await lint.inspectTheme(input.dir || process.cwd(), { name: input.theme });
+		const inspected = await lint.inspectTheme(input.dir || process.cwd(), {
+			name: input.theme,
+			fix: input.fix === true,
+		});
 		if (!inspected.ok && !inspected.data) {
 			return jsonError(inspected.error?.message || 'lint failed', inspected.error || {});
 		}
@@ -189,6 +192,29 @@ export const handlers = {
 		return jsonResult({ ok: true, name: input.name });
 	},
 
+	async partial_add_js(input = {}) {
+		const themeDir = await resolveMcpThemeDir(input);
+		if (!themeDir) {
+			return jsonError('Could not resolve the theme directory');
+		}
+		if (!input.name) {
+			return jsonError('name is required');
+		}
+		if (!await partial.addScript(themeDir, input.name)) {
+			return jsonError(`Could not add JS to "${input.name}"`);
+		}
+		const { writeAgentFiles } = await import('./agents.js');
+		writeAgentFiles({ root: process.cwd(), themeDir });
+		const slug = nameToSlug(input.name);
+		const manifest = partial.readManifest(themeDir, slug);
+		return jsonResult({
+			ok: true,
+			name: manifest?.name || input.name,
+			slug: manifest?.slug || slug,
+			script: manifest?.artifacts?.script || null,
+		});
+	},
+
 	async template_create(input = {}) {
 		if (!input.name) {
 			return jsonError('name is required');
@@ -276,8 +302,11 @@ export function createWonderpressMcpServer() {
 	}, (args) => handlers.partial_check_drift(args));
 
 	server.registerTool('lint_theme', {
-		description: 'Run phpcs and partial check-drift on the theme.',
-		inputSchema: locShape,
+		description: 'Run phpcs and partial check-drift on the theme. Pass fix: true to run phpcbf (CLI --fix / -f); does not repair manifest drift (use partial_sync).',
+		inputSchema: {
+			...locShape,
+			fix: z.boolean().optional().describe('Run phpcbf on the theme (CLI --fix / -f). Only runs when phpcs failed. Does not repair drift; use partial_sync.'),
+		},
 	}, (args) => handlers.lint_theme(args));
 
 	server.registerTool('partial_create', {
@@ -299,6 +328,11 @@ export function createWonderpressMcpServer() {
 		description: 'Wrap an existing partial in a Gutenberg block.',
 		inputSchema: { ...locShape, name: z.string() },
 	}, (args) => handlers.block_create(args));
+
+	server.registerTool('partial_add_js', {
+		description: 'Scaffold a JS behavior class onto an existing partial (same as --js at create).',
+		inputSchema: { ...locShape, name: z.string() },
+	}, (args) => handlers.partial_add_js(args));
 
 	server.registerTool('template_create', {
 		description: 'Create a page template and its manifest.',

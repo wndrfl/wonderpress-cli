@@ -31,10 +31,15 @@ them. Check with `wonderpress partial check-drift --all`.
 ```
 wonderpress partial list --format json
 wonderpress partial create --json @spec.json
+wonderpress partial add-js <Name>
 wonderpress partial sync --all
 wonderpress partial check-drift --all --format json
 wonderpress lint --format json
+wonderpress lint --fix
 ```
+
+MCP `lint_theme` is the same inspect; pass `fix: true` for phpcbf (CLI `--fix`).
+Drift is `partial_sync`, not `--fix`.
 
 Machine-readable output: add `--format json` (envelope `{ ok, data, error }`).
 Exit `0` success, `1` lint/drift/validation, `2` usage.
