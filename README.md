@@ -1,173 +1,303 @@
-# ✨Wonderpress CLI
-A commandline interface for bootstrapping and working with the Wonderpress-flavored WordPress development environment.
+# Wonderpress CLI
 
-## Table of Contents
+Command-line tooling for **Wonderpress**: a WordPress theme development environment with a manifest-first authoring model.
 
-1.  [Documentation](#documentation)
-    1.  [Installation](#installation)
-    2.  [Commands](#commands)
-2.  [Architecture](#architecture)
-3.  [Support](#support)
-4.  [Known issues](#issues)
-5.  [License](#license)
-
-## [Documentation](#documentation)
-
-### [Installation](#installation)
-
-Using npm:
-
-```shell
-$ npm install -g @wndrfl/wonderpress-cli
-```
-
-### Starting a project
-
-Installing the CLI is not the same as knowing what order to do things in.
-**[docs/getting-started.md](docs/getting-started.md)** walks through building an
-environment, setting up design tokens, curating the editor and locking pages —
-and flags the one decision (the block namespace) that cannot be taken back once
-a client has pages.
-
-### [Commands](#commands)
-
-The Wonderpress CLI provides different commands for many common tasks.
-
-The CLI documents itself, so this list is a reference rather than the only way
-to find a command:
+The CLI bootstraps a local environment, scaffolds partials / blocks / page templates, keeps generated code in sync with manifests, and exposes the same operations to agents over MCP.
 
 ```bash
-wonderpress                  # what commands exist
-wonderpress partial help     # detail on one of them
-wonderpress block help       # ...including how blocks relate to partials
+npm install -g @wndrfl/wonderpress-cli
 ```
 
-#### `wonderpress init`
+Requires **Node.js 24+**.
 
-Sets up (or initializes) a "Wonderpress" flavored WordPress Development Environment, configures and installs WordPress, installs various developer tools, and optionally installs a blank Wonderpress boilerplate theme.
+---
 
-#### `wonderpress lint [-f --fix]`
+## Contents
 
-Lints the current active WordPress theme against the [Wonderpress Coding Standards](https://github.com/wndrfl/wonderpress-development-environment/blob/master/phpcs.xml) (phpcs) **and** `partial check-drift`. Optionally, Wonderpress can attempt to automatically "fix" lightweight phpcs issues if the `fix` or `-f` arguments are passed. `--format json` prints `{ ok, data, error }`. `--axe` and `--budget` are reserved (currently skipped).
+- [What it does](#what-it-does)
+- [Requirements](#requirements)
+- [Installation](#installation)
+- [Quick start](#quick-start)
+- [Command reference](#command-reference)
+- [Machine-readable output](#machine-readable-output)
+- [Architecture](#architecture)
+- [Further reading](#further-reading)
+- [License](#license)
 
-Exit codes: `0` success, `1` phpcs or drift failure, `2` usage (for example, which theme is ambiguous).
+---
 
-#### `wonderpress agents write`
+## What it does
 
-Writes `AGENTS.md` at the environment root from conventions plus live manifests, a one-line `CLAUDE.md` that points at it, and MCP host configs (`.mcp.json`, `.cursor/mcp.json`, `.vscode/mcp.json`, `.codex/config.toml`). Regenerated after `init`, `partial create` / `sync`, and `template create`.
+Wonderpress treats a **partial** as the unit of markup: a PHP class, a view, and a JSON manifest. A Gutenberg **block** is an optional thin wrapper whose `render.php` delegates back to that partial. Page **templates** compose partials and record editor locks in their own manifests.
 
-The MCP files pin this machine's Node and CLI path, so they are gitignored (`agents write` adds the rules). `AGENTS.md` and `CLAUDE.md` are committed.
+The CLI is the only supported way to create and maintain that graph. Interactive wizards exist for humans; every command also runs headless for scripts and agents.
 
-An existing `wonderpress` MCP entry is left alone — hosts re-prompt for approval when the server config changes. Pass `--force` to regenerate it after switching Node versions or moving the checkout. The first write of a host config prints how to enable it.
+The CLI documents itself:
 
-#### `wonderpress mcp`
+```bash
+wonderpress                  # command map
+wonderpress partial help     # authoring model
+wonderpress init help        # environment backends and flags
+```
 
-Starts an MCP stdio server in this package. Tools call the same operations as the CLI. See `wonderpress mcp help`.
+---
 
-#### `wonderpress readme create`
+## Requirements
 
-Starts a wizard to aid in the creation of a new README file.
+| Tool | Notes |
+| --- | --- |
+| Node.js `>= 24` | Native install for the machine architecture (avoid Rosetta Node on Apple Silicon). |
+| WP-CLI (`wp`) | On `PATH`. |
+| PHP and Composer | On `PATH`. Used at init and by `wonderpress lint`. |
+| MySQL **or** Docker | `host` backend needs a running MySQL. `wp-env` needs Docker Desktop. |
 
-#### `wonderpress partial create`
+`wp-env` replaces local MySQL, not the PHP toolchain. Both backends still need `wp`, `php`, and `composer`.
 
-Create a Wonderpress "partial" (a PHP class and an accompanying view template) within the active Wonderpress-friendly theme, plus an agent-readable manifest and a delegated Static Kit style stub.
+---
 
-A partial is a rendering primitive (a button, a section) — it is **not** a Gutenberg block. A **block is definitionally a thin wrapper over a partial**: its `render.php` delegates to the partial class, so a block cannot exist without its partial, while a partial lives perfectly well without a block.
+## Installation
+
+```bash
+npm install -g @wndrfl/wonderpress-cli
+wonderpress version
+```
+
+Package: [`@wndrfl/wonderpress-cli`](https://www.npmjs.com/package/@wndrfl/wonderpress-cli)
+
+---
+
+## Quick start
+
+Installing the CLI is not the same as knowing the order of work. **[docs/getting-started.md](docs/getting-started.md)** is the narrative: build the environment, set the block namespace, wire design tokens, then author partials.
+
+```bash
+wonderpress init --dir ~/projects/acme --env wp-env --namespace acme --theme acme --yes
+```
+
+`--namespace` is written into page content as `<namespace>/<slug>`. Change it later and existing blocks become unrecognized. Pin it to the client name at init; it is recorded in `.wonderpressrc` and does not drift.
+
+On `wp-env`, the site is serving when init finishes. On `host`, start it with `wonderpress server`.
+
+---
+
+## Command reference
+
+Global options used across many commands:
 
 | Flag | Description |
 | --- | --- |
-| `--name <Class_Name>` | The partial's PHP class name (headless; omit for the wizard). |
-| `--json <@file\|string>` | Create from a JSON spec instead of flags. |
-| `--prop <name:type[:required]>` | Declare a property (repeatable). Types: `string`, `boolean`, `image`, `link`, `repeater`, `array`, `object`. |
-| `--sub <parent:name:type[:required]>` | A sub-field of a repeater (repeatable). |
-| `--acf` | Mark the partial ACF compatible. Core registers a field group from the manifest when ACF is present and the partial is located (template composition or `wonderpress_template_fields`). Cannot be combined with `--no-manifest`. |
-| `--block` | Also expose the partial as a Gutenberg block (`block.json` + a `render.php` that delegates back to the partial). Opt-in. |
-| `--js` | Also scaffold a JS behavior class for the partial (`static/src/js/lib/partials/<Name>.js`, delegated to Static Kit). Opt-in — most partials have no behavior. |
-| `--template-name <name.php>` | Name the view template. |
-| `--no-template` | Skip the view template. |
-| `--no-style` | Skip the delegated SCSS style stub. |
-| `--no-manifest` | Skip the manifest. Cannot be combined with `--block` or `--acf`. |
-| `--theme <name>` / `--dir <path>` | Target a specific theme / environment root. |
+| `--dir <path>` | Environment root (default: current directory, or the detected project root). |
+| `--theme <name>` | Target a theme by slug instead of the active lookup. |
+| `--env <backend>` | `host` (default) or `wp-env`. Needed at `init`; later commands read `.wonderpressrc`. Override per invocation with `WONDERPRESS_ENV`. |
+| `--format json` | Structured `{ ok, data, error }` envelope. Unknown values are refused. |
+| `-h`, `--help` | Help for the current command (same as `wonderpress <command> help`). |
 
-Three combinations are worth knowing: `--block --no-manifest` is refused (the
-manifest is the index that makes a block manageable), `--acf --no-manifest` is
-refused (core reads the manifest to register the field group), and
-`--js --no-template` emits no behavior class, because a behavior stub is only
-scaffolded for a partial that renders a view. `--block` and `--acf` may be
-combined: the block uses Gutenberg attributes, the PHP caller uses ACF. Do not
-locate the ACF group on a page that also inserts the block.
+Exit codes: **`0`** success, **`1`** failure, **`2`** usage (ambiguous theme, bad flags, and similar).
+
+### Environment
+
+#### `wonderpress init`
+
+Clones the [development environment](https://github.com/wndrfl/wonderpress-development-environment), downloads WordPress, creates the database, installs theme Composer dependencies (including `wonderpress-core`) and [Static Kit](https://github.com/wndrfl/static-kit), and activates the theme.
+
+| Flag | Description |
+| --- | --- |
+| `--yes`, `-y` | Headless: take defaults, never prompt. |
+| `--env <host\|wp-env>` | Backend. Recorded in `.wonderpressrc`. |
+| `--dir <path>` | Where to build (default: cwd). |
+| `--theme <name>` | Theme to activate (default: `wonderpress`). |
+| `--namespace <slug>` | Block namespace. Defaults to the theme slug. Set once. |
+| `--db-host`, `--db-user`, `--db-name`, `--db-password` | Database. Host backend only. Password may come from `WP_DB_PASSWORD`. |
+| `--wp-url <url>` | Site URL. Host backend only. |
+| `--wp-title <title>` | Site title. |
+| `--admin-user`, `--admin-email`, `--admin-password` | First administrator. Password may come from `WP_ADMIN_PASSWORD`. `--admin-user` is refused on `wp-env` (the first user is always `admin`). |
+| `--skip-readme` | Do not generate a project README. |
+
+```bash
+wonderpress init --yes --db-user root --db-name my_site \
+  --wp-url localhost:8080 --wp-title "My Site" \
+  --admin-user admin --admin-email me@example.com
+
+wonderpress init --env wp-env --yes --wp-title "My Site"
+```
+
+The `wp-env` backend cannot honor `--db-*` or `--wp-url`. Drop those flags, or use `host`.
+
+#### `wonderpress server` / `wonderpress server stop`
+
+Start or stop the local site for the backend this project was built with. Bare `wonderpress server` means start. On `host`, start blocks in the foreground until Ctrl-C.
+
+#### `wonderpress destroy`
+
+Tear the environment down (database / containers) while keeping the theme and project files.
+
+#### `wonderpress lint [-f, --fix]`
+
+Runs PHPCS against the [Wonderpress coding standards](https://github.com/wndrfl/wonderpress-development-environment/blob/master/phpcs.xml) **and** `partial check-drift`. `--fix` runs `phpcbf` on lightweight PHPCS issues; it does not repair drift — use `wonderpress partial sync` for that.
+
+`--axe` and `--budget` are reserved and currently skipped.
+
+#### `wonderpress version`
+
+Print the installed CLI version.
+
+---
+
+### Authoring
+
+A **partial** is a rendering primitive (button, section, quote). It is not a Gutenberg block. A **block** is definitionally a wrapper over a partial: it cannot exist without one. A partial does not need a block.
+
+#### `wonderpress partial create`
+
+Scaffolds a PHP class, view template, agent-readable manifest, and a delegated Static Kit style stub.
+
+| Flag | Description |
+| --- | --- |
+| `--name <Class_Name>` | PHP class name. Positional name works too (`partial create Hero`). Omit both for the wizard. |
+| `--json <@file\|string>` | Create from a JSON spec instead of flags. |
+| `--prop <name:type[:required]>` | Property (repeatable). Types: `string`, `boolean`, `image`, `link`, `repeater`, `array`, `object`. |
+| `--sub <parent:name:type[:required]>` | Repeater sub-field (repeatable). |
+| `--acf` | Mark ACF-compatible. Core registers a field group from the manifest when ACF is present. Cannot combine with `--no-manifest`. |
+| `--block` | Also emit a Gutenberg wrapper (`block.json` + a `render.php` that delegates to the partial). |
+| `--js` | Also scaffold a JS behavior class (delegated to Static Kit). Most partials have no behavior. |
+| `--template-name <name.php>` | View template filename. |
+| `--no-template` | Skip the view. |
+| `--no-style` | Skip the SCSS stub. |
+| `--no-manifest` | Skip the manifest. Cannot combine with `--block` or `--acf`. |
+
+`--block --no-manifest` and `--acf --no-manifest` are refused. `--js --no-template` emits no behavior class. `--block` and `--acf` may be combined: the block uses Gutenberg attributes; the PHP caller uses ACF. Do not locate the ACF group on a page that also inserts the block.
+
+```bash
+wonderpress partial create --name Testimonial --prop quote:string:required
+wonderpress partial create --name Hero --block --js
+wonderpress partial create --name Testimonials --acf \
+  --prop items:repeater --sub items:quote:string:required
+```
 
 #### `wonderpress partial list`
 
-List every partial in the theme (name, slug, and the block wrapping it, if any). Reads `.wonderpress/manifest/partials/*.json` — the partial manifest directory is the CLI's index.
+List every partial (name, slug, wrapping block if any). Indexed from `.wonderpress/manifest/partials/*.json`.
 
-#### `wonderpress partial remove <Name>`
+#### `wonderpress partial sync [<Name>]`
 
-Remove a partial and every artifact its manifest records (class, view template, style stub, behavior class), then the manifest itself. Accepts a class name (`Call_To_Action`) or a slug (`call-to-action`).
+Regenerate class `$_properties` and `block.json` from the manifest after editing properties in JSON.
 
-If a block wraps the partial the removal is refused — run `wonderpress block remove <Name>` first, or pass `--with-block` to remove both.
+| Flag | Description |
+| --- | --- |
+| `--all` | Sync every partial in the theme. |
+| `--slug <slug>` | Address by slug instead of class name. |
+| `--dry-run` | Print what would be written. |
+| `--properties-only` | Update class + `block.json` only (skip `render.php`). |
 
-#### `wonderpress block create <Name>`
+#### `wonderpress partial check-drift [<Name>]`
 
-Retrofit a Gutenberg block onto an existing partial: emits `blocks/<slug>/block.json` and a `render.php` that delegates to the partial, and records the block in the partial's manifest. The output is identical to having passed `--block` at creation time.
+Fail if class or `block.json` has drifted from the manifest. Use in CI; repair with `partial sync`. Supports `--all` and `--format json`.
 
-A block needs a partial to wrap, so if none exists the command tells you to run `wonderpress partial create --name <Name> --block` instead of scaffolding a partial with no properties.
+#### `wonderpress partial add-js [<Name>]`
 
-#### `wonderpress block list`
+Scaffold a JS behavior class onto an existing partial that already has a view and no script. With no name, pick from eligible partials. The file is not auto-imported; wire it from the page JS entry that renders the partial.
 
-List every block in the theme, with the partial backing it.
+#### `wonderpress partial remove [<Name>]`
 
-#### `wonderpress block remove <Name>`
+Remove a partial and every artifact its manifest records (class, view, style, behavior), then the manifest. Accepts a class name (`Call_To_Action`) or slug (`call-to-action`).
 
-Remove a block's directory and strip it from the manifest. The backing partial is left untouched.
+If a block wraps the partial, removal is refused — run `wonderpress block remove` first, or pass `--with-block`.
 
-#### `wonderpress server`
+#### `wonderpress partial install-manifest <slug>`
 
-Starts a web server to run WordPress locally. (uses [WP CLI](https://developer.wordpress.org/cli/commands/server/))
+Copy a core primitive manifest (for example `link`) into `.wonderpress/manifest/partials/`.
+
+#### `wonderpress block create [<Name>]`
+
+Add a Gutenberg wrapper to an existing partial. Output matches `partial create --block`. If no partial exists, create it with `--block` rather than scaffolding an empty one. With no name, pick from partials that do not yet have a block.
+
+#### `wonderpress block list` / `wonderpress block remove [<Name>]`
+
+List blocks and the partials behind them. Remove deletes the block directory and strips it from the manifest; the partial is left intact.
+
+Blocks register under the Wonderpress editor category via `wonderpress-core`. If a new block is missing, run `composer install` in the theme directory.
 
 #### `wonderpress template create`
 
-Create a Wonderpress custom page template, a matching `.wonderpress/manifest/page-templates/*.json`
-manifest (`schemaVersion` 1), and Static Kit page assets. Optional `--lock` and
-repeatable `--section id:partial` seed composition.
+Create a custom page template, a matching `.wonderpress/manifest/page-templates/*.json` (`schemaVersion` 1), and Static Kit page assets.
 
-#### `wonderpress template list`
+| Flag | Description |
+| --- | --- |
+| `--name <Name>` | Template name (e.g. `Landing` → `template-landing.php`). |
+| `--lock <all\|insert\|false>` | Editor lock. |
+| `--section <id:partial>` | Composition row, repeatable (e.g. `hero-main:landing-hero`). |
 
-List page templates recorded under `.wonderpress/manifest/page-templates/`.
+#### `wonderpress template list` / `wonderpress template remove [<Name>]`
 
-#### `wonderpress template remove <Name>`
+List templates under `.wonderpress/manifest/page-templates/`. Remove deletes the PHP file, manifest, and delegated Static Kit JS/SCSS (pass `--no-static` to keep static files).
 
-Remove the template PHP file, its manifest, and the delegated Static Kit JS/SCSS
-entries (pass `--no-static` to keep static files).
+---
 
-## [Architecture](#architecture)
+### Agents and MCP
 
-WonderPress consumes [Static Kit](https://github.com/wndrfl/static-kit) as a
-dependency and delegates everything under the theme's `static/` directory to it
-— which is why Static Kit's `node_modules` is installed by the CLI, never
-committed. See [ARCHITECTURE.md](ARCHITECTURE.md) for the full ownership
-contract.
+#### `wonderpress agents write`
 
-### [Support](#support)
+Writes `AGENTS.md` at the environment root (conventions plus live manifests), a one-line `CLAUDE.md` that points at it, and MCP host configs:
 
-The CLI has been tested on the following tools. Please let us know if how it works in your environment!
+- `.mcp.json`
+- `.cursor/mcp.json`
+- `.vscode/mcp.json`
+- `.codex/config.toml`
 
-- **Mac OS**:
-  - Terminal.app
-  - iTerm
-- **Windows**:
-  - (needs testing, please let us know how it works!)
-- **Linux**:
-  - (needs testing, please let us know how it works!)
+Regenerated after `init`, `partial create` / `sync`, and `template create`. Do not hand-edit the generated `AGENTS.md` index.
 
-### [Known Issues](#issues)
+MCP configs pin this machine’s Node binary and CLI path, so they are **gitignored** (`agents write` adds the ignore rules). `AGENTS.md` and `CLAUDE.md` are committed.
 
-Currently there are no known issues. However, if you experience something, we certainly want to know! Please submit a Github issue.
+An existing `wonderpress` MCP entry is left alone so hosts do not re-prompt for approval. Pass `--force` after switching Node versions or moving the checkout. The first write of a host config prints how to enable it.
 
-### [License](#license)
+#### `wonderpress mcp`
 
-Copyright (c) 2021 Wonderful
-Licensed under the MIT license.
+Starts an MCP stdio server in this package. Tools call the same operations as the CLI (`partial_list`, `partial_create`, `partial_sync`, `lint_theme`, and so on). `init`, `destroy`, and `server` are not tools. See `wonderpress mcp help`.
 
-## Collaborators
-- Johnnie Munger johnnie@wonderful.io
+#### `wonderpress readme create`
+
+Wizard (or flags) to generate a project README.
+
+| Flag | Description |
+| --- | --- |
+| `--project-name`, `--project-description` | Identity. |
+| `--github-url`, `--production-url`, `--stage-url`, `--dev-url` | Links. |
+
+---
+
+## Machine-readable output
+
+`--format json` prints an envelope suitable for scripts and MCP:
+
+```json
+{ "ok": true, "data": {}, "error": null }
+```
+
+Supported on `version`, `lint`, `partial list`, `partial check-drift`, `partial sync --dry-run`, and `agents write`. Human output remains the default.
+
+---
+
+## Architecture
+
+Wonderpress consumes [Static Kit](https://github.com/wndrfl/static-kit) as a dependency and delegates everything under the theme’s `static/` directory to it. Static Kit’s `node_modules` is installed by the CLI and is never committed. The theme’s Composer `vendor/` **is** committed: it is runtime PHP the site cannot serve without.
+
+The ownership contract — CLI, Static Kit, and `wonderpress-core` — is in **[ARCHITECTURE.md](ARCHITECTURE.md)**.
+
+---
+
+## Further reading
+
+| Document | Purpose |
+| --- | --- |
+| [docs/getting-started.md](docs/getting-started.md) | Order of work and irreversible decisions |
+| [docs/manifest-first-partials.md](docs/manifest-first-partials.md) | Why manifests own generated PHP and `block.json` |
+| [docs/property-value-shapes.md](docs/property-value-shapes.md) | Property types and values |
+| [docs/static-kit-conventions.md](docs/static-kit-conventions.md) | Tokens, SCSS, and `theme.json` |
+
+Issues: [github.com/wndrfl/wonderpress-cli](https://github.com/wndrfl/wonderpress-cli/issues)
+
+---
+
+## License
+
+MIT © [Wonderful](https://wonderful.io) — see [LICENSE](LICENSE).

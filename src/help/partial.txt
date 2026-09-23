@@ -6,6 +6,7 @@ Wonderpress theme. Once created it can be rendered two ways, from one source:
   from PHP        echo new \Wonderpress\Partials\Testimonial([ ... ]);
   in the editor   by also giving it a block — see `wonderpress block help`
 
+A partial is not a Gutenberg block. A block is a thin wrapper over a partial.
 Most partials have no client-side behavior. JS is opt-in, either at create
 time or later — both produce the same Static Kit class:
 
@@ -58,6 +59,11 @@ CREATE OPTIONS
   --theme <name>           Target a theme by name, skipping the active lookup
   --format json            Machine-readable envelope (list, sync --dry-run,
                            check-drift)
+
+  --block --no-manifest and --acf --no-manifest are refused. --js --no-template
+  emits no behavior class. --block and --acf may be combined: the block uses
+  Gutenberg attributes; the PHP caller uses ACF. Do not locate the ACF group
+  on a page that also inserts the block.
 
 SYNC OPTIONS
   --all                    Sync every partial manifest in the theme

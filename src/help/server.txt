@@ -1,0 +1,19 @@
+wonderpress server — local development environment
+
+Starts the site for whichever backend this project was built with (recorded
+in .wonderpressrc). Bare `wonderpress server` means start.
+
+On host, start blocks in the foreground until Ctrl-C. On wp-env, it brings
+the Docker environment up and returns.
+
+COMMANDS
+  server                   Start the environment (same as `server start`)
+  server start             Start
+  server stop              Stop
+
+OPTIONS
+  --dir <path>             Environment root
+
+EXAMPLES
+  wonderpress server
+  wonderpress server stop

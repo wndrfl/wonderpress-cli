@@ -22,4 +22,10 @@ REMOVE OPTIONS
   --theme <name>            Target a theme by name instead of the active one
   --no-static               Skip removing delegated Static Kit JS/SCSS entries
 
+EXAMPLES
+  wonderpress template create --name Landing --lock insert \
+    --section hero-main:landing-hero
+  wonderpress template list
+  wonderpress template remove Landing
+
 Run `wonderpress partial help` for partials that templates compose from.

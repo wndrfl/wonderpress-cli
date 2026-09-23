@@ -169,7 +169,7 @@ Add types to `DUAL_AUTHORABLE_TYPES` in `validate.js` only after spec acceptance
 | 4 | `repeater` | ✅ Row UI + `wonder_normalize_repeater_value()` + nested dual lint |
 | 5 | `partial` | ✅ Recursive schema/UI + `wonder_normalize_partial_value()` + transitive lint |
 
-Editor work tracks [editor-js-plan.md](editor-js-plan.md) and [ROADMAP.md](../ROADMAP.md) Phase 2b.
+Editor work tracks [editor-js-plan.md](editor-js-plan.md).
 
 ## Deferred profiles
 

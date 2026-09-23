@@ -75,8 +75,8 @@ otherwise swallow it.
 The test is whether a project edits it. Plumbing that shipped identically in
 every project — the Static Kit bundle convention, the baseline theme supports —
 is in the package, so changing the convention is a `composer update` rather than
-an edit to every site that ever shipped. The Vite migration in ROADMAP Phase 0
-is exactly that case.
+an edit to every site that ever shipped. A bundler migration is exactly that
+case.
 
 Design surface stays in the theme: templates, `theme.json`, the partial view
 files, and the per-project decisions inside `inc/setup.php` (navigation

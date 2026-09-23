@@ -1,13 +1,13 @@
 # Plan: the hybrid theme — a constrained editor, without becoming a block theme
 
-Status: shipped. Replaces the "slate" framing in ROADMAP.md Phase 2.
+Status: shipped. Replaces the earlier "slate" framing of this work.
 `theme.json`, repo-authoritative Global Styles, curated suite, wrapper
 attributes, and page lock (`all` / `insert` / `false`) are in. `contentOnly`
 is rejected as a page-lock value (see §3a).
 
 ## The correction
 
-The roadmap called for the block theme file set — `theme.json`, `templates/`,
+An earlier plan called for the block theme file set — `theme.json`, `templates/`,
 `parts/` — under the banner "adopt the block theme file format; refuse the Site
 Editor workflow." Examining what that format actually drags in changes the
 conclusion: **take `theme.json`, stay classic.**

@@ -1,0 +1,16 @@
+wonderpress destroy — tear the environment down, keep the code
+
+Removes the database and/or containers for this project. The theme, partials,
+manifests, and uploads are left alone.
+
+Host drops the MySQL database named in wp-config.php. wp-env destroys
+containers and volumes. You will be asked to confirm unless stdin is not a TTY.
+
+This is not a project delete. Re-run `wonderpress init` to bring services back.
+
+OPTIONS
+  --dir <path>             Environment root
+  --yes, -y                Do not prompt
+
+EXAMPLES
+  wonderpress destroy

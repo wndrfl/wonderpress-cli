@@ -5,7 +5,7 @@ Status: shipped (Phase 2b). wonderpress-core enqueues one buildless
 Inspector Controls for every dual-authorable type (scalars plus `image`,
 `link`, `post_object`, `repeater`, `partial`). SSR fidelity pass shipped
 2026-09-21. In-place InnerBlocks editing is explicitly deferred; Vite is not
-part of this arc — see ROADMAP Phase 0.
+part of this arc.
 
 ## Why the deferral has to end
 
@@ -17,7 +17,7 @@ plus `render: file:./render.php` makes WordPress render the block on the front
 end, but without `registerBlockType()` the inserter and canvas have nothing to
 draw. That is why this arc existed. The generic `edit` is now that registration.
 
-That was also expected to force the Vite question in ROADMAP Phase 0. It did
+That was also expected to force a Vite migration. It did
 not. The editor script runs against `wp.*` globals WordPress already enqueues.
 Static Kit may still move to Vite on its own schedule; this file is not that
 trigger.
@@ -74,8 +74,8 @@ deliberately.
    `registerBlockType()` in the core script. No `editorScript` in generated
    `block.json` — core enqueues the script once for all theme blocks.
 4. **Opt-in `InnerBlocks`.** Deferred for the architectural reason above.
-   Page-level `contentOnly` is not a substitute — see ROADMAP decisions
-   2026-09-21.
+   Page-level `contentOnly` is not a substitute — see
+   [hybrid-theme-plan.md](hybrid-theme-plan.md) §3a (2026-09-21).
 5. **Keep the no-JS path working.** Front-end `render.php` still works if the
    editor script fails to load. The inserter will not, because WordPress still
    needs a client `edit`. Missing WordPress globals now name themselves in a

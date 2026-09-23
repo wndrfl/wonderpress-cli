@@ -1,4 +1,6 @@
 import fs from 'fs-extra';
+import * as format from './format.js';
+import * as help from './help.js';
 import * as log from './log.js';
 import inquirer from 'inquirer';
 import mustache from 'mustache';
@@ -22,6 +24,18 @@ export async function command(subcommand, args) {
 	switch (subcommand) {
 		case 'create':
 			await create(args);
+			break;
+		default:
+			if (subcommand) {
+				log.error(`Unknown readme subcommand: ${subcommand}`);
+				process.exitCode = format.EXIT_FAIL;
+				format.fail({
+					code: 'unknown_command',
+					message: `Unknown readme subcommand: ${subcommand}`,
+					hint: 'Run `wonderpress readme help`.',
+				});
+			}
+			help.show('readme');
 			break;
 	}
 

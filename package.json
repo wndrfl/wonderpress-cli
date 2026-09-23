@@ -1,7 +1,7 @@
 {
   "name": "@wndrfl/wonderpress-cli",
   "version": "2.9.0",
-  "description": "A commandline interface for bootstrapping and working with the Wonderpress WordPress Development Environment.",
+  "description": "CLI for Wonderpress: bootstrap WordPress environments and author themes from manifests.",
   "main": "./bin/wonderpress.js",
   "type": "module",
   "repository": "github:wndrfl/wonderpress-cli",
@@ -26,7 +26,14 @@
     "manifest/",
     "src/"
   ],
-  "keywords": [],
+  "keywords": [
+    "wonderpress",
+    "wordpress",
+    "cli",
+    "gutenberg",
+    "mcp",
+    "theme"
+  ],
   "author": "Johnnie Munger",
   "license": "MIT",
   "dependencies": {
