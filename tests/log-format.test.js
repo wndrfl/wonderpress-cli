@@ -17,15 +17,26 @@ function makeFixture() {
 	return dir;
 }
 
-function run(dir, argv) {
-	return spawnSync('node', [BIN, ...argv, '--dir', dir, '--theme', 'smoke'], { encoding: 'utf8' });
+/**
+ * Whether the CLI colours its output is decided by the environment it runs in,
+ * not by this file: picocolors paints when CI is set, and CI is exactly where
+ * these run. So assertions about SHAPE strip the codes, and the two tests that
+ * care about colour set the environment themselves.
+ **/
+const plain = (out) => String(out).replace(/\u001B\[[0-9;]*m/g, '');
+
+function run(dir, argv, env = {}) {
+	return spawnSync('node', [BIN, ...argv, '--dir', dir, '--theme', 'smoke'], {
+		encoding: 'utf8',
+		env: { ...process.env, ...env },
+	});
 }
 
 test('output carries no brand prefix and no level word', () => {
 	const dir = makeFixture();
 	try {
 		const created = run(dir, ['partial', 'create', '--name', 'Smoke_Test']);
-		const out = created.stdout + created.stderr;
+		const out = plain(created.stdout + created.stderr);
 
 		assert.equal(created.status, 0, out);
 		assert.doesNotMatch(out, /Wonderpress (SUCCESS|INFO|WARNING|ERROR|INSTRUCTIONS)/);
@@ -38,9 +49,8 @@ test('output carries no brand prefix and no level word', () => {
 test('a success line is a glyph in a gutter, then the message', () => {
 	const dir = makeFixture();
 	try {
-		const out = run(dir, ['partial', 'create', '--name', 'Smoke_Test']).stdout;
+		const out = plain(run(dir, ['partial', 'create', '--name', 'Smoke_Test']).stdout);
 
-		// Piped stdout means picocolors stands down, so this is the bare shape.
 		assert.match(out, /^ {2}[✓·!✕] \S/m);
 		assert.match(out, /created/i, 'the message body survives the restyle');
 	} finally {
@@ -50,7 +60,7 @@ test('a success line is a glyph in a gutter, then the message', () => {
 
 test('an error names the problem without a level word', () => {
 	const result = spawnSync('node', [BIN, 'bogus-command'], { encoding: 'utf8' });
-	const out = result.stdout + result.stderr;
+	const out = plain(result.stdout + result.stderr);
 
 	assert.equal(result.status, 1);
 	assert.match(out, /^ {2}✕ Unknown command: bogus-command$/m);
@@ -65,7 +75,7 @@ test('paths inside the working directory lose their stem', () => {
 			cwd: dir,
 			encoding: 'utf8',
 		});
-		const out = result.stdout + result.stderr;
+		const out = plain(result.stdout + result.stderr);
 
 		assert.equal(result.status, 0, out);
 		assert.doesNotMatch(out, new RegExp(dir.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')), 'no absolute fixture paths');
@@ -81,7 +91,7 @@ test('a URL survives the path rewriter intact', () => {
 		// `partial list` on an empty theme is the cheapest command that reaches the
 		// logger; the guard itself is unit-tested by the shape assertions above.
 		// Here we only care that nothing mangles a scheme when one is printed.
-		const out = run(dir, ['partial', 'list']).stdout;
+		const out = plain(run(dir, ['partial', 'list']).stdout);
 		assert.doesNotMatch(out, /https?:\/[^/]/, 'a scheme never loses a slash');
 	} finally {
 		fs.removeSync(dir);
@@ -89,8 +99,10 @@ test('a URL survives the path rewriter intact', () => {
 });
 
 test('a group aligns its hint column across rows', () => {
-	// Driven out-of-process because the interesting part is what lands on stdout,
-	// and picocolors stands down on a pipe so the columns are countable.
+	// Driven out-of-process because the interesting part is what lands on stdout.
+	// The codes have to come off before counting columns: a dimmed directory stem
+	// is invisible but not free, so `a/much/longer/path.json` carries two escape
+	// sequences that `b.json` does not.
 	const script = `
 		import * as log from ${JSON.stringify(path.join(__dirname, '..', 'src', 'log.js'))};
 		log.group([
@@ -99,7 +111,7 @@ test('a group aligns its hint column across rows', () => {
 			{ level: 'info', path: 'b.json', hint: 'left alone' },
 		]);
 	`;
-	const out = spawnSync('node', ['--input-type=module', '-e', script], { encoding: 'utf8' }).stdout;
+	const out = plain(spawnSync('node', ['--input-type=module', '-e', script], { encoding: 'utf8' }).stdout);
 	const columns = out
 		.split('\n')
 		.filter((l) => l.includes('left alone'))
@@ -123,12 +135,40 @@ test('agents write reports the configs it preserved', () => {
 		assert.equal(write().status, 0);
 		const second = write();
 
-		assert.equal(second.status, 0, second.stdout + second.stderr);
+		const out = plain(second.stdout);
+		assert.equal(second.status, 0, out + second.stderr);
 		for (const file of ['.mcp.json', '.cursor/mcp.json', '.vscode/mcp.json', '.codex/config.toml']) {
-			assert.match(second.stdout, new RegExp(`^ {2}· ${file.replace('.', '\\.')}\\s+--force to rewrite$`, 'm'));
+			const escaped = file.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+			assert.match(out, new RegExp(`^ {2}· ${escaped}\\s+--force to rewrite$`, 'm'));
 		}
 	} finally {
 		fs.removeSync(root);
+	}
+});
+
+test('NO_COLOR leaves the output free of escape sequences', () => {
+	// The guarantee for anything that pipes or greps us. Asserted explicitly
+	// because the ambient environment decides this, and a developer shell that
+	// happens to set NO_COLOR will otherwise make every other test here look
+	// like it is checking something it is not.
+	const dir = makeFixture();
+	try {
+		const out = run(dir, ['partial', 'create', '--name', 'Smoke_Test'], { NO_COLOR: '1' }).stdout;
+		assert.doesNotMatch(out, /\u001B\[/, 'NO_COLOR means no codes at all');
+		assert.match(out, /^ {2}✓ /m);
+	} finally {
+		fs.removeSync(dir);
+	}
+});
+
+test('FORCE_COLOR paints the gutter without disturbing the shape', () => {
+	const dir = makeFixture();
+	try {
+		const out = run(dir, ['partial', 'create', '--name', 'Smoke_Test'], { FORCE_COLOR: '1', NO_COLOR: '' }).stdout;
+		assert.match(out, /\u001B\[32m✓\u001B\[39m/, 'the success glyph is green');
+		assert.match(plain(out), /^ {2}✓ /m, 'and the line is the same line underneath');
+	} finally {
+		fs.removeSync(dir);
 	}
 });
 
