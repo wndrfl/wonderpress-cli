@@ -257,7 +257,7 @@ function announceHostSetup(mcp) {
 			stdio = null;
 		}
 		log.info('Cursor: enable wonderpress in Customize → MCPs, or open:');
-		log.raw({ info: stdio ? buildCursorInstallLink(stdio) : 'cursor://anysphere.cursor-deeplink/mcp/install?name=wonderpress' });
+		log.raw(stdio ? buildCursorInstallLink(stdio) : 'cursor://anysphere.cursor-deeplink/mcp/install?name=wonderpress');
 	}
 	if (hosts.has('claude')) {
 		log.info('Claude Code: run `claude` in this directory to approve the project MCP server.');
@@ -328,21 +328,25 @@ export async function write(args) {
 	}
 
 	const written = writeAgentFiles({ root, themeDir, force: !!args['--force'] });
-	log.success(`Wrote ${written.agents}`);
-	log.success(`Wrote ${written.claude}`);
-	if (written.gitignore?.added?.length) {
-		log.success(`Updated ${written.gitignore.file} (${written.gitignore.added.join(', ')})`);
-	}
-	for (const entry of written.mcp) {
-		if (entry.preserved) {
-			log.info(`Kept existing wonderpress server in ${entry.file} (--force to rewrite).`);
-			continue;
-		}
-		if (entry.skipped) {
-			continue;
-		}
-		log.success(`Wrote ${entry.file}`);
-	}
+
+	// One report for the whole write. Every line here used to carry a verb —
+	// "Wrote", and four repetitions of "Kept existing wonderpress server in" —
+	// which said what the glyph says: a check wrote it, a dot left it alone.
+	log.group([
+		{ level: 'success', path: written.agents },
+		{ level: 'success', path: written.claude },
+		written.gitignore?.added?.length
+			? { level: 'success', path: written.gitignore.file, hint: written.gitignore.added.join(', ') }
+			: null,
+		...written.mcp
+			// A preserved entry is also marked skipped, so `preserved` has to be
+			// asked first: the only entries worth hiding are the unparseable ones,
+			// which warned for themselves on the way past.
+			.filter((entry) => entry.preserved || !entry.skipped)
+			.map((entry) => (entry.preserved
+				? { level: 'info', path: entry.file, hint: '--force to rewrite' }
+				: { level: 'success', path: entry.file })),
+	]);
 	announceHostSetup(written.mcp);
 	if (format.isJson()) {
 		return format.ok({
