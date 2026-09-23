@@ -1,3 +1,6 @@
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { z } from 'zod';
 import { McpServer, ResourceTemplate } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
@@ -10,6 +13,10 @@ import * as lint from './lint.js';
 import { checkPartialDrift } from './partial-drift.js';
 import { classNameToSlug, nameToSlug } from './validate.js';
 import pkg from '../package.json' with { type: 'json' };
+
+const mcpIconPng = fs.readFileSync(
+	path.join(path.dirname(fileURLToPath(import.meta.url)), 'assets/mcp-icon.png'),
+);
 
 const loc = {
 	dir: z.string().optional().describe('WonderPress environment root'),
@@ -268,11 +275,26 @@ export const handlers = {
 	},
 };
 
-export function createWonderpressMcpServer() {
-	const server = new McpServer({
+export function mcpServerInfo() {
+	return {
 		name: 'wonderpress',
+		title: 'WonderPress',
 		version: pkg.version,
-	});
+		description:
+			'Exposes the same deterministic CLI operations as Model Context Protocol tools so an agent is a second client of the CLI, not a second codebase.',
+		websiteUrl: 'https://wonderpress.dev',
+		icons: [
+			{
+				src: `data:image/png;base64,${mcpIconPng.toString('base64')}`,
+				mimeType: 'image/png',
+				sizes: ['180x180'],
+			},
+		],
+	};
+}
+
+export function createWonderpressMcpServer() {
+	const server = new McpServer(mcpServerInfo());
 
 	const locShape = { dir: loc.dir, theme: loc.theme };
 

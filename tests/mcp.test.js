@@ -4,7 +4,7 @@ import fs from 'fs-extra';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { handlers, createWonderpressMcpServer } from '../src/mcp.js';
+import { handlers, createWonderpressMcpServer, mcpServerInfo } from '../src/mcp.js';
 import { writePartial, paramsFromFlags, listPartials } from '../src/partial.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -55,6 +55,20 @@ function parse(result) {
 test('MCP server registers the planned tools', () => {
 	const server = createWonderpressMcpServer();
 	assert.ok(server);
+});
+
+test('MCP server advertises WonderPress display metadata and icon', () => {
+	const info = mcpServerInfo();
+	assert.equal(info.name, 'wonderpress');
+	assert.equal(info.title, 'WonderPress');
+	assert.equal(info.websiteUrl, 'https://wonderpress.dev');
+	assert.match(info.description, /deterministic CLI operations/);
+	assert.equal(info.icons.length, 1);
+	assert.equal(info.icons[0].mimeType, 'image/png');
+	assert.deepEqual(info.icons[0].sizes, ['180x180']);
+	assert.match(info.icons[0].src, /^data:image\/png;base64,/);
+	assert.ok(info.icons[0].src.length > 'data:image/png;base64,'.length);
+	assert.ok(createWonderpressMcpServer());
 });
 
 test('Static Kit is not a static import on the MCP load path', () => {

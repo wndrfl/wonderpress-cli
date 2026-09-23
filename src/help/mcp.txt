@@ -22,7 +22,8 @@ Resources: manifest://partials/{slug}, manifest://page-templates/{id}
 
 Those four files are gitignored (machine-local Node/CLI/cwd pins). AGENTS.md
 and CLAUDE.md are committed. `agents write` appends the ignore rules if
-needed.
+needed. Display name and icon come from the server initialize payload, not
+the host config files.
 
 Each file's `wonderpress` entry pins the Node that wrote the config:
 
