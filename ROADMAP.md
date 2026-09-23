@@ -264,8 +264,8 @@ They are not all `Abstract_Partial` clones. Split the list:
 - **Visually hidden** — Static Kit `static/src/scss/lib/_utilities.scss`,
   WordPress class `.screen-reader-text`, `@use`'d from every page entry.
 - **Skip-link** — theme boilerplate in `header.php` (`href="#main"` after
-  `wp_body_open`). `:focus` reveal stays in theme `style.css`. Not a core
-  helper or manifest.
+  `wp_body_open`). Hide and `:focus` reveal live in Static Kit
+  `lib/_utilities.scss`. Not a core helper or manifest.
 
 **Deferred — harmful if naive**
 
@@ -347,7 +347,7 @@ front end is the point.
 3. ~~**Curated suite (opt-in) and page lock (`all` / `insert` / `false`)**~~ ✅
 4. ~~**Package wonderpress-core**~~ ✅
 5. ~~**Editor contract** — docs match code; SSR fidelity pass shipped.~~ ✅
-6. ~~**Correctness primitives**~~ ✅ v1 — Image/Link raised to spec; visually-hidden in Static Kit; skip-link stays theme chrome; heading manager deferred.
+6. ~~**Correctness primitives**~~ ✅ v1 — Image/Link raised to spec; visually-hidden and skip-link `:focus` in Static Kit; heading manager deferred.
 7. ~~**Phase 3**~~ ✅ v1 — JSON CLI, AGENTS.md, MCP stdio, lint+drift. axe and dist budget remain specified.
 
 The wp-env default flip stays opportunistic: take it when something forces the
