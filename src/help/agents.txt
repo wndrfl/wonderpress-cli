@@ -1,0 +1,37 @@
+wonderpress agents — generate the agent instruction file
+
+Writes AGENTS.md at the environment root from conventions plus the live
+manifests. CLAUDE.md is a one-line pointer at AGENTS.md. Also adds the
+WonderPress MCP stdio server to `.mcp.json`, `.cursor/mcp.json`,
+`.vscode/mcp.json`, and `.codex/config.toml` (other servers in those
+files are left alone). A new entry pins process.execPath, this package's
+bin/wonderpress.js, and cwd to the environment root.
+
+Those MCP files are gitignored: they contain machine-local paths. AGENTS.md
+and CLAUDE.md are committed. `agents write` appends the ignore rules if
+the project `.gitignore` is missing them.
+
+An existing `wonderpress` server entry is kept as written. Editors key
+their "trust this server" prompt on the config contents, so rewriting a
+working entry makes you re-approve it. Use --force to regenerate after
+switching Node versions or moving the checkout.
+
+The first time a host config is written, the CLI prints how to enable it
+(Cursor install link, `claude` approve, Codex trust).
+
+Do not hand-edit the generated AGENTS.md index; run `agents write` (or
+create/sync a partial) to refresh it.
+
+COMMANDS
+  agents write             Write AGENTS.md, CLAUDE.md, and host MCP configs
+
+OPTIONS
+  --theme <name>           Theme to index (otherwise the only theme on disk)
+  --dir <path>             Environment root
+  --force                  Overwrite an existing wonderpress MCP entry
+  --format json            Machine-readable envelope
+
+EXAMPLES
+  wonderpress agents write
+  wonderpress agents write --force
+  wonderpress agents write --theme acme --format json

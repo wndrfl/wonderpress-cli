@@ -1,4 +1,5 @@
 import inquirer from 'inquirer';
+import * as format from './format.js';
 import * as log from './log.js';
 
 /**
@@ -24,7 +25,7 @@ import * as log from './log.js';
  * ask me things", which includes this.
  **/
 export function canAsk(args = {}) {
-	return !args['--yes'] && !!process.stdin.isTTY;
+	return !args['--yes'] && !format.isJson() && !format.isMcp() && !!process.stdin.isTTY;
 }
 
 /**

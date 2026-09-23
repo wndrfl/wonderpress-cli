@@ -3,12 +3,12 @@ import * as config from './config.js';
 import * as env from './env/index.js';
 import fs from 'fs-extra';
 import inquirer from 'inquirer';
+import * as format from './format.js';
 import * as log from './log.js';
 import os from 'os';
 import path from 'path';
 import * as readme from './readme.js';
 import sh from 'shelljs';
-import * as staticCli from '@wndrfl/static-kit-cli';
 import * as wordpress from './wordpress.js';
 import { resolveInitConfig } from './init-config.js';
 import { isValidNamespace, LEGACY_NAMESPACE } from './validate.js';
@@ -100,7 +100,7 @@ export async function command(subcommand, args) {
       await init(args['--dir'] || null, resolveInitConfig(args, process.env));
       break;
     case 'version':
-      await version({});
+      version(args);
       break;
   }
 
@@ -360,6 +360,7 @@ export async function init(dir, initConfig) {
 
     // Install Static Kit
     const saveCwd = process.cwd();
+    const staticCli = await import('@wndrfl/static-kit-cli');
     await staticCli.core.installKit(`./wp-content/themes/wonderpress/static`, {
       compile: true,
       init: true,
@@ -491,6 +492,19 @@ export async function init(dir, initConfig) {
   log.success(`The Wonderpress environment has been initialized!`);
 
   reportWhereTheSiteIs(backend, initConfig);
+
+  try {
+    const agents = await import('./agents.js');
+    const themeName = (initConfig && initConfig.theme) || wordpress.themesOnDisk()[0];
+    if (themeName) {
+      agents.writeAgentFiles({
+        root: process.cwd(),
+        themeDir: `${wordpress.pathToThemesDir}/${themeName}`,
+      });
+    }
+  } catch (err) {
+    log.warn(`Could not write AGENTS.md: ${err.message}`);
+  }
 
   return true;
 }
@@ -750,7 +764,15 @@ export async function setCwdToEnvironmentRoot() {
 /**
  * Get the current version.
  **/
-export function version() {
+export function version(args = {}) {
+  const data = {
+    name: pkg.name,
+    version: pkg.version,
+  };
+  if (format.isJson()) {
+    return format.ok(data);
+  }
   log.raw(`Wonderpress CLI ${pkg.version}`);
+  return true;
 }
 

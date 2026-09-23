@@ -1,12 +1,12 @@
 import fs from 'fs-extra';
 import path from 'path';
+import * as format from './format.js';
 import * as log from './log.js';
 import mustache from 'mustache';
 import * as core from './core.js';
 import * as help from './help.js';
 import { pickOne } from './prompt.js';
 import { resolveThemeDir } from './partial.js';
-import * as staticCli from '@wndrfl/static-kit-cli';
 import * as wordpress from './wordpress.js';
 import {
   buildDefaultTemplateManifest,
@@ -27,6 +27,7 @@ export async function command(subcommand, args) {
     case 'create':
       await create(args['--name'] || null, {
         dir: args['--dir'] || null,
+        theme: args['--theme'] || null,
         lock: args['--lock'] ?? null,
         sections: args['--section'] || [],
       });
@@ -40,7 +41,12 @@ export async function command(subcommand, args) {
     default:
       if (subcommand) {
         log.error(`Unknown template subcommand: ${subcommand}`);
-        process.exitCode = 1;
+        process.exitCode = format.EXIT_FAIL;
+        format.fail({
+          code: 'unknown_command',
+          message: `Unknown template subcommand: ${subcommand}`,
+          hint: 'Run `wonderpress template help`.',
+        });
       }
       help.show('template');
       break;
@@ -224,10 +230,17 @@ export function removePageTemplate(themeDir, query, options = {}) {
 export async function list(args) {
   const themeDir = await resolveThemeDir(args);
   if (!themeDir) {
-    return false;
+    return format.fail({
+      code: 'theme',
+      message: 'Could not resolve the theme directory',
+      hint: 'Pass --theme <name> and --dir <env-root>.',
+    });
   }
 
   const rows = listPageTemplates(themeDir);
+  if (format.isJson()) {
+    return format.ok({ templates: rows });
+  }
   if (!rows.length) {
     log.info(`No page templates found in ${themeDir}. Create one with \`wonderpress template create --name <Name>\`.`);
     return true;
@@ -301,8 +314,16 @@ export async function create(templateName, opts) {
   const templateNameFileFriendly = templateNameLower.replaceAll('_', '-');
   const templateSlug = templateNameLower.replaceAll('_', '-');
 
-  const theme = await wordpress.getActiveTheme();
-  const themeDir = await wordpress.pathToThemesDir + '/' + theme.name;
+  let themeName = opts.theme || null;
+  if (!themeName) {
+    const theme = await wordpress.getActiveTheme();
+    if (!theme?.name) {
+      log.error('Could not determine the active theme. Pass --theme <name> (e.g. wonderpress).');
+      return false;
+    }
+    themeName = theme.name;
+  }
+  const themeDir = `${wordpress.pathToThemesDir}/${themeName}`;
 
   const templateTemplate = fs.readFileSync(new URL('./templates/template.mustache', import.meta.url), 'utf8');
   const templateFilePath = themeDir;
@@ -350,7 +371,26 @@ export async function create(templateName, opts) {
   fs.writeFileSync(manifestPath, JSON.stringify(validated.data, null, 2) + '\n');
   log.success(`Template manifest created: ${manifestPath}`);
 
+  // Lazy-load so MCP/read paths never pull sharp at process startup.
+  const staticCli = await import('@wndrfl/static-kit-cli');
   await staticCli.template.create(`${themeDir}/static`, templateNameFileFriendly);
+
+  try {
+    const agents = await import('./agents.js');
+    agents.writeAgentFiles({ root: process.cwd(), themeDir });
+  } catch (err) {
+    log.warn(`Could not refresh AGENTS.md: ${err.message}`);
+  }
+
+  if (format.isJson()) {
+    return format.ok({
+      template: fileName,
+      lock: validated.data.editor?.lock ?? null,
+      sections: flattenTemplateComposition(validated.data.composition || []).length,
+    });
+  }
+
+  return true;
 }
 
 /**

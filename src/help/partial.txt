@@ -6,8 +6,20 @@ Wonderpress theme. Once created it can be rendered two ways, from one source:
   from PHP        echo new \Wonderpress\Partials\Testimonial([ ... ]);
   in the editor   by also giving it a block — see `wonderpress block help`
 
+Most partials have no client-side behavior. JS is opt-in, either at create
+time or later — both produce the same Static Kit class:
+
+  both at once        wonderpress partial create --name Hero --js
+  add to an existing  wonderpress partial add-js Hero
+
+The file is not auto-imported; wire it from the page JS entry that renders
+the partial.
+
 COMMANDS
   partial create           Create one (class, view, style, optionally JS + block)
+  partial add-js [<Name>]  Scaffold a JS behavior class onto an existing
+                           partial. With no name, pick from those that have a
+                           view and no script yet.
   partial list             List every partial, and whether a block wraps it
   partial sync [<Name>]    Regenerate class $_properties and block.json from
                            the manifest (after you edit properties in JSON)
@@ -44,6 +56,8 @@ CREATE OPTIONS
                            or --acf)
   --json <spec|@file>      Create from a JSON spec instead of flags
   --theme <name>           Target a theme by name, skipping the active lookup
+  --format json            Machine-readable envelope (list, sync --dry-run,
+                           check-drift)
 
 SYNC OPTIONS
   --all                    Sync every partial manifest in the theme
@@ -58,6 +72,7 @@ REMOVE OPTIONS
 EXAMPLES
   wonderpress partial create --name Testimonial --prop quote:string:required
   wonderpress partial create --name Hero --block --js
+  wonderpress partial add-js Hero
   wonderpress partial create --name Testimonials --acf --prop items:repeater --sub items:quote:string:required
   wonderpress partial sync Scalar_Demo
   wonderpress partial sync --all

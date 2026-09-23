@@ -1,0 +1,51 @@
+wonderpress mcp — MCP stdio server
+
+Exposes the same deterministic CLI operations as Model Context Protocol tools
+so an agent is a second client of the CLI, not a second codebase.
+
+Reads: partial_list, block_list, template_list, partial_get,
+partial_check_drift, lint_theme (inspect). lint_theme with fix: true is a
+write: phpcbf only; it does not repair drift (use partial_sync).
+
+Writes: partial_create, partial_sync, partial_add_js, block_create,
+template_create, lint_theme (fix: true).
+Removes require confirm: true. init, destroy, and server are not tools.
+
+Resources: manifest://partials/{slug}, manifest://page-templates/{id}
+
+`wonderpress agents write` (and init) upserts the stdio server into:
+
+  .mcp.json              Claude Code and other hosts
+  .cursor/mcp.json       Cursor
+  .vscode/mcp.json       VS Code Copilot
+  .codex/config.toml     Codex
+
+Those four files are gitignored (machine-local Node/CLI/cwd pins). AGENTS.md
+and CLAUDE.md are committed. `agents write` appends the ignore rules if
+needed. Display name and icon come from the server initialize payload, not
+the host config files.
+
+Each file's `wonderpress` entry pins the Node that wrote the config:
+
+  command: <process.execPath>
+  args:    [<absolute path to this package's bin/wonderpress.js>, "mcp"]
+  cwd:     <environment root>
+
+That keeps GUI hosts from substituting their own Node (which breaks native
+addons such as sharp when arch differs). Existing wonderpress entries are
+left alone; `--force` rewrites them after switching Node versions. Other
+servers already in those files are left alone. Prefer opening the
+environment root as the workspace so cwd matches; tools also accept optional
+dir / theme.
+
+The first write of a Cursor config prints an install deeplink. Claude Code
+approves on `claude`; Codex after project trust (`codex mcp list`).
+
+Install the CLI with a native Node for the machine (process.arch should match
+uname -m). A Rosetta/x64 Node on Apple Silicon will keep producing arch
+mismatches for any host that does not use the pinned execPath.
+
+EXAMPLES
+  wonderpress mcp
+  wonderpress agents write
+  wonderpress agents write --force

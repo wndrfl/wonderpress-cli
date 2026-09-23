@@ -22,11 +22,18 @@ that page's bundle**:
 Each entry `@use`s / imports **only the partials that page needs**. That import
 list *is* the tree-shaking decision — a page ships nothing it doesn't use.
 
+**Exception: accessibility utilities.** `lib/_utilities.scss` holds the
+WordPress `.screen-reader-text` hide rules (clip-path, not `display: none`).
+Core-generated markup and the skip-link use that class, so every page entry
+must `@use 'lib/utilities';`. Do not invent a second classname. Skip-link
+`:focus` reveal styles stay in the theme `style.css` (theme chrome, slightly
+opinionated). Do not duplicate the hide rules in `style.css`.
+
 ```
 src/
 ├─ scss/
 │  ├─ <page>.scss          ← per-page ENTRY (home.scss, single.scss, archive-*.scss …)
-│  ├─ lib/                 ← shared: _global, _pallette, _variables (tokens), _mixins, _grid …
+│  ├─ lib/                 ← shared: _utilities (global a11y), _pallette, _mixins, _grid …
 │  └─ partials/            ← per-COMPONENT styles: _<ns>-<slug>.scss
 └─ js/
    ├─ <page>.js            ← per-page ENTRY (home.js, single.js …)

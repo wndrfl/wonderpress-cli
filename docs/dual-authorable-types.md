@@ -1,7 +1,9 @@
 # Dual-authorable property types
 
-Status: Tier A shipped (scalars). Tier B (structured types) is specified; block
-controls and normalization are backlog.
+Status: Tier A (scalars) and Tier A+ (`image`, `link`, `post_object`,
+`repeater`, `partial` embeds) shipped — CLI dual lint, inspector controls in
+`editor-preview.js`, PHP `wonder_normalize_property_value()`. Rich Link
+primitive (`partial: "link"`) is still a deferred profile.
 
 ## Rule
 

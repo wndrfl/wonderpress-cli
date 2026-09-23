@@ -1,4 +1,5 @@
 import fs from 'fs-extra';
+import * as format from './format.js';
 import * as help from './help.js';
 import * as log from './log.js';
 import * as partial from './partial.js';
@@ -32,7 +33,12 @@ export async function command(subcommand, args) {
 		default:
 			if (subcommand) {
 				log.error(`Unknown block subcommand: ${subcommand}`);
-				process.exitCode = 1;
+				process.exitCode = format.EXIT_FAIL;
+				format.fail({
+					code: 'unknown_command',
+					message: `Unknown block subcommand: ${subcommand}`,
+					hint: 'Run `wonderpress block help`.',
+				});
 			}
 			help.show('block');
 			break;
@@ -124,11 +130,40 @@ export async function create(args) {
 		});
 
 		if (!name) {
-			return false;
+			return format.fail({
+				code: 'usage',
+				message: 'block create requires a partial name or an interactive TTY',
+				hint: 'wonderpress block create Hero',
+			}, format.EXIT_USAGE);
 		}
 	}
 
-	return addBlock(themeDir, name);
+	const ok = addBlock(themeDir, name);
+	if (!ok) {
+		return format.fail({
+			code: 'block',
+			message: `Could not wrap "${name}" in a block`,
+		});
+	}
+
+	try {
+		const agents = await import('./agents.js');
+		agents.writeAgentFiles({ root: process.cwd(), themeDir });
+	} catch (err) {
+		log.warn(`Could not refresh AGENTS.md: ${err.message}`);
+	}
+
+	if (format.isJson()) {
+		const slug = nameToSlug(name);
+		const manifest = partial.readManifest(themeDir, slug);
+		return format.ok({
+			name: manifest?.name || name,
+			slug: manifest?.slug || slug,
+			block: manifest?.block || null,
+		});
+	}
+
+	return true;
 }
 
 /**
@@ -205,10 +240,17 @@ export async function list(args) {
 
 	const themeDir = await partial.resolveThemeDir(args);
 	if (!themeDir) {
-		return false;
+		return format.fail({
+			code: 'theme',
+			message: 'Could not resolve the theme directory',
+			hint: 'Pass --theme <name> and --dir <env-root>.',
+		});
 	}
 
 	const rows = listBlocks(themeDir);
+	if (format.isJson()) {
+		return format.ok({ blocks: rows });
+	}
 	if (!rows.length) {
 		log.info(`No blocks found in ${themeDir}. Wrap a partial with \`wonderpress block create <Name>\`.`);
 		return true;

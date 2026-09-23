@@ -93,7 +93,7 @@ test('help never mentions a command the CLI does not route', () => {
 // the risk moved rather than vanished.
 
 test('every advertised topic has a screen', () => {
-	for (const topic of ['main', 'partial', 'block', 'init']) {
+	for (const topic of ['main', 'partial', 'block', 'init', 'agents', 'mcp']) {
 		assert.equal(help.has(topic), true, `${topic} should have a help screen`);
 	}
 });

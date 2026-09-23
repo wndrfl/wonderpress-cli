@@ -170,7 +170,11 @@ export function parseSubFlag(str) {
  * image / link / repeater are stored as arrays (ACF payloads / row lists).
  **/
 export function phpFormatForType(type) {
-	if (type === 'image' || type === 'link' || type === 'partial' || type === 'repeater' || type === 'post_object') {
+	if (type === 'post_object') {
+		// ACF often returns WP_Post; blocks normalize to a post ID (int).
+		return 'object|array|integer';
+	}
+	if (type === 'image' || type === 'link' || type === 'partial' || type === 'repeater') {
 		return 'array';
 	}
 	if (type === 'select' || type === 'email') {
@@ -494,7 +498,7 @@ export function pageTemplateManifestDir(themeDir) {
 	return `${themeDir}/${PAGE_TEMPLATE_MANIFEST_DIR}`;
 }
 
-export const TEMPLATE_LOCK_LEVELS = ['all', 'insert', 'contentOnly', false];
+export const TEMPLATE_LOCK_LEVELS = ['all', 'insert', false];
 
 /** ACF tab placement for composition tab rows (`editor.acf.tabPlacement`). */
 export const TEMPLATE_TAB_PLACEMENTS = ['left', 'top'];
@@ -854,7 +858,7 @@ export function parseSectionFlag(str) {
 export function buildDefaultTemplateManifest(templatePhpFile, opts = {}) {
 	const lock = opts.lock ?? 'all';
 	if (!TEMPLATE_LOCK_LEVELS.includes(lock)) {
-		throw new Error(`Invalid lock "${lock}". Use: all, insert, contentOnly, or false.`);
+		throw new Error(`Invalid lock "${lock}". Use: all, insert, or false.`);
 	}
 
 	const composition = (opts.sections || []).map((row) => ({
@@ -899,7 +903,7 @@ export function validateTemplateManifest(data, { partialSlugs = [] } = {}) {
 	}
 
 	if (data.editor?.lock !== undefined && !TEMPLATE_LOCK_LEVELS.includes(data.editor.lock)) {
-		errors.push('editor.lock must be all, insert, contentOnly, or false.');
+		errors.push('editor.lock must be all, insert, or false.');
 	}
 
 	const native = data.editor?.native;

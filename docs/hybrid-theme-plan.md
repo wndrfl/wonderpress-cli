@@ -1,6 +1,9 @@
 # Plan: the hybrid theme — a constrained editor, without becoming a block theme
 
-Status: not started. Replaces the "slate" framing in ROADMAP.md Phase 2.
+Status: shipped. Replaces the "slate" framing in ROADMAP.md Phase 2.
+`theme.json`, repo-authoritative Global Styles, curated suite, wrapper
+attributes, and page lock (`all` / `insert` / `false`) are in. `contentOnly`
+is rejected as a page-lock value (see §3a).
 
 ## The correction
 
@@ -22,6 +25,15 @@ begin the moment `templates/index.html` exists:
   that the repo tells the whole story.
 - Header and footer become editable template parts. We would be opening
   something classic never opened, then spending effort locking it back down.
+
+Classic themes can still acquire user-origin Global Styles through WordPress
+UI or APIs. wonderpress-core closes that remaining leak by replacing
+`wp_theme_json_data_user` with an empty user origin. Projects that intentionally
+want database-backed styles opt out with:
+
+```php
+add_filter( 'wonderpress_strip_user_global_styles', '__return_false' );
+```
 
 Meanwhile the requirement that looked like it needed a block theme — *clients
 compose a full page, but not the header or footer* — is the classic model
@@ -154,26 +166,25 @@ page. A fact about the page, so it belongs to the page template: a bespoke
 landing page is locked, a standard content page is not.
 
 `block_editor_settings_all` receives the post being edited, so this is a small
-mapping in PHP from page template to lock level, declared once:
+mapping in PHP from page template to lock level, declared once. **Shipped**
+(`wonder_page_lock`, page-template `editor.lock`, `wonderpress_template_locks`).
+
+Accepted values (2026-09-21):
 
 - `templateLock: 'all'` — bespoke, code-rendered. Nothing moves.
-- `templateLock: 'contentOnly'` — client-editable content in a frozen layout.
-  The sweet spot most agencies skip.
+- `templateLock: 'insert'` — blocks may be reordered but not added or removed.
 - `templateLock: false` — open composition.
+
+`'contentOnly'` is rejected as a page-lock value. At the **root**, Gutenberg
+still allows add, remove, and move when `templateLock` is `contentOnly`. Frozen
+layout with in-place text editing is not part of the v1 contract; block content
+is authored through the sidebar. See
+[editor-js-plan.md](editor-js-plan.md).
 
 Coarser structural locking, where a whole post type must have a fixed shape,
 uses `register_post_type`'s `template` and `template_lock` arguments.
 
-This still meets the goal the original section was reaching for — editability
-set at the contract rather than rediscovered per page. The contract for *page*
-editability is simply the page template, not the component. Declare it once, and
-every page on that template inherits it.
-
-**To verify, not assume:** `contentOnly` is well-established at the
-container/`InnerBlocks` level. Whether it behaves as wanted at post-type level
-needs a real editor session, not a reading of the docs.
-
-#### 3b. Block lock — can this block's insides be rearranged?
+#### 3b. Block lock — deferred
 
 Whether the client may restructure a block's **inner** content: in a testimonial
 holding a quote and a citation, can the citation move above the quote, or only
@@ -183,17 +194,18 @@ create` / `block create`, carried through to `block.json`. Additive, so existing
 manifests without it read as the default and `static-kit-contract.test.js` stays
 untouched.
 
-**But it has nothing to act on yet.** A block's `templateLock` governs its
-`InnerBlocks`, and our blocks have none — they are server-rendered from the
-partial, with no inner content for a client to rearrange. So this half waits on
-the `InnerBlocks` work in [editor-js-plan.md](editor-js-plan.md); shipping a
-`--lock` flag before then would write a field nothing reads.
+**It has nothing to act on.** A block's `templateLock` governs its
+`InnerBlocks`, and WonderPress blocks deliberately use ServerSideRender plus
+sidebar attributes. Server-rendered HTML is inert; React `InnerBlocks` cannot
+mount inside its PHP shell without duplicating the shell in JavaScript or
+building a custom portal system. Neither trade belongs in v1. Do not ship a
+`--lock` flag that writes a field nothing reads.
 
 #### Sequencing
 
-Build **3a now** — it is self-contained, PHP-side, and the piece that actually
-answers "bespoke pages and client-composed pages in one theme". Build **3b with
-`InnerBlocks`**, not before.
+**3a shipped** (without page-level `contentOnly`). **3b is deferred.**
+Manifests or filters that already set `contentOnly` need an explicit migrate to
+`'all'`, `'insert'`, or `false`.
 
 ### 4. Wrapper attributes — the prerequisite
 
@@ -234,15 +246,16 @@ belongs to the component.
 
 ## Sequencing
 
-1. `theme.json` — cheap, reversible, immediate win on core blocks, and it
-   cannot break "classic-capable" because it does not touch the theme's type.
-2. Wrapper attributes in `render.php` — small, unblocks everything downstream.
-3. The curated suite off the manifests.
-4. The lock dial, manifest `lock` field, and `--lock`.
+1. ~~`theme.json`~~ ✅
+2. ~~Wrapper attributes in `render.php`~~ ✅
+3. ~~The curated suite (opt-in, off until a project turns it on)~~ ✅
+4. ~~Page lock (`all` / `insert` / `false`)~~ ✅ — block `lock` / `--lock` is
+   deferred with InnerBlocks.
+5. ~~Strip user Global Styles (`wp_theme_json_data_user`) so the repo stays
+   canonical. Opt-out per project.~~ ✅
 
-Then the editor-JS arc, which is the genuinely large one — see
-[editor-js-plan.md](editor-js-plan.md). Visual fidelity in the editor is the one
-requirement none of the above delivers.
+Editor JS (preview + inspector) shipped buildless; remaining work is in
+[editor-js-plan.md](editor-js-plan.md).
 
 ## Repos
 
@@ -257,5 +270,6 @@ requirement none of the above delivers.
 
 - `templates/` and `parts/`. Dropped, not deferred. They arrive only if
   something concrete demands them, and the burden of proof is on them.
-- Correctness primitives — the next arc.
+- Correctness primitives — Image/Link v1 and a11y contracts shipped after this
+  arc; heading-level manager remains deferred.
 - Editor JavaScript — its own plan.

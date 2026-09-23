@@ -71,6 +71,14 @@ derived colour as its own `theme.json` slot. Full reasoning in
 > if you want the editor constrained, but expect to maintain them alongside the
 > SCSS until that is resolved.
 
+WonderPress also discards database-backed user Global Styles, which otherwise
+outrank this file without producing a repository diff. A project that
+intentionally uses the Global Styles UI can opt out:
+
+```php
+add_filter( 'wonderpress_strip_user_global_styles', '__return_false' );
+```
+
 ## 4. Curate the editor
 
 A stock WordPress offers 117 blocks. Once you know which ones the client
@@ -95,8 +103,8 @@ once:
 ```php
 add_filter( 'wonderpress_template_locks', function () {
 	return array(
-		'page-landing.php' => 'all',          // bespoke, code-rendered
-		'default'          => 'contentOnly',  // text editable, layout frozen
+		'page-landing.php' => 'all',     // bespoke, code-rendered — nothing moves
+		'default'          => false,     // open composition
 	);
 } );
 ```
@@ -105,8 +113,11 @@ add_filter( 'wonderpress_template_locks', function () {
 left exactly as WordPress configured it — absent is not the same as `false`, so
 this cannot accidentally unlock something.
 
-`contentOnly` is the interesting one and the one most agencies skip: the client
-edits words, the layout does not move.
+Accepted values: `'all'` (nothing moves), `'insert'` (reorder only), `false`
+(open). Do not use `'contentOnly'` here — at the root of the editor Gutenberg
+still allows add/remove/move. Frozen layout with in-place text editing is not
+part of WonderPress's v1 editor contract; content is edited through block
+sidebar controls.
 
 ## 5b. Locate ACF groups on the templates that own them
 
@@ -278,13 +289,47 @@ the PHP partial stays the only source of markup.
 
 - **Type and spacing tokens are not connected** to Static Kit. Colour is.
 - **Blocks have no inner content.** They render from the partial and take their
-  values from the sidebar; a client cannot type directly into one. Locking a
-  block's *inner* structure therefore has nothing to act on yet.
+  values from the sidebar; a client cannot type directly into one.
+  ServerSideRender's HTML is inert, so live React InnerBlocks cannot occupy a
+  slot inside that PHP shell without duplicating markup. This is deferred by
+  design, not an unfinished flag.
 - **A theme switch takes the blocks with it.** wonderpress-core registers the
   blocks in the *active* theme's `blocks/` directory, so switching themes leaves
   already-published block content rendering as its raw HTML fallback. That is
   ordinary WordPress behaviour for theme-provided blocks, but it is worth
   knowing before you switch a live site.
+
+## 8. Agents
+
+`wonderpress init` writes `AGENTS.md` at the environment root (and a one-line
+`CLAUDE.md` that points at it), and upserts the MCP stdio server into
+`.mcp.json`, `.cursor/mcp.json`, `.vscode/mcp.json`, and `.codex/config.toml`.
+Those MCP files are gitignored — they pin this machine's Node and CLI path.
+`AGENTS.md` and `CLAUDE.md` are committed. Refresh with
+`wonderpress agents write` after you invent components by hand; `partial create`
+/ `sync` and `template create` already regenerate it.
+
+`--format json` on list, check-drift, lint, and version prints
+`{ "ok", "data", "error" }` on stdout and nothing else. Exit `0` / `1` / `2`.
+
+Open the environment root in Cursor (or Claude Code / VS Code / Codex). Enable
+the `wonderpress` MCP server if the host asks. Generated MCP config pins
+`process.execPath` (the Node that ran `agents write` / `init`), the absolute
+CLI `bin/wonderpress.js`, and `cwd` set to that environment root — so the host
+does not substitute its own Node. Install with a native Node for your machine
+(`process.arch` should match the CPU).
+
+Once that entry exists, `agents write` leaves it alone. Hosts tie their "trust
+this server" approval to the config contents, so rewriting a working entry
+makes you approve it again. Re-run with `--force` after changing Node versions
+or moving the checkout, then re-approve once. The first write prints a Cursor
+install deeplink; Claude Code approves when you run `claude`; Codex after you
+trust the folder.
+
+`wonderpress mcp help` lists the tools.
+Removes require `confirm: true`. `lint_theme` with `fix: true` runs phpcbf
+(CLI `--fix`); it does not need confirm and does not repair drift
+(`partial_sync`). `init`, `destroy`, and `server` are not tools.
 
 ## Upgrading wonderpress-core
 
