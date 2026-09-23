@@ -12,8 +12,9 @@ The CLI declares `@wndrfl/static-kit-cli` as a normal dependency in
 [`package.json`](package.json). It is consumed two ways:
 
 - **Programmatically** — `wonderpress init` calls `staticCli.core.installKit()`
-  ([`src/core.js`](src/core.js)), which copies the Static Kit framework into the
-  theme's `static/` directory and runs `npm install` there.
+  through `installStaticKit()` ([`src/static-kit.js`](src/static-kit.js)), which
+  copies the Static Kit framework into the theme's `static/` directory and runs
+  `npm install` there.
 - **By delegation** — `template create` and `partial create` call into Static
   Kit (see below) rather than reaching into `static/` themselves.
 
@@ -220,6 +221,21 @@ wrote, so the CLI can only confirm Static Kit's **default** layout; under a
 custom `.staticrc` src layout the delegated artifacts are recorded as not
 written (and a removal warns about the file it cannot name) rather than
 recording a path that may be wrong.
+
+#### The known asymmetry: a scaffold that seeds `static/`
+
+`installKit` reads *any* existing `static/` as proof of an installation and
+returns — no framework, no `npm install`, no compile. The theme scaffold does
+seed that directory (`lib/_utilities.scss`, the accessibility utilities every
+page entry uses), so `init` would otherwise hand back a theme with no `dist/`
+at all, and exit 0 doing it.
+
+`installStaticKit()` ([`src/static-kit.js`](src/static-kit.js)) holds the seeded
+files aside, lets Static Kit install into a clean directory, puts them back, and
+only then compiles — so what the scaffold ships reaches `dist/`. It is the
+second exception to "the CLI never writes into `static/`", and like the first it
+belongs behind Static Kit: the fix there is for `installKit` to key off its own
+`.staticrc` rather than directory existence.
 
 ### Versioning
 

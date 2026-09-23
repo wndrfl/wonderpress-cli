@@ -131,9 +131,11 @@ test('lifecycle: init -> create partial -> lint -> teardown', { skip: !RUN, time
 		// Sub-tools that log-and-continue are invisible to the exit code, so scan
 		// for the shapes those failures take. Deliberately narrow: broad patterns
 		// like /Error/ match benign WP-CLI chatter and make the nightly flaky.
+		// The "already installed" warning is here for the same reason: Static Kit
+		// reads any existing static/ that way and skips the whole install.
 		const swallowed = initOutput
 			.split('\n')
-			.filter((line) => /Static ERROR|Error when compiling|TypeError:|is not a function/.test(line));
+			.filter((line) => /Static ERROR|Error when compiling|TypeError:|is not a function|assumed to already be installed/.test(line));
 		assert.deepEqual(swallowed, [], `init logged failures it did not exit on:\n${swallowed.join('\n')}`);
 
 		// 3. Create a real partial in the installed theme.

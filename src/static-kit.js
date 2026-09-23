@@ -1,3 +1,9 @@
+import fs from 'fs-extra';
+import path from 'node:path';
+
+/** Files Static Kit itself reads as proof of an existing installation. */
+const STATIC_KIT_CONFIGS = ['.staticrc', '.static', 'statickit.json'];
+
 /**
  * Lazy-load Static Kit and keep its logger on the same colour contract as us.
  *
@@ -17,4 +23,46 @@ export async function importStaticKit() {
 		}
 	}
 	return staticCli;
+}
+
+/**
+ * Install Static Kit into `dir` and compile it, even when the theme scaffold
+ * has already put files there.
+ *
+ * `installKit` reads *any* existing target directory as "already installed" and
+ * returns before copying the framework, so the scaffold shipping one stylesheet
+ * under `static/` costs the theme its entire build — `init` exits 0 with no
+ * `dist/`. Hold the seeded files aside, install into a clean directory, put
+ * them back, and compile last so they reach `dist/`.
+ *
+ * Both Static Kit calls chdir without restoring, so pass absolute paths and put
+ * the caller's cwd back afterwards.
+ **/
+export async function installStaticKit(staticCli, dir, opts = {}) {
+	const target = path.resolve(dir);
+	const cwd = process.cwd();
+	const installed = STATIC_KIT_CONFIGS.some((f) => fs.existsSync(path.join(target, f)));
+	const seeded = !installed && fs.existsSync(target);
+	const held = `${target}-wonderpress-seed`;
+
+	if (seeded) {
+		fs.removeSync(held);
+		fs.moveSync(target, held);
+	}
+
+	try {
+		await staticCli.core.installKit(target, { ...opts, compile: false });
+	} finally {
+		process.chdir(cwd);
+		if (seeded) {
+			fs.copySync(held, target, { overwrite: true });
+			fs.removeSync(held);
+		}
+	}
+
+	try {
+		await staticCli.compile.all({ dir: target });
+	} finally {
+		process.chdir(cwd);
+	}
 }
