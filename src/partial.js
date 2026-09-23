@@ -6,6 +6,7 @@ import * as log from './log.js';
 import * as core from './core.js';
 import inquirer from 'inquirer';
 import mustache from 'mustache';
+import { importStaticKit } from './static-kit.js';
 import * as wordpress from './wordpress.js';
 import {
 	isValidClassName,
@@ -489,7 +490,7 @@ export async function writePartial(params, themeDir) {
 	// older published version installed. Detect it up front so we never crash on
 	// a missing API and never record an artifact we did not actually write.
 	// Lazy-load so MCP/read paths never pull sharp at process startup.
-	const staticCli = await import('@wndrfl/static-kit-cli');
+	const staticCli = await importStaticKit();
 	const componentApiAvailable = !!(staticCli.component && typeof staticCli.component.create === 'function');
 	const { wantsStyle, wantsScript, willEmitStyle, willEmitScript } = staticArtifacts(params, componentApiAvailable);
 
@@ -628,7 +629,7 @@ export async function addScript(themeDir, name) {
 		return false;
 	}
 
-	const staticCli = await import('@wndrfl/static-kit-cli');
+	const staticCli = await importStaticKit();
 	const componentApiAvailable = !!(staticCli.component && typeof staticCli.component.create === 'function');
 
 	if (!defaultExists) {
