@@ -27,6 +27,8 @@
 
 use Wonderpress\Partials\{{ class_name }};
 
+defined( 'ABSPATH' ) || exit;
+
 /*
  * A partial throws when a required property is missing, which is correct for
  * PHP callers: `new {{ class_name }}( [] )` in a template is a mistake worth

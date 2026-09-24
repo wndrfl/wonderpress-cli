@@ -59,3 +59,9 @@ test('the CLI delegates into static/ instead of scaffolding it', () => {
 		'template.js must delegate template creation to staticCli.template.create'
 	);
 });
+
+test('Static Kit invocations divert stdout so MCP JSON-RPC stays intact', () => {
+	assert.match(read('src/static-kit.js'), /export async function withRedirectedStdout/);
+	assert.match(read('src/partial.js'), /withRedirectedStdout\(\(\) => staticCli\.component\.create/);
+	assert.match(read('src/template.js'), /withRedirectedStdout\(\(\) => staticCli\.template\.create/);
+});

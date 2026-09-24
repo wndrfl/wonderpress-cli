@@ -1,8 +1,27 @@
 import fs from 'fs-extra';
 import path from 'node:path';
+import * as format from './format.js';
 
 /** Files Static Kit itself reads as proof of an existing installation. */
 const STATIC_KIT_CONFIGS = ['.staticrc', '.static', 'statickit.json'];
+
+/**
+ * Run a Static Kit call with its stdout sent to stderr.
+ *
+ * Static Kit logs with `colors` on stdout. On an MCP stdio transport that
+ * stream is JSON-RPC; a dim code (`[2m`) is enough to drop the connection.
+ **/
+export async function withRedirectedStdout(fn) {
+	const write = process.stdout.write;
+	process.stdout.write = function wonderpressRedirectStdout(chunk, encoding, cb) {
+		return process.stderr.write(chunk, encoding, cb);
+	};
+	try {
+		return await fn();
+	} finally {
+		process.stdout.write = write;
+	}
+}
 
 /**
  * Lazy-load Static Kit and keep its logger on the same colour contract as us.
@@ -10,11 +29,13 @@ const STATIC_KIT_CONFIGS = ['.staticrc', '.static', 'statickit.json'];
  * Static Kit paints with the `colors` package, which does not honour NO_COLOR
  * (it keys off TERM / FORCE_COLOR). A piped `wonderpress` run with NO_COLOR
  * would otherwise leak Static Kit's escape sequences onto stdout. Disable that
- * copy of `colors` when we ourselves are not colouring.
+ * copy of `colors` when we ourselves are not colouring, and always when stdout
+ * is a machine protocol (MCP / `--format json`).
  **/
 export async function importStaticKit() {
 	const staticCli = await import('@wndrfl/static-kit-cli');
-	if (process.env.NO_COLOR && process.env.FORCE_COLOR !== '1') {
+	const mute = format.quietStdout() || (process.env.NO_COLOR && process.env.FORCE_COLOR !== '1');
+	if (mute) {
 		try {
 			const colors = (await import('colors')).default;
 			colors.disable();
@@ -51,7 +72,7 @@ export async function installStaticKit(staticCli, dir, opts = {}) {
 	}
 
 	try {
-		await staticCli.core.installKit(target, { ...opts, compile: false });
+		await withRedirectedStdout(() => staticCli.core.installKit(target, { ...opts, compile: false }));
 	} finally {
 		process.chdir(cwd);
 		if (seeded) {
@@ -61,7 +82,7 @@ export async function installStaticKit(staticCli, dir, opts = {}) {
 	}
 
 	try {
-		await staticCli.compile.all({ dir: target });
+		await withRedirectedStdout(() => staticCli.compile.all({ dir: target }));
 	} finally {
 		process.chdir(cwd);
 	}

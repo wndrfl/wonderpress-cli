@@ -75,8 +75,9 @@ test('writePartial: flag form and json form are byte-identical', async () => {
 		assert.match(a, /protected static \$_properties/);
 		assert.doesNotMatch(a, /\\\$/);
 
-		// the view template is written too
-		assert.ok(fs.existsSync(path.join(t1, 'partials/testimonial.php')));
+		// the view template is written too, and refuses to run outside WordPress
+		const view = fs.readFileSync(path.join(t1, 'partials/testimonial.php'), 'utf8');
+		assert.match(view, /defined\( 'ABSPATH' \) \|\| exit;/);
 	} finally {
 		fs.removeSync(t1);
 		fs.removeSync(t2);
@@ -246,6 +247,7 @@ test('--block opts in: block.json (with render binding) + render.php delegate to
 
 		const render = fs.readFileSync(path.join(dir, 'blocks/testimonial/render.php'), 'utf8');
 		assert.match(render, /use Wonderpress\\Partials\\Testimonial;/);
+		assert.match(render, /defined\( 'ABSPATH' \) \|\| exit;/);
 		assert.match(render, /new Testimonial\( \$attributes \)/);
 
 		// The wrapper is what makes the output a block WordPress can recognise
