@@ -39,7 +39,9 @@ wonderpress lint --fix
 ```
 
 MCP `lint_theme` is the same inspect; pass `fix: true` for phpcbf (CLI `--fix`).
-Drift is `partial_sync`, not `--fix`.
+Drift is `partial_sync`, not `--fix`. `acf install` is not an MCP tool — run
+`ACF_PRO_LICENSE=… wonderpress acf install` on the host CLI. Do not pass the
+license as a flag or tool argument.
 
 Machine-readable output: add `--format json` (envelope `{ ok, data, error }`).
 Exit `0` success, `1` lint/drift/validation, `2` usage.

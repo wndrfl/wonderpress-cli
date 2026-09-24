@@ -1,0 +1,36 @@
+wonderpress acf — install Advanced Custom Fields
+
+Downloads ACF directly from advancedcustomfields.com and activates it with
+WP-CLI. ACF PRO is the default because WonderPress repeater fields require it.
+Use --free explicitly for the free edition.
+
+COMMANDS
+  acf install              Download and activate the latest ACF PRO
+
+OPTIONS
+  --free                   Install free ACF instead of ACF PRO
+  --force                  Download and reinstall the selected edition
+  --dir <path>             WonderPress environment root
+  --format json            Machine-readable result
+
+ACF PRO
+  Export ACF_PRO_LICENSE before running the command:
+
+    ACF_PRO_LICENSE=... wonderpress acf install
+
+  The key is read only from the environment. It is not accepted as a command
+  argument, written to project files, or passed to WP-CLI. WonderPress downloads
+  the official zip itself and gives WP-CLI a temporary local path.
+
+  Installing the plugin does not persist or activate the license for updates.
+  Configure ACF_PRO_LICENSE in wp-config.php or activate it in ACF > Updates.
+
+FREE ACF
+  The free package comes from https://www.advancedcustomfields.com/latest/,
+  not the WordPress.org plugin slug. It does not include Repeater, Flexible
+  Content, Gallery, or other PRO fields.
+
+EXAMPLES
+  ACF_PRO_LICENSE=... wonderpress acf install
+  wonderpress acf install --free
+  wonderpress acf install --free --force

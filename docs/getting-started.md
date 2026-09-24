@@ -119,6 +119,24 @@ still allows add/remove/move. Frozen layout with in-place text editing is not
 part of WonderPress's v1 editor contract; content is edited through block
 sidebar controls.
 
+## 5a. Install ACF if PHP templates will hydrate from fields
+
+`init` does not install ACF. Core no-ops when the plugin is missing; `--acf` on
+a partial only marks the manifest. Repeaters and the other ACF-shaped types
+need **ACF PRO**:
+
+```bash
+ACF_PRO_LICENSE=... wonderpress acf install
+```
+
+The key is read from the environment only — never as a CLI flag. `--free`
+installs the official free zip from advancedcustomfields.com (not the
+WordPress.org slug); it does not include Repeater. See `wonderpress acf help`.
+
+Installing the plugin does not persist the PRO license for updates. Put
+`define( 'ACF_PRO_LICENSE', '…' );` in `wp-config.php`, or activate it under
+ACF → Updates.
+
 ## 5b. Locate ACF groups on the templates that own them
 
 `--acf` records that a partial may register an ACF field group. Core reads the

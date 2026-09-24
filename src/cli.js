@@ -1,4 +1,5 @@
 import arg from 'arg';
+import * as acf from './acf.js';
 import * as agents from './agents.js';
 import * as block from './block.js';
 import * as core from './core.js';
@@ -23,6 +24,7 @@ export async function cli() {
     '--name': String,
     '--help': Boolean,
     '--version': Boolean,
+    '--free': Boolean,
 
     // partial create
     '--acf': Boolean,
@@ -204,6 +206,9 @@ export async function cli() {
   }
 
   switch (cmd) {
+    case 'acf':
+      await acf.command(args._[1], args);
+      break;
     case 'partial':
       await partial.command(args._[1], args);
       break;
