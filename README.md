@@ -249,6 +249,17 @@ Create a custom page template, a matching `.wonderpress/manifest/page-templates/
 
 List templates under `.wonderpress/manifest/page-templates/`. Remove deletes the PHP file, manifest, and delegated Static Kit JS/SCSS (pass `--no-static` to keep static files).
 
+#### `wonderpress static compile`
+
+Compile the active theme’s Static Kit tree (`wp-content/themes/<theme>/static`) from the environment root. Static Kit still owns that directory; this is a proxy so you do not `cd` into it.
+
+| Flag | Description |
+| --- | --- |
+| `--watch` | Recompile on change (foreground). Cannot be combined with `--format json`. |
+| `--theme <name>` | Theme slug when WordPress is not reachable. |
+
+Not an MCP tool.
+
 ---
 
 ### Agents and MCP
@@ -270,7 +281,7 @@ An existing `wonderpress` MCP entry is left alone so hosts do not re-prompt for 
 
 #### `wonderpress mcp`
 
-Starts an MCP stdio server in this package. Tools call the same operations as the CLI (`partial_list`, `partial_create`, `partial_sync`, `lint_theme`, and so on). `init`, `destroy`, `server`, and `acf install` are not tools. See `wonderpress mcp help`.
+Starts an MCP stdio server in this package. Tools call the same operations as the CLI (`partial_list`, `partial_create`, `partial_sync`, `lint_theme`, and so on). `init`, `destroy`, `server`, `acf install`, and `static compile` are not tools. See `wonderpress mcp help`.
 
 #### `wonderpress readme create`
 
@@ -291,7 +302,7 @@ Wizard (or flags) to generate a project README.
 { "ok": true, "data": {}, "error": null }
 ```
 
-Supported on `version`, `lint`, `acf install`, `partial list`, `partial check-drift`, `partial sync --dry-run`, and `agents write`. Human output remains the default.
+Supported on `version`, `lint`, `acf install`, `static compile` (not `--watch`), `partial list`, `partial check-drift`, `partial sync --dry-run`, and `agents write`. Human output remains the default.
 
 ---
 

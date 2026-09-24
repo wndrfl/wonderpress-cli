@@ -3,7 +3,21 @@ import path from 'node:path';
 import * as format from './format.js';
 
 /** Files Static Kit itself reads as proof of an existing installation. */
-const STATIC_KIT_CONFIGS = ['.staticrc', '.static', 'statickit.json'];
+export const STATIC_KIT_CONFIGS = ['.staticrc', '.static', 'statickit.json'];
+
+/**
+ * Theme `static/` directory Static Kit owns.
+ **/
+export function staticKitDir(themeDir) {
+	return path.join(themeDir, 'static');
+}
+
+/**
+ * True when `dir` looks like an installed Static Kit tree.
+ **/
+export function isStaticKitTree(dir) {
+	return STATIC_KIT_CONFIGS.some((file) => fs.existsSync(path.join(dir, file)));
+}
 
 /**
  * Run a Static Kit call with its stdout sent to stderr.
@@ -86,4 +100,35 @@ export async function installStaticKit(staticCli, dir, opts = {}) {
 	} finally {
 		process.chdir(cwd);
 	}
+}
+
+/**
+ * Compile (and optionally watch) a Static Kit tree.
+ *
+ * Static Kit chdirs into `dir` and does not restore it. Callers pass an
+ * absolute path; this function puts cwd back afterwards. Watch is a
+ * foreground process and does not return.
+ **/
+export async function compileStatic(dir, { watch = false, staticCli = null } = {}) {
+	const target = path.resolve(dir);
+	if (!isStaticKitTree(target)) {
+		return {
+			ok: false,
+			error: {
+				code: 'static',
+				message: `No Static Kit tree at ${target}.`,
+				hint: 'Run `wonderpress init`, or pass --theme for the theme that owns static/.',
+			},
+		};
+	}
+
+	const kit = staticCli || await importStaticKit();
+	const cwd = process.cwd();
+	try {
+		await withRedirectedStdout(() => kit.compile.all({ dir: target, watch }));
+	} finally {
+		process.chdir(cwd);
+	}
+
+	return { ok: true, data: { dir: target, watch: !!watch } };
 }

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'fs-extra';
 import os from 'node:os';
 import path from 'node:path';
-import { installStaticKit } from '../src/static-kit.js';
+import { compileStatic, installStaticKit } from '../src/static-kit.js';
 
 // A stand-in for Static Kit with the one behaviour that matters here: it treats
 // an existing target directory as proof of an installation and returns without
@@ -107,6 +107,70 @@ test('installStaticKit returns the caller to its own working directory', async (
 		assert.equal(process.cwd(), cwd);
 	} finally {
 		process.chdir(cwd);
+		fs.removeSync(root);
+	}
+});
+
+test('compileStatic refuses a directory that is not a Static Kit tree', async () => {
+	const root = makeTheme();
+	try {
+		const result = await compileStatic(path.join(root, 'static'));
+		assert.equal(result.ok, false);
+		assert.equal(result.error.code, 'static');
+	} finally {
+		fs.removeSync(root);
+	}
+});
+
+test('compileStatic delegates to Static Kit with the theme static/ path', async () => {
+	const root = makeTheme();
+	const cwd = process.cwd();
+	try {
+		const staticDir = path.join(root, 'static');
+		fs.ensureDirSync(staticDir);
+		fs.writeFileSync(path.join(staticDir, '.staticrc'), '{}');
+		const calls = [];
+		const result = await compileStatic(staticDir, {
+			watch: false,
+			staticCli: {
+				compile: {
+					async all(opts) {
+						calls.push(opts);
+						process.chdir(opts.dir);
+					},
+				},
+			},
+		});
+		assert.equal(result.ok, true);
+		assert.equal(result.data.dir, staticDir);
+		assert.equal(result.data.watch, false);
+		assert.deepEqual(calls, [{ dir: staticDir, watch: false }]);
+		assert.equal(process.cwd(), cwd);
+	} finally {
+		process.chdir(cwd);
+		fs.removeSync(root);
+	}
+});
+
+test('compileStatic passes --watch through to Static Kit', async () => {
+	const root = makeTheme();
+	try {
+		const staticDir = path.join(root, 'static');
+		fs.ensureDirSync(staticDir);
+		fs.writeFileSync(path.join(staticDir, '.staticrc'), '{}');
+		const calls = [];
+		await compileStatic(staticDir, {
+			watch: true,
+			staticCli: {
+				compile: {
+					async all(opts) {
+						calls.push(opts);
+					},
+				},
+			},
+		});
+		assert.equal(calls[0].watch, true);
+	} finally {
 		fs.removeSync(root);
 	}
 });

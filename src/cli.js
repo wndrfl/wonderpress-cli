@@ -12,6 +12,7 @@ import * as mcp from './mcp.js';
 import * as partial from './partial.js';
 import * as readme from './readme.js';
 import * as server from './server.js';
+import * as staticAssets from './static.js';
 import * as template from './template.js';
 
 export async function cli() {
@@ -59,6 +60,9 @@ export async function cli() {
     // template create
     '--lock': String,
     '--section': [String],
+
+    // static compile
+    '--watch': Boolean,
 
     // readme create
     '--project-name': String,
@@ -223,6 +227,9 @@ export async function cli() {
       break;
     case 'server':
       await server.command(args._[1] || 'start', args);
+      break;
+    case 'static':
+      await staticAssets.command(args._[1], args);
       break;
     case 'lint':
       await lint.command('theme', args);

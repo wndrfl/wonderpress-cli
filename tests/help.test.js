@@ -40,12 +40,19 @@ test('an unknown command says so, shows help, and exits non-zero', () => {
 test('a command group with no subcommand shows that group', () => {
 	assert.match(run('partial').out, /partial create/);
 	assert.match(run('block').out, /block create/);
+	assert.match(run('static').out, /static compile/);
 });
 
 test('an unknown subcommand names it and exits non-zero', () => {
 	const { out, status } = run('partial', 'bogus');
 	assert.match(out, /Unknown partial subcommand: bogus/);
 	assert.equal(status, 1);
+});
+
+test('static compile --watch refuses --format json', () => {
+	const { out, status } = run('static', 'compile', '--watch', '--format', 'json');
+	assert.match(out, /cannot be used with `--format json`/);
+	assert.equal(status, 2);
 });
 
 test('`<command> help` and `<command> --help` both work', () => {
@@ -95,7 +102,7 @@ test('help never mentions a command the CLI does not route', () => {
 test('every advertised topic has a screen', () => {
 	for (const topic of [
 		'main', 'partial', 'block', 'init', 'template', 'acf', 'agents', 'mcp',
-		'lint', 'server', 'destroy', 'version', 'readme',
+		'lint', 'server', 'destroy', 'version', 'readme', 'static',
 	]) {
 		assert.equal(help.has(topic), true, `${topic} should have a help screen`);
 	}

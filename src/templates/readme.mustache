@@ -46,6 +46,14 @@ To learn more about the features of the Wonderpress CLI, check out [the document
 
 This environment is automatically codesniffed against the [WordPress Coding Standards](https://developer.wordpress.org/coding-standards/wordpress-coding-standards/php/) when pushed to Github.
 
+To compile theme CSS/JS from the environment root (do not `cd` into
+`static/`):
+
+```
+$ wonderpress static compile
+$ wonderpress static compile --watch
+```
+
 To run codesniffing locally, you may use the Wonderpress `lint` command:
 
 `$ wonderpress lint`

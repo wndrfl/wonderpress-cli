@@ -73,7 +73,7 @@ test('MCP server advertises WonderPress display metadata and icon', () => {
 
 test('Static Kit is not a static import on the MCP load path', () => {
 	const staticImport = /from\s+['"]@wndrfl\/static-kit-cli['"]/;
-	for (const rel of ['mcp.js', 'core.js', 'partial.js', 'template.js']) {
+	for (const rel of ['mcp.js', 'core.js', 'partial.js', 'template.js', 'static.js']) {
 		const source = fs.readFileSync(path.join(SRC, rel), 'utf8');
 		assert.doesNotMatch(
 			source,
