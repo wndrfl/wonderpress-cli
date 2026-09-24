@@ -6,27 +6,27 @@
  * @package Wonderpress Theme
  */
 
+{{# uses }}
+use Wonderpress\Partials\{{ name }};
+
+{{/ uses }}
 // Set the <body> id
 wonder_body_id( '{{ template_slug }}' );
 
 get_header();
 ?>
 
-<?php
-if ( have_posts() ) :
-  while ( have_posts() ) :
-    the_post();
-    ?>
-<main role="main">
-<?php
-if ( function_exists( 'wonder_render_template_sections' ) ) {
-	wonder_render_template_sections();
-}
-?>
-</main>
-    <?php
-  endwhile;
-endif;
-?>
+	<main role="main">
+
+		<?php
+		if ( have_posts() ) :
+			while ( have_posts() ) :
+				the_post();
+{{{ body_php }}}
+			endwhile;
+		endif;
+		?>
+
+	</main>
 
 <?php get_footer(); ?>

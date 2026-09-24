@@ -119,6 +119,24 @@ still allows add/remove/move. Frozen layout with in-place text editing is not
 part of WonderPress's v1 editor contract; content is edited through block
 sidebar controls.
 
+## 5a. Install ACF if PHP templates will hydrate from fields
+
+`init` does not install ACF. Core no-ops when the plugin is missing; `--acf` on
+a partial only marks the manifest. Repeaters and the other ACF-shaped types
+need **ACF PRO**:
+
+```bash
+ACF_PRO_LICENSE=... wonderpress acf install
+```
+
+The key is read from the environment only — never as a CLI flag. `--free`
+installs the official free zip from advancedcustomfields.com (not the
+WordPress.org slug); it does not include Repeater. See `wonderpress acf help`.
+
+Installing the plugin does not persist the PRO license for updates. Put
+`define( 'ACF_PRO_LICENSE', '…' );` in `wp-config.php`, or activate it under
+ACF → Updates.
+
 ## 5b. Locate ACF groups on the templates that own them
 
 `--acf` records that a partial may register an ACF field group. Core reads the
@@ -216,12 +234,13 @@ with `"schemaVersion": 1`. That file declares:
   Template**, **Update** the page and reload the edit screen so PHP can apply the
   manifest (editor mode, ACF, locks).
 - **`composition`** — ordered rows:
-  - **partial** — `{ "id", "partial" }` renders via `wonder_render_template_sections()`
-    and maps to an ACF group (partial manifest properties).
+  - **partial** — `{ "id", "partial" }` is a reusable slice. Scaffolded PHP
+    calls `( new Class( wonder_partial_props( 'slug', 'id' ) ) )->render()`.
+    It also maps to an ACF group (partial manifest properties).
   - **fields** — `{ "id", "label"?, "properties": [ … ] }` editor-only ACF group
     using the same property types as partial manifests (`string`, `boolean`, `image`,
-    `link`, `repeater`, …). Read values with `get_field( 'your-id' )` or
-    `wonder_template_composition_field( 'your-id' )` in PHP.
+    `link`, `repeater`, …). Write the HTML in the page PHP; read values with
+    `wonder_template_composition_field( 'your-id' )` (or `get_field( 'your-id' )`).
   - **tab** — `{ "id", "label", "items": [ …partial or fields rows… ] }` (ACF tabs).
   Instance ids must be unique across the whole tree. Tab rows register as ACF tabs;
   set `editor.acf.tabPlacement` to force **left** or **top**, or omit for the default.
@@ -233,8 +252,10 @@ from `wonderpress_template_fields` — which can look like fields “went global
 
 When `composition` lists ACF-compatible partials, core registers **one** field
 group on that page template; each instance id is an ACF group field name. Hydrate
-with `wonder_partial_props( 'landing-hero', 'hero-main' )` or render the stack
-with `wonder_render_template_sections()` (already in the scaffolded PHP template).
+with `wonder_partial_props( 'landing-hero', 'hero-main' )` in the page PHP (the
+create scaffold emits those calls for `--section` rows). `wonder_render_template_sections()`
+still exists for a page that is only named partials; do not mix it with handwritten
+renders.
 
 Assign the page to that template in the editor (**Page** → **Template** → your
 template, then **Update**). Manifest rules apply only to pages whose saved

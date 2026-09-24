@@ -8,8 +8,8 @@ import * as log from './log.js';
 import * as core from './core.js';
 import * as config from './config.js';
 import * as partial from './partial.js';
-import { listPageTemplates } from './template.js';
-import { isValidNamespace, LEGACY_NAMESPACE } from './validate.js';
+import { listPageTemplates, findPageTemplateManifest } from './template.js';
+import { flattenTemplateComposition, isValidNamespace, LEGACY_NAMESPACE } from './validate.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const TEMPLATE = path.join(__dirname, 'templates/agents.md.mustache');
@@ -159,11 +159,19 @@ export function buildAgentView({ root, themeDir }) {
 		: [];
 
 	const templates = themeDir
-		? listPageTemplates(themeDir).map((row) => ({
-			template: row.template,
-			lock: row.lock === false ? 'false' : String(row.lock),
-			sections: row.sections,
-		}))
+		? listPageTemplates(themeDir).map((row) => {
+			const found = findPageTemplateManifest(themeDir, row.template);
+			const composition = found?.manifest?.composition || [];
+			const ids = flattenTemplateComposition(composition).map((item) => (
+				item.partial ? `${item.id}:${item.partial}` : item.id
+			));
+			return {
+				template: row.template,
+				lock: row.lock === false ? 'false' : String(row.lock),
+				sections: row.sections,
+				index: ids.join(', ') || '(empty)',
+			};
+		})
 		: [];
 
 	return {

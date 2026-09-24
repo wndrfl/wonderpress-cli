@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'fs-extra';
 import os from 'node:os';
 import path from 'node:path';
+import mustache from 'mustache';
 import {
 	buildDefaultTemplateManifest,
 } from '../src/validate.js';
@@ -10,6 +11,8 @@ import {
 	findPageTemplateManifest,
 	listPageTemplates,
 	normalizePageTemplateKey,
+	pageTemplateBodyPhp,
+	partialClassNameForSlug,
 	removePageTemplate,
 	staticTemplateEntryPaths,
 } from '../src/template.js';
@@ -107,4 +110,47 @@ test('removePageTemplate --no-static skips static entries', () => {
 	} finally {
 		fs.removeSync(dir);
 	}
+});
+
+test('partialClassNameForSlug prefers the manifest class name', () => {
+	const dir = tmpTheme();
+	try {
+		fs.ensureDirSync(path.join(dir, '.wonderpress/manifest/partials'));
+		fs.writeFileSync(
+			path.join(dir, '.wonderpress/manifest/partials/call-to-action.json'),
+			JSON.stringify({ name: 'Call_To_Action', slug: 'call-to-action' }),
+		);
+		assert.equal(partialClassNameForSlug(dir, 'call-to-action'), 'Call_To_Action');
+		assert.equal(partialClassNameForSlug(dir, 'hero'), 'Hero');
+	} finally {
+		fs.removeSync(dir);
+	}
+});
+
+test('pageTemplateBodyPhp emits real partial calls and a fields comment', () => {
+	const withSection = pageTemplateBodyPhp([
+		{ className: 'Hero', partial: 'hero', id: 'hero-main' },
+	]);
+	assert.match(withSection, /\( new Hero\( wonder_partial_props\( 'hero', 'hero-main' \) \) \)->render\(\);/);
+	assert.match(withSection, /wonder_template_composition_field\( 'intro' \)/);
+	assert.doesNotMatch(withSection, /wonder_render_template_sections/);
+
+	const empty = pageTemplateBodyPhp([]);
+	assert.match(empty, /Continue this page/);
+	assert.match(empty, /\/\/ \( new Hero/);
+	assert.doesNotMatch(empty, /wonder_render_template_sections/);
+});
+
+test('page template scaffold emits use + render for --section rows', () => {
+	const src = fs.readFileSync(new URL('../src/templates/template.mustache', import.meta.url), 'utf8');
+	const php = mustache.render(src, {
+		template_name: 'Landing',
+		template_slug: 'landing',
+		uses: [{ name: 'Hero' }],
+		body_php: pageTemplateBodyPhp([{ className: 'Hero', partial: 'hero', id: 'hero-main' }]),
+	});
+	assert.match(php, /use Wonderpress\\Partials\\Hero;/);
+	assert.match(php, /the_post\(\);/);
+	assert.match(php, /\( new Hero\( wonder_partial_props\( 'hero', 'hero-main' \) \) \)->render\(\);/);
+	assert.doesNotMatch(php, /wonder_render_template_sections/);
 });

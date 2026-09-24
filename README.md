@@ -137,6 +137,24 @@ Runs PHPCS against the [Wonderpress coding standards](https://github.com/wndrfl/
 
 `--axe` and `--budget` are reserved and currently skipped.
 
+#### `wonderpress acf install [--free]`
+
+Downloads and activates ACF directly from its official distribution. ACF PRO is
+the default because WonderPress repeater fields require it:
+
+```bash
+ACF_PRO_LICENSE=... wonderpress acf install
+```
+
+The key is read only from the environment; it is not accepted as an argument,
+written to the project, or passed to WP-CLI. Use `--free` to install the latest
+free edition from `https://www.advancedcustomfields.com/latest/`. Add `--force`
+to download and reinstall an edition that is already present.
+
+This installs and activates the plugin but does not persist the PRO license for
+updates. Configure `ACF_PRO_LICENSE` in `wp-config.php` or activate it in the
+ACF admin.
+
 #### `wonderpress version`
 
 Print the installed CLI version.
@@ -219,7 +237,7 @@ Blocks register under the Wonderpress editor category via `wonderpress-core`. If
 
 #### `wonderpress template create`
 
-Create a custom page template, a matching `.wonderpress/manifest/page-templates/*.json` (`schemaVersion` 1), and Static Kit page assets.
+Create a custom page template, a matching `.wonderpress/manifest/page-templates/*.json` (`schemaVersion` 1), and Static Kit page assets. `--section` rows become real PHP `render()` calls. After create, keep going in that PHP file and the manifest together (see `AGENTS.md`).
 
 | Flag | Description |
 | --- | --- |
@@ -252,7 +270,7 @@ An existing `wonderpress` MCP entry is left alone so hosts do not re-prompt for 
 
 #### `wonderpress mcp`
 
-Starts an MCP stdio server in this package. Tools call the same operations as the CLI (`partial_list`, `partial_create`, `partial_sync`, `lint_theme`, and so on). `init`, `destroy`, and `server` are not tools. See `wonderpress mcp help`.
+Starts an MCP stdio server in this package. Tools call the same operations as the CLI (`partial_list`, `partial_create`, `partial_sync`, `lint_theme`, and so on). `init`, `destroy`, `server`, and `acf install` are not tools. See `wonderpress mcp help`.
 
 #### `wonderpress readme create`
 
@@ -273,7 +291,7 @@ Wizard (or flags) to generate a project README.
 { "ok": true, "data": {}, "error": null }
 ```
 
-Supported on `version`, `lint`, `partial list`, `partial check-drift`, `partial sync --dry-run`, and `agents write`. Human output remains the default.
+Supported on `version`, `lint`, `acf install`, `partial list`, `partial check-drift`, `partial sync --dry-run`, and `agents write`. Human output remains the default.
 
 ---
 

@@ -30,6 +30,15 @@ test('writeAgentFiles is stable and indexes partials', async () => {
 			'--prop': ['title:string:required', 'image:image'],
 		}), themeDir);
 
+		const ptDir = path.join(themeDir, '.wonderpress/manifest/page-templates');
+		fs.ensureDirSync(ptDir);
+		fs.writeFileSync(path.join(ptDir, 'template-landing.json'), JSON.stringify({
+			schemaVersion: 1,
+			template: 'template-landing.php',
+			editor: { lock: 'all' },
+			composition: [{ id: 'hero-main', partial: 'hero' }],
+		}) + '\n');
+
 		const first = writeAgentFiles({ root, themeDir });
 		const second = writeAgentFiles({ root, themeDir });
 		assert.equal(fs.readFileSync(first.agents, 'utf8'), fs.readFileSync(second.agents, 'utf8'));
@@ -39,6 +48,10 @@ test('writeAgentFiles is stable and indexes partials', async () => {
 		assert.match(md, /`hero` \(Hero\) — block `acme\/hero`/);
 		assert.match(md, /title:string/);
 		assert.match(md, /partial sync/);
+		assert.match(md, /How to continue a page template/);
+		assert.match(md, /wonder_partial_props/);
+		assert.match(md, /wonder_template_composition_field/);
+		assert.match(md, /`template-landing.php` — lock `all` — hero-main:hero/);
 		assert.doesNotMatch(md, /\d{4}-\d{2}-\d{2}/);
 
 		const cursor = JSON.parse(fs.readFileSync(path.join(root, '.cursor/mcp.json'), 'utf8'));

@@ -15,6 +15,7 @@ ENVIRONMENT
   server        Start (or `server stop`) the local development environment
   destroy       Tear the environment down, keeping the theme and its files
   lint          Run phpcs and manifest drift over the theme
+  acf           Install ACF or ACF PRO from the official distribution
   version       Print the installed version
   agents        Write AGENTS.md from conventions and manifests
   mcp           MCP stdio server (same operations, agent client)

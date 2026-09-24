@@ -6,7 +6,7 @@ import * as log from './log.js';
 import * as core from './core.js';
 import inquirer from 'inquirer';
 import mustache from 'mustache';
-import { importStaticKit } from './static-kit.js';
+import { importStaticKit, withRedirectedStdout } from './static-kit.js';
 import * as wordpress from './wordpress.js';
 import {
 	isValidClassName,
@@ -502,10 +502,10 @@ export async function writePartial(params, themeDir) {
 	// which owns the location/format — instead of writing into it directly (same
 	// pattern as `template create` calling `staticCli.template.create`).
 	if (willEmitStyle || willEmitScript) {
-		await staticCli.component.create(`${themeDir}/static`, slug, {
+		await withRedirectedStdout(() => staticCli.component.create(`${themeDir}/static`, slug, {
 			style: willEmitStyle,
 			script: willEmitScript,
-		});
+		}));
 	}
 
 	// Existence is the source of truth for the delegated halves.
@@ -634,10 +634,10 @@ export async function addScript(themeDir, name) {
 
 	if (!defaultExists) {
 		if (componentApiAvailable) {
-			await staticCli.component.create(`${themeDir}/static`, slug, {
+			await withRedirectedStdout(() => staticCli.component.create(`${themeDir}/static`, slug, {
 				style: false,
 				script: true,
-			});
+			}));
 		}
 	}
 

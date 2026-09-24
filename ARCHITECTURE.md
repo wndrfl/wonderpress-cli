@@ -168,7 +168,9 @@ groups (`id` + `properties[]`, no render), and optional tab rows (`id`, `label`,
 Core merges locks with
 `wonderpress_template_locks`, registers one ACF group per template when
 composition lists ACF-compatible partials (field names = instance ids), and
-renders via `wonder_render_template_sections()`. Partial manifests stay the
+exposes `wonder_render_template_sections()` for all-partial pages. Scaffolded
+PHP and AGENTS.md use explicit `wonder_partial_props()` / HTML instead. Partial
+manifests stay the
 component dictionary; template manifests are the page-template sentence.
 
 ```json

@@ -9,7 +9,9 @@ write: phpcbf only; it does not repair drift (use partial_sync).
 
 Writes: partial_create, partial_sync, partial_add_js, block_create,
 template_create, lint_theme (fix: true).
-Removes require confirm: true. init, destroy, and server are not tools.
+Removes require confirm: true. init, destroy, server, and acf install are not
+tools. ACF is a licensed plugin: install it on the host CLI with
+`ACF_PRO_LICENSE` in the environment (`wonderpress acf help`).
 
 Resources: manifest://partials/{slug}, manifest://page-templates/{id}
 

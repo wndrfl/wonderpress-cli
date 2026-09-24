@@ -5,6 +5,11 @@
  * and swallows the colored prose. MCP stdio owns stdout entirely, so logs go
  * to stderr.
  *
+ * Anything else that writes to stdout while the protocol owns it (Static Kit's
+ * `colors` sequences, a stray console.log) is diverted to stderr. Cursor's
+ * JSON-RPC reader will otherwise latch onto the `[` in an ANSI code like
+ * `[2m` and die with "Expected ',' or ']' after array element at position 2".
+ *
  * Envelope: { ok, data, error: { code, message, hint } | null }
  **/
 
@@ -15,8 +20,52 @@ export const EXIT_USAGE = 2;
 /** @type {'human' | 'json' | 'mcp'} */
 let mode = 'human';
 
+/** @type {typeof process.stdout.write | null} */
+let unguardedWrite = null;
+
+/**
+ * True when a stdout chunk is JSON-RPC / a JSON envelope, not log chrome.
+ *
+ * Batches start with `[{`, not `[` — a lone `[` is how ANSI CSI sequences
+ * (`[2m`, `[0m`, `[32m`) present once the ESC byte is skipped.
+ **/
+export function isProtocolChunk(chunk, encoding) {
+	let text;
+	if (typeof chunk === 'string') {
+		text = chunk;
+	} else if (Buffer.isBuffer(chunk)) {
+		text = chunk.toString(typeof encoding === 'string' ? encoding : 'utf8');
+	} else {
+		text = String(chunk ?? '');
+	}
+	const t = text.trimStart();
+	return t.startsWith('{') || t.startsWith('[{') || /^Content-Length\s*:/i.test(t);
+}
+
+function installStdoutGuard() {
+	if (unguardedWrite) {
+		return;
+	}
+	unguardedWrite = process.stdout.write;
+	process.stdout.write = function wonderpressStdoutGuard(chunk, encoding, cb) {
+		if (!quietStdout() || isProtocolChunk(chunk, encoding)) {
+			return unguardedWrite.call(process.stdout, chunk, encoding, cb);
+		}
+		return process.stderr.write(chunk, encoding, cb);
+	};
+}
+
+function removeStdoutGuard() {
+	if (!unguardedWrite) {
+		return;
+	}
+	process.stdout.write = unguardedWrite;
+	unguardedWrite = null;
+}
+
 export function reset() {
 	mode = 'human';
+	removeStdoutGuard();
 }
 
 /**
@@ -25,11 +74,13 @@ export function reset() {
 export function configure(args = {}) {
 	if (args['--format'] === 'json') {
 		mode = 'json';
+		installStdoutGuard();
 	}
 }
 
 export function setMcp() {
 	mode = 'mcp';
+	installStdoutGuard();
 }
 
 export function isJson() {
