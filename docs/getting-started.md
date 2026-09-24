@@ -234,12 +234,13 @@ with `"schemaVersion": 1`. That file declares:
   Template**, **Update** the page and reload the edit screen so PHP can apply the
   manifest (editor mode, ACF, locks).
 - **`composition`** — ordered rows:
-  - **partial** — `{ "id", "partial" }` renders via `wonder_render_template_sections()`
-    and maps to an ACF group (partial manifest properties).
+  - **partial** — `{ "id", "partial" }` is a reusable slice. Scaffolded PHP
+    calls `( new Class( wonder_partial_props( 'slug', 'id' ) ) )->render()`.
+    It also maps to an ACF group (partial manifest properties).
   - **fields** — `{ "id", "label"?, "properties": [ … ] }` editor-only ACF group
     using the same property types as partial manifests (`string`, `boolean`, `image`,
-    `link`, `repeater`, …). Read values with `get_field( 'your-id' )` or
-    `wonder_template_composition_field( 'your-id' )` in PHP.
+    `link`, `repeater`, …). Write the HTML in the page PHP; read values with
+    `wonder_template_composition_field( 'your-id' )` (or `get_field( 'your-id' )`).
   - **tab** — `{ "id", "label", "items": [ …partial or fields rows… ] }` (ACF tabs).
   Instance ids must be unique across the whole tree. Tab rows register as ACF tabs;
   set `editor.acf.tabPlacement` to force **left** or **top**, or omit for the default.
@@ -251,8 +252,10 @@ from `wonderpress_template_fields` — which can look like fields “went global
 
 When `composition` lists ACF-compatible partials, core registers **one** field
 group on that page template; each instance id is an ACF group field name. Hydrate
-with `wonder_partial_props( 'landing-hero', 'hero-main' )` or render the stack
-with `wonder_render_template_sections()` (already in the scaffolded PHP template).
+with `wonder_partial_props( 'landing-hero', 'hero-main' )` in the page PHP (the
+create scaffold emits those calls for `--section` rows). `wonder_render_template_sections()`
+still exists for a page that is only named partials; do not mix it with handwritten
+renders.
 
 Assign the page to that template in the editor (**Page** → **Template** → your
 template, then **Update**). Manifest rules apply only to pages whose saved

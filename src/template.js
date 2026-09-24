@@ -6,7 +6,7 @@ import mustache from 'mustache';
 import * as core from './core.js';
 import * as help from './help.js';
 import { pickOne } from './prompt.js';
-import { resolveThemeDir } from './partial.js';
+import { resolveThemeDir, readManifest } from './partial.js';
 import { importStaticKit, withRedirectedStdout } from './static-kit.js';
 import * as wordpress from './wordpress.js';
 import {
@@ -287,8 +287,55 @@ export async function remove(args) {
 }
 
 /**
- * Create a customer WordPress page template.
+ * PHP class name for a partial slug (`hero` → `Hero`, `call-to-action` → `Call_To_Action`).
+ * Prefers the on-disk manifest when the partial already exists.
  **/
+export function partialClassNameForSlug(themeDir, slug) {
+  const manifest = themeDir ? readManifest(themeDir, slug) : null;
+  if (manifest?.name) {
+    return manifest.name;
+  }
+  return String(slug || '')
+    .split('-')
+    .filter(Boolean)
+    .map((word) => word[0].toUpperCase() + word.slice(1))
+    .join('_');
+}
+
+const FIELDS_HINT = `// Page-only ACF (composition "fields" row, no partial):
+// $intro = wonder_template_composition_field( 'intro' );`;
+
+/**
+ * Inner statements for the scaffolded page template (no surrounding php tags).
+ **/
+export function pageTemplateBodyPhp(sections) {
+  let body;
+  if (!sections.length) {
+    body = `// Continue this page in the manifest (composition) and this file (markup), same order.
+// Reusable partial:
+// ( new Hero( wonder_partial_props( 'hero', 'hero-main' ) ) )->render();
+${FIELDS_HINT}`;
+  } else {
+    const calls = sections.map((row) => (
+      `( new ${row.className}( wonder_partial_props( '${row.partial}', '${row.id}' ) ) )->render();`
+    ));
+    body = `${calls.join('\n')}\n\n${FIELDS_HINT}`;
+  }
+  return body.split('\n').map((line) => (line ? `\t\t\t\t${line}` : line)).join('\n');
+}
+
+function uniqueUses(sections) {
+  const seen = new Set();
+  const uses = [];
+  for (const row of sections) {
+    if (!seen.has(row.className)) {
+      seen.add(row.className);
+      uses.push({ name: row.className });
+    }
+  }
+  return uses;
+}
+
 export async function create(templateName, opts) {
 
   if (!templateName) {
@@ -326,27 +373,10 @@ export async function create(templateName, opts) {
   }
   const themeDir = `${wordpress.pathToThemesDir}/${themeName}`;
 
-  const templateTemplate = fs.readFileSync(new URL('./templates/template.mustache', import.meta.url), 'utf8');
-  const templateFilePath = themeDir;
-
-  // Create the template
-  const templateOutput = mustache.render(templateTemplate, {
-    template_name: templateNameCapitalized,
-    template_slug: templateSlug
-  });
-  const fileName = `template-${templateNameFileFriendly}.php`;
-  const filePath = `${templateFilePath}/${fileName}`;
-  fs.ensureDirSync(path.dirname(filePath));
-  fs.writeFileSync(filePath, templateOutput);
-  log.success(`Template created: ${filePath}`);
-
-  const manifestDir = pageTemplateManifestDir(themeDir);
-  fs.ensureDirSync(manifestDir);
-
   const sections = [];
   for (const raw of opts.sections || []) {
     try {
-      sections.push(parseSectionFlag(raw));
+      sections.push(typeof raw === 'string' ? parseSectionFlag(raw) : raw);
     } catch (err) {
       log.error(err.message);
       return false;
@@ -358,6 +388,7 @@ export async function create(templateName, opts) {
     lock = false;
   }
 
+  const fileName = `template-${templateNameFileFriendly}.php`;
   const manifestPayload = buildDefaultTemplateManifest(fileName, { lock, sections });
   const partialSlugs = await loadPartialSlugs(themeDir);
   const validated = validateTemplateManifest(manifestPayload, { partialSlugs });
@@ -367,6 +398,29 @@ export async function create(templateName, opts) {
     }
     return false;
   }
+
+  const namedSections = (validated.data.composition || [])
+    .filter((row) => row.partial)
+    .map((row) => ({
+      id: row.id,
+      partial: row.partial,
+      className: partialClassNameForSlug(themeDir, row.partial),
+    }));
+
+  const templateTemplate = fs.readFileSync(new URL('./templates/template.mustache', import.meta.url), 'utf8');
+  const templateOutput = mustache.render(templateTemplate, {
+    template_name: templateNameCapitalized,
+    template_slug: templateSlug,
+    uses: uniqueUses(namedSections),
+    body_php: pageTemplateBodyPhp(namedSections),
+  });
+  const filePath = `${themeDir}/${fileName}`;
+  fs.ensureDirSync(path.dirname(filePath));
+  fs.writeFileSync(filePath, templateOutput);
+  log.success(`Template created: ${filePath}`);
+
+  const manifestDir = pageTemplateManifestDir(themeDir);
+  fs.ensureDirSync(manifestDir);
 
   const manifestPath = `${manifestDir}/${fileName.replace(/\.php$/, '.json')}`;
   fs.writeFileSync(manifestPath, JSON.stringify(validated.data, null, 2) + '\n');

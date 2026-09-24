@@ -237,7 +237,7 @@ Blocks register under the Wonderpress editor category via `wonderpress-core`. If
 
 #### `wonderpress template create`
 
-Create a custom page template, a matching `.wonderpress/manifest/page-templates/*.json` (`schemaVersion` 1), and Static Kit page assets.
+Create a custom page template, a matching `.wonderpress/manifest/page-templates/*.json` (`schemaVersion` 1), and Static Kit page assets. `--section` rows become real PHP `render()` calls. After create, keep going in that PHP file and the manifest together (see `AGENTS.md`).
 
 | Flag | Description |
 | --- | --- |

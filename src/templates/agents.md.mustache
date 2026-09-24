@@ -15,6 +15,40 @@ Do **not** hand-edit `src/partials/class-*.php` `$_properties` or
 `blocks/<slug>/block.json` — they are generated and `partial sync` overwrites
 them. Check with `wonderpress partial check-drift --all`.
 
+## How to continue a page template
+
+After `wonderpress template create`, keep these two files in the same order:
+
+1. `.wonderpress/manifest/page-templates/template-<name>.json` — fields (strict
+   JSON, no comments).
+2. `template-<name>.php` — what prints. Unique HTML lives here.
+
+**Reusable slice** (a partial you will use again, or already have):
+
+1. `partial create` / `partial sync` if the partial is new or its fields changed.
+2. Append `{ "id": "hero-main", "partial": "hero" }` to `composition`.
+3. In the PHP, in that same place:
+
+```php
+( new Hero( wonder_partial_props( 'hero', 'hero-main' ) ) )->render();
+```
+
+**Page-only slice** (this template only — do not make a partial):
+
+1. Append a fields row to `composition` (`id` + `properties`, no `partial`).
+2. In the PHP:
+
+```php
+$intro = wonder_template_composition_field( 'intro' );
+?>
+<section class="homepage-intro">
+	<p><?php echo esc_html( $intro['lede'] ?? '' ); ?></p>
+</section>
+```
+
+Do **not** wrap the page in `wonder_render_template_sections()`,
+`function_exists`, or a second fallback render path.
+
 ## Markup rules
 
 - The PHP partial view is the **only** source of HTML. Do not duplicate markup
@@ -34,6 +68,8 @@ wonderpress partial create --json @spec.json
 wonderpress partial add-js <Name>
 wonderpress partial sync --all
 wonderpress partial check-drift --all --format json
+wonderpress template list --format json
+wonderpress template create --name Homepage
 wonderpress lint --format json
 wonderpress lint --fix
 ```
@@ -65,7 +101,7 @@ Exit `0` success, `1` lint/drift/validation, `2` usage.
 ### Page templates
 
 {{#templates}}
-- `{{{template}}}` — lock `{{{lock}}}`, {{sections}} section(s)
+- `{{{template}}}` — lock `{{{lock}}}` — {{{index}}}
 {{/templates}}
 {{^templates}}
 - (none yet)

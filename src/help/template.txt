@@ -4,6 +4,13 @@ A page template is a theme PHP file WordPress exposes in the page editor,
 plus a manifest under `.wonderpress/manifest/page-templates/` that records
 editor locks, native UI toggles, and which partials compose the page.
 
+After create, keep going in those two files together (same order): append a
+composition row, then render it in the PHP — a partial via
+`( new Hero( wonder_partial_props( 'hero', 'hero-main' ) ) )->render()`, or
+page-only ACF via `wonder_template_composition_field( 'intro' )` and HTML in
+this template. See AGENTS.md. Do not wrap the page in
+`wonder_render_template_sections()`.
+
 COMMANDS
   template create           Scaffold the PHP file, manifest, and Static Kit entries
   template list             List every page template recorded in this theme

@@ -357,7 +357,7 @@ export function createWonderpressMcpServer() {
 	}, (args) => handlers.partial_add_js(args));
 
 	server.registerTool('template_create', {
-		description: 'Create a page template and its manifest.',
+		description: 'Create a page template PHP file and manifest. After create, edit those two files together (see AGENTS.md); this tool does not update an existing template.',
 		inputSchema: {
 			...locShape,
 			name: z.string(),
