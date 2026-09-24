@@ -152,7 +152,7 @@ subscription until something concrete makes the maths worth that.
 | `blocks/<slug>/{block.json,render.php}` (opt-in) | **CLI** (the spine) | `partial create --block` |
 | per-**component** SCSS/JS partial | **Static Kit** | `staticCli.component.create(...)` — the CLI *delegates* |
 | per-**page** SCSS/JS entry | **Static Kit** | `staticCli.template.create(...)` — via `template create` |
-| SCSS→CSS / JS bundling, per-page compile | **Static Kit** | build step |
+| SCSS→CSS / JS bundling, per-page compile | **Static Kit** | `wonderpress static compile` delegates `staticCli.compile.all` |
 
 **The CLI never writes into `static/` directly, and never auto-wires a partial
 into an entry** — auto-wiring would pull a component into pages that don't use
@@ -169,6 +169,8 @@ deliberate authoring act.
   partial.
 - `template create` → a page: **delegates** the per-page SCSS+JS entries to
   `staticCli.template.create`.
+- `static compile` → from the environment root, **delegates** `compile.all`
+  into that theme's `static/` (`--watch` stays on the CLI).
 - A `--namespace <ns>` on `partial create` (default `theme`) selects the scope
   namespace; pass a page slug for a deliberately page-scoped partial.
 

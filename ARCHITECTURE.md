@@ -206,6 +206,8 @@ format:
   ([`src/template.js`](src/template.js))
 - `partial create` (style half, plus the opt-in `--js` behavior half) →
   `staticCli.component.create()` ([`src/partial.js`](src/partial.js))
+- `static compile` → `staticCli.compile.all()` with the theme `static/` as
+  `--dir` ([`src/static.js`](src/static.js)). Watch is CLI-only (not MCP).
 
 This keeps a single source of truth for anything under `static/`: if the Static
 Kit layout changes, WonderPress inherits it for free instead of drifting.

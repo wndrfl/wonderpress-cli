@@ -13,6 +13,7 @@ GLOBAL OPTIONS
 ENVIRONMENT
   init          Build a new environment: WordPress, the theme, and Static Kit
   server        Start (or `server stop`) the local development environment
+  static        Compile (or `--watch`) the theme's Static Kit assets
   destroy       Tear the environment down, keeping the theme and its files
   lint          Run phpcs and manifest drift over the theme
   acf           Install ACF or ACF PRO from the official distribution

@@ -1,0 +1,26 @@
+wonderpress static — compile the theme's Static Kit assets
+
+A thin proxy: resolves the active theme (or --theme) and runs Static Kit
+against `wp-content/themes/<theme>/static`. Static Kit still owns that
+tree; this command exists so you do not have to cd into it.
+
+Do not wrap install-kit, component, or template here — those stay
+delegated from `init`, `partial create`, and `template create`.
+
+COMMANDS
+  static compile           Compile SCSS, JS, and images once
+  static compile --watch   Recompile on change (foreground, Ctrl-C to stop)
+
+OPTIONS
+  --dir <path>             Environment root
+  --theme <name>           Theme slug when WordPress is not reachable
+  --watch                  Watch after the first compile
+  --format json            Envelope after a one-shot compile (not with --watch)
+
+This is not an MCP tool. Watch is a long-running CLI process; compile
+logs go to stderr so stdout stays a protocol when --format json is set.
+
+EXAMPLES
+  wonderpress static compile
+  wonderpress static compile --watch
+  wonderpress static compile --theme acme --format json

@@ -52,6 +52,7 @@ test('writeAgentFiles is stable and indexes partials', async () => {
 		assert.match(md, /wonder_partial_props/);
 		assert.match(md, /wonder_template_composition_field/);
 		assert.match(md, /`template-landing.php` — lock `all` — hero-main:hero/);
+		assert.match(md, /wonderpress static compile --watch/);
 		assert.doesNotMatch(md, /\d{4}-\d{2}-\d{2}/);
 
 		const cursor = JSON.parse(fs.readFileSync(path.join(root, '.cursor/mcp.json'), 'utf8'));

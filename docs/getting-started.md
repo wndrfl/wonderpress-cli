@@ -22,7 +22,16 @@ wonderpress init --dir ~/projects/acme --env wp-env --namespace acme --theme acm
 That clones the development environment, downloads WordPress, creates the
 database, installs wonderpress-core at its pinned version, installs Static Kit,
 and activates the theme. On the `wp-env` backend the site is already serving
-when it finishes; on `host`, run `wonderpress server`.
+when it finishes; on `host`, run `wonderpress server`. Compile or watch assets
+from the same root:
+
+```bash
+wonderpress static compile
+wonderpress static compile --watch
+```
+
+Do not `cd` into `wp-content/themes/<theme>/static` to run Static Kit. That
+tree is still Static Kit's; the command only supplies the path.
 
 `--env` is only needed here — the backend is recorded in `.wonderpressrc`, so
 every later command knows what kind of project this is.

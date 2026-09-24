@@ -64,4 +64,19 @@ test('Static Kit invocations divert stdout so MCP JSON-RPC stays intact', () => 
 	assert.match(read('src/static-kit.js'), /export async function withRedirectedStdout/);
 	assert.match(read('src/partial.js'), /withRedirectedStdout\(\(\) => staticCli\.component\.create/);
 	assert.match(read('src/template.js'), /withRedirectedStdout\(\(\) => staticCli\.template\.create/);
+	assert.match(read('src/static-kit.js'), /kit\.compile\.all\(\{ dir: target, watch \}\)/);
+});
+
+test('static compile is a root proxy into Static Kit, not an MCP tool', () => {
+	assert.match(
+		read('src/static.js'),
+		/compileStatic\(dir, \{ watch \}\)/,
+		'static compile must delegate through compileStatic',
+	);
+	assert.match(read('src/cli.js'), /case 'static':/);
+	assert.doesNotMatch(
+		read('src/mcp.js'),
+		/static_compile|static compile/,
+		'compile/watch must not be an MCP tool',
+	);
 });
