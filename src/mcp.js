@@ -249,7 +249,7 @@ export const handlers = {
 		if (!input.name) {
 			return jsonError('name is required');
 		}
-		const ok = partial.removePartial(themeDir, input.name, { withBlock: !!input.withBlock });
+		const ok = await partial.removePartial(themeDir, input.name, { withBlock: !!input.withBlock });
 		if (!ok) {
 			return jsonError(`Could not remove partial "${input.name}"`);
 		}

@@ -92,8 +92,8 @@ export function addBlock(themeDir, name) {
 
 	partial.writeBlock(params, themeDir);
 	partial.writeManifest(params, themeDir, {
-		style: !!artifacts.style,
-		script: !!artifacts.script,
+		style: artifacts.style || false,
+		script: artifacts.script || false,
 	});
 
 	return true;

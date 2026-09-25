@@ -6,7 +6,7 @@ import * as log from './log.js';
 import * as core from './core.js';
 import inquirer from 'inquirer';
 import mustache from 'mustache';
-import { importStaticKit, withRedirectedStdout } from './static-kit.js';
+import { importStaticKit } from './static-kit.js';
 import * as wordpress from './wordpress.js';
 import {
 	isValidClassName,
@@ -23,7 +23,6 @@ import {
 	isSafeSlug,
 	nameToSlug,
 	resolveWithin,
-	slugToPascal,
 	isValidNamespace,
 	PROP_TYPES,
 	PROP_TYPE_TO_BLOCK,
@@ -501,23 +500,16 @@ export async function writePartial(params, themeDir) {
 	// `static/` is a Static-Kit-installed tree, so we delegate to Static Kit —
 	// which owns the location/format — instead of writing into it directly (same
 	// pattern as `template create` calling `staticCli.template.create`).
+	let created = { ok: false, data: { wrote: [] } };
 	if (willEmitStyle || willEmitScript) {
-		await withRedirectedStdout(() => staticCli.component.create(`${themeDir}/static`, slug, {
+		created = await staticCli.component.create(`${themeDir}/static`, slug, {
 			style: willEmitStyle,
 			script: willEmitScript,
-		}));
+		});
 	}
 
-	// Existence is the source of truth for the delegated halves.
-	//
-	// TODO (cross-repo, not this PR): static-kit's `component.create` should
-	// return the paths it actually wrote, and the CLI should record those. Until
-	// it does we can only probe Static Kit's DEFAULT layout, so a theme with
-	// custom `.staticrc` src paths writes real files at paths we cannot see —
-	// conservatively recorded as "not written" rather than recorded wrongly.
-	const staticPaths = staticArtifactPaths(slug);
-	const wroteStyle = wantsStyle && fs.existsSync(`${themeDir}/${staticPaths.style}`);
-	const wroteScript = wantsScript && fs.existsSync(`${themeDir}/${staticPaths.script}`);
+	const wroteStyle = wantsStyle && wroteRel(themeDir, created, 'style');
+	const wroteScript = wantsScript && wroteRel(themeDir, created, 'script');
 
 	const skipped = [!wroteStyle && wantsStyle ? 'style stub' : null, !wroteScript && wantsScript ? 'JS behavior class' : null].filter(Boolean).join(' and ');
 	if (skipped) {
@@ -537,18 +529,18 @@ export async function writePartial(params, themeDir) {
 	}
 }
 
-/**
- * The default paths Static Kit writes a component's delegated halves to,
- * relative to the theme directory.
- *
- * Kept in lockstep with `staticCli.component.create` so writePartial can probe
- * for what landed and writeManifest can record it — both from one definition.
- **/
-export function staticArtifactPaths(slug) {
-	return {
-		style: `static/src/scss/partials/_${slug}.scss`,
-		script: `static/src/js/lib/partials/${slugToPascal(slug)}.js`,
-	};
+function themeRel(themeDir, abs) {
+	if (!abs) {
+		return false;
+	}
+	return path.relative(themeDir, abs).split(path.sep).join('/');
+}
+
+function wroteRel(themeDir, result, kind) {
+	const item = result?.ok && Array.isArray(result.data?.wrote)
+		? result.data.wrote.find((entry) => entry.kind === kind)
+		: null;
+	return item ? themeRel(themeDir, item.path) : false;
 }
 
 /**
@@ -574,7 +566,7 @@ export function staticArtifacts(params, apiAvailable) {
 
 function staticSkipReason(apiAvailable) {
 	return apiAvailable
-		? 'Static Kit wrote nothing at the expected default path — the theme has no configured static tree (`static/.staticrc`), or uses a custom src layout'
+		? 'Static Kit wrote nothing — the theme has no configured static tree (`static/.staticrc`)'
 		: 'the installed @wndrfl/static-kit-cli has no component.create API — upgrade Static Kit to enable per-partial static assets';
 }
 
@@ -607,15 +599,8 @@ export async function addScript(themeDir, name) {
 		return false;
 	}
 
-	const staticPaths = staticArtifactPaths(slug);
-	const recordedRel = artifacts.script;
-	const recordedAbs = recordedRel ? `${themeDir}/${recordedRel}` : null;
-	const defaultAbs = `${themeDir}/${staticPaths.script}`;
-	const recordedExists = !!(recordedAbs && fs.existsSync(recordedAbs));
-	const defaultExists = fs.existsSync(defaultAbs);
-
-	if (recordedRel && recordedExists) {
-		log.info(`"${manifest.name}" already has a JS behavior class at ${recordedRel}. Import and init it from the page entry that uses this partial.`);
+	if (artifacts.script && fs.existsSync(path.join(themeDir, artifacts.script))) {
+		log.info(`"${manifest.name}" already has a JS behavior class at ${artifacts.script}. Import and init it from the page entry that uses this partial.`);
 		return true;
 	}
 
@@ -632,26 +617,25 @@ export async function addScript(themeDir, name) {
 	const staticCli = await importStaticKit();
 	const componentApiAvailable = !!(staticCli.component && typeof staticCli.component.create === 'function');
 
-	if (!defaultExists) {
-		if (componentApiAvailable) {
-			await withRedirectedStdout(() => staticCli.component.create(`${themeDir}/static`, slug, {
-				style: false,
-				script: true,
-			}));
-		}
+	let created = { ok: false, data: { wrote: [] } };
+	if (componentApiAvailable) {
+		created = await staticCli.component.create(`${themeDir}/static`, slug, {
+			style: false,
+			script: true,
+		});
 	}
 
-	const wroteScript = fs.existsSync(defaultAbs);
+	const wroteScript = wroteRel(themeDir, created, 'script');
 	if (!wroteScript) {
 		log.warn(`Skipped the JS behavior class for "${slug}": ${staticSkipReason(componentApiAvailable)}. It is not recorded in the manifest.`);
 		return false;
 	}
 
 	writeManifest(params, themeDir, {
-		style: !!artifacts.style,
-		script: true,
+		style: artifacts.style || false,
+		script: wroteScript,
 	});
-	log.success(`JS behavior class ready at: ${staticPaths.script}`);
+	log.success(`JS behavior class ready at: ${wroteScript}`);
 	log.info('This file is not auto-wired. Import and construct it from the page JS entry that renders this partial.');
 	return true;
 }
@@ -800,12 +784,11 @@ export function writeManifest(params, themeDir, written = {}) {
 		artifacts.block = `blocks/${slug}/block.json`;
 		artifacts.render = `blocks/${slug}/render.php`;
 	}
-	const staticPaths = staticArtifactPaths(slug);
-	if (written.style) {
-		artifacts.style = staticPaths.style;
+	if (typeof written.style === 'string' && written.style) {
+		artifacts.style = written.style;
 	}
-	if (written.script) {
-		artifacts.script = staticPaths.script;
+	if (typeof written.script === 'string' && written.script) {
+		artifacts.script = written.script;
 	}
 
 	const manifest = {
@@ -1005,8 +988,8 @@ export function syncPartialFromManifest(manifest, themeDir, options = {}) {
 	}
 
 	writeManifest(params, themeDir, {
-		style: !!artifacts.style,
-		script: !!artifacts.script,
+		style: artifacts.style || false,
+		script: artifacts.script || false,
 	});
 	log.success(`Manifest normalized at: ${manifestPath(themeDir, manifest.slug)}`);
 	return true;
@@ -1230,7 +1213,7 @@ export async function list(args) {
  * wrapped by one is refused unless `withBlock` is set — that refusal is the
  * safety here (this is a flag-driven headless tool, so there are no prompts).
  **/
-export function removePartial(themeDir, name, options = {}) {
+export async function removePartial(themeDir, name, options = {}) {
 
 	// The user's input only locates the manifest; a name that cannot be a
 	// filesystem-safe slug is refused outright rather than resolved.
@@ -1264,7 +1247,14 @@ export function removePartial(themeDir, name, options = {}) {
 	// so every entry is resolved back inside the theme before anything is
 	// deleted; one bad entry is skipped rather than aborting the removal.
 	const artifacts = manifest.artifacts || {};
-	for (const key of ['class', 'view', 'style', 'script']) {
+	if (artifacts.style || artifacts.script) {
+		const staticCli = await importStaticKit();
+		if (staticCli.component && typeof staticCli.component.remove === 'function') {
+			await staticCli.component.remove(`${themeDir}/static`, slug);
+		}
+	}
+
+	for (const key of ['class', 'view']) {
 		if (!artifacts[key]) {
 			continue;
 		}
@@ -1279,10 +1269,7 @@ export function removePartial(themeDir, name, options = {}) {
 			fs.removeSync(file);
 			log.success(`Removed ${key}: ${file}`);
 		} else {
-			// Nothing to delete is not the same as nothing was there: a theme with
-			// a custom `.staticrc` layout can have real files the manifest cannot
-			// name (see the TODO in writePartial).
-			log.warn(`Nothing to remove for ${key}: ${file} does not exist. If this theme uses a custom static layout, check for an orphaned file by hand.`);
+			log.warn(`Nothing to remove for ${key}: ${file} does not exist.`);
 		}
 	}
 

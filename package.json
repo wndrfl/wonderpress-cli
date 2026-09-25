@@ -38,7 +38,7 @@
   "license": "MIT",
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.30.0",
-    "@wndrfl/static-kit-cli": "^2.13.0",
+    "@wndrfl/static-kit-cli": "^3.0.0",
     "arg": "^5.0.2",
     "fs-extra": "^11.2.0",
     "inquirer": "^9.3.8",

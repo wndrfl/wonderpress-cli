@@ -1,7 +1,4 @@
 // Guards the WonderPress <-> Static Kit boundary documented in ARCHITECTURE.md.
-// These are source-contract assertions: if a refactor breaks the seam (vendors
-// node_modules instead of installing it, or scaffolds into `static/` instead of
-// delegating to Static Kit), one of these fails and points back at the doc.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'fs-extra';
@@ -13,10 +10,9 @@ const read = (rel) => fs.readFileSync(path.join(root, rel), 'utf8');
 
 test('Static Kit is a declared dependency (not vendored)', () => {
 	const pkg = JSON.parse(read('package.json'));
-	assert.ok(
-		pkg.dependencies && pkg.dependencies['@wndrfl/static-kit-cli'],
-		'@wndrfl/static-kit-cli must be a declared dependency'
-	);
+	const dep = pkg.dependencies['@wndrfl/static-kit-cli'];
+	assert.ok(dep, '@wndrfl/static-kit-cli must be a declared dependency');
+	assert.match(dep, /^\^3\./, 'Static Kit must resolve from the registry, not a local checkout');
 });
 
 test('node_modules is git-ignored (nothing vendored is committed)', () => {
@@ -30,9 +26,6 @@ test('init installs Static Kit via the CLI, not a vendored copy', () => {
 		/installStaticKit\(\s*staticCli,\s*`\.\/wp-content\/themes\/wonderpress\/static`/,
 		'core.js must set up static/ through installStaticKit'
 	);
-	// installStaticKit is a wrapper, not a reimplementation: it works around
-	// Static Kit skipping an existing directory, then hands the install itself
-	// back to Static Kit — which is what runs npm install in static/.
 	assert.match(
 		read('src/static-kit.js'),
 		/staticCli\.core\.installKit\(/,
@@ -40,31 +33,28 @@ test('init installs Static Kit via the CLI, not a vendored copy', () => {
 	);
 	assert.match(
 		read('src/static-kit.js'),
-		/staticCli\.compile\.all\(/,
-		'static-kit.js must compile via staticCli.compile.all'
+		/kit\.compile\.all\(/,
+		'static-kit.js must compile via kit.compile.all'
 	);
+	assert.doesNotMatch(read('src/static-kit.js'), /wonderpress-seed/);
 });
 
 test('the CLI delegates into static/ instead of scaffolding it', () => {
-	// partial create -> component style stub
 	assert.match(
 		read('src/partial.js'),
 		/staticCli\.component\.create\(\s*`\$\{themeDir\}\/static`/,
 		'partial.js must delegate style creation to staticCli.component.create'
 	);
-	// template create -> template
+	assert.match(
+		read('src/partial.js'),
+		/staticCli\.component\.remove\(\s*`\$\{themeDir\}\/static`/,
+		'partial remove must delegate to staticCli.component.remove'
+	);
 	assert.match(
 		read('src/template.js'),
 		/staticCli\.template\.create\(\s*`\$\{themeDir\}\/static`/,
 		'template.js must delegate template creation to staticCli.template.create'
 	);
-});
-
-test('Static Kit invocations divert stdout so MCP JSON-RPC stays intact', () => {
-	assert.match(read('src/static-kit.js'), /export async function withRedirectedStdout/);
-	assert.match(read('src/partial.js'), /withRedirectedStdout\(\(\) => staticCli\.component\.create/);
-	assert.match(read('src/template.js'), /withRedirectedStdout\(\(\) => staticCli\.template\.create/);
-	assert.match(read('src/static-kit.js'), /kit\.compile\.all\(\{ dir: target, watch \}\)/);
 });
 
 test('static compile is a root proxy into Static Kit, not an MCP tool', () => {

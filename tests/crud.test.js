@@ -208,7 +208,7 @@ test('partial remove refuses while a block still wraps the partial', async () =>
 	try {
 		await writePartial(paramsFromFlags({ '--name': 'Testimonial', '--block': true }), dir);
 
-		assert.equal(removePartial(dir, 'Testimonial'), false);
+		assert.equal(await removePartial(dir, 'Testimonial'), false);
 		assert.ok(fs.existsSync(path.join(dir, 'src/partials/class-testimonial.php')), 'the partial survives the refusal');
 		assert.ok(fs.existsSync(path.join(dir, 'blocks/testimonial/block.json')));
 		assert.ok(fs.existsSync(path.join(dir, '.wonderpress/manifest/partials/testimonial.json')));
@@ -225,7 +225,7 @@ test('partial remove --with-block cascades over every recorded artifact', async 
 			assert.ok(fs.existsSync(path.join(dir, rel)), `${rel} should exist first`);
 		}
 
-		assert.equal(removePartial(dir, 'Testimonial', { withBlock: true }), true);
+		assert.equal(await removePartial(dir, 'Testimonial', { withBlock: true }), true);
 
 		for (const rel of ['src/partials/class-testimonial.php', 'partials/testimonial.php', 'static/src/scss/partials/_testimonial.scss', 'static/src/js/lib/partials/Testimonial.js', 'blocks/testimonial', '.wonderpress/manifest/partials/testimonial.json']) {
 			assert.ok(!fs.existsSync(path.join(dir, rel)), `${rel} should be gone`);
@@ -235,10 +235,10 @@ test('partial remove --with-block cascades over every recorded artifact', async 
 	}
 });
 
-test('partial remove errors on an unknown name', () => {
+test('partial remove errors on an unknown name', async () => {
 	const dir = tmpTheme();
 	try {
-		assert.equal(removePartial(dir, 'Nope'), false);
+		assert.equal(await removePartial(dir, 'Nope'), false);
 	} finally {
 		fs.removeSync(dir);
 	}
@@ -493,7 +493,7 @@ test('removePartial refuses an artifact path that escapes the theme', async () =
 		manifest.artifacts.style = '../outside.txt';
 		fs.writeFileSync(file, JSON.stringify(manifest, null, 2) + '\n');
 
-		assert.equal(removePartial(dir, 'Hero'), true, 'one bad entry does not abort the removal');
+		assert.equal(await removePartial(dir, 'Hero'), true, 'one bad entry does not abort the removal');
 
 		assert.ok(fs.existsSync(bystander), 'a file outside the theme must survive');
 		assert.equal(fs.readFileSync(bystander, 'utf8'), 'do not delete me');
@@ -504,7 +504,7 @@ test('removePartial refuses an artifact path that escapes the theme', async () =
 	}
 });
 
-test('removePartial refuses a name that is not a safe slug', () => {
+test('removePartial refuses a name that is not a safe slug', async () => {
 	const parent = fs.mkdtempSync(path.join(os.tmpdir(), 'wp-outside-'));
 	const dir = path.join(parent, 'theme');
 	const bystander = path.join(parent, 'outside.txt');
@@ -512,7 +512,7 @@ test('removePartial refuses a name that is not a safe slug', () => {
 		fs.ensureDirSync(dir);
 		fs.writeFileSync(bystander, 'do not delete me');
 
-		assert.equal(removePartial(dir, '../../../foo'), false);
+		assert.equal(await removePartial(dir, '../../../foo'), false);
 		assert.ok(fs.existsSync(bystander));
 	} finally {
 		fs.removeSync(parent);
@@ -527,7 +527,7 @@ test('a malformed manifest is skipped by list and refused by remove', async () =
 
 		assert.deepEqual(listPartials(dir), [{ name: 'Hero', slug: 'hero', block: null }], 'junk rows never reach the table');
 		assert.deepEqual(listBlocks(dir), []);
-		assert.equal(removePartial(dir, 'junk'), false);
+		assert.equal(await removePartial(dir, 'junk'), false);
 		assert.equal(addBlock(dir, 'junk'), false);
 		assert.equal(removeBlock(dir, 'junk'), false);
 	} finally {
