@@ -206,40 +206,17 @@ format:
   ([`src/template.js`](src/template.js))
 - `partial create` (style half, plus the opt-in `--js` behavior half) →
   `staticCli.component.create()` ([`src/partial.js`](src/partial.js))
+- `partial remove` → `staticCli.component.remove()`
 - `static compile` → `staticCli.compile.all()` with the theme `static/` as
   `--dir` ([`src/static.js`](src/static.js)). Watch is CLI-only (not MCP).
 
 This keeps a single source of truth for anything under `static/`: if the Static
 Kit layout changes, WonderPress inherits it for free instead of drifting.
 
-#### The known asymmetry: removal
-
-Creation is delegated; **removal currently is not**. Static Kit exposes no
-`component.remove`, so `partial remove` deletes the delegated outputs (the style
-stub and the JS behavior class) from `static/` directly, using the paths its
-manifest recorded at creation time. This is a deliberate, documented exception
-to "the CLI never writes into `static/`" — a partial you removed should not
-leave its assets behind. It is slated to move behind Static Kit as soon as a
-removal API exists. Relatedly, `component.create` does not report the paths it
-wrote, so the CLI can only confirm Static Kit's **default** layout; under a
-custom `.staticrc` src layout the delegated artifacts are recorded as not
-written (and a removal warns about the file it cannot name) rather than
-recording a path that may be wrong.
-
-#### The known asymmetry: a scaffold that seeds `static/`
-
-`installKit` reads *any* existing `static/` as proof of an installation and
-returns — no framework, no `npm install`, no compile. The theme scaffold does
-seed that directory (`lib/_utilities.scss`, the accessibility utilities every
-page entry uses), so `init` would otherwise hand back a theme with no `dist/`
-at all, and exit 0 doing it.
-
-`installStaticKit()` ([`src/static-kit.js`](src/static-kit.js)) holds the seeded
-files aside, lets Static Kit install into a clean directory, puts them back, and
-only then compiles — so what the scaffold ships reaches `dist/`. It is the
-second exception to "the CLI never writes into `static/`", and like the first it
-belongs behind Static Kit: the fix there is for `installKit` to key off its own
-`.staticrc` rather than directory existence.
+`partial create` records the paths `component.create` returns. `partial remove`
+calls `component.remove`. `installKit` keys off a config file and merges into
+a seeded directory, so this CLI does not park files aside or write into
+`static/` itself.
 
 ### Versioning
 

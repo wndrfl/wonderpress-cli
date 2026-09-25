@@ -7,7 +7,7 @@ import * as core from './core.js';
 import * as help from './help.js';
 import { pickOne } from './prompt.js';
 import { resolveThemeDir, readManifest } from './partial.js';
-import { importStaticKit, withRedirectedStdout } from './static-kit.js';
+import { importStaticKit } from './static-kit.js';
 import * as wordpress from './wordpress.js';
 import {
   buildDefaultTemplateManifest,
@@ -428,7 +428,7 @@ export async function create(templateName, opts) {
 
   // Lazy-load so MCP/read paths never pull sharp at process startup.
   const staticCli = await importStaticKit();
-  await withRedirectedStdout(() => staticCli.template.create(`${themeDir}/static`, templateNameFileFriendly));
+  await staticCli.template.create(`${themeDir}/static`, templateNameFileFriendly);
 
   try {
     const agents = await import('./agents.js');

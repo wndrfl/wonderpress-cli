@@ -96,20 +96,21 @@ Left alone, a project types its brand colours into both and they drift. Setting
 brand colours is the first thing anyone does on a new project, so this is a day
 one problem, not a someday one.
 
-**The rule: `theme.json` is the source of truth. The SCSS subscribes.**
+**The rule: kit CSS variables are the shared names. `theme.json` fills them.**
 
-`theme.json` compiles each palette entry into a CSS custom property, so the
-project's palette partial references those rather than restating the values:
+Static Kit 3.0 ships `$color-accent: var(--color-accent, …)` (and the rest of
+the palette). A WonderPress theme binds WordPress presets onto those names so
+the editor and the stylesheet cannot disagree:
 
 ```scss
-// static/src/scss/lib/_pallette.scss — in a WonderPress project
+// static/src/scss/lib/_pallette.scss — in a WonderPress project, after install
 $color-accent:   var(--wp--preset--color--accent);
 $color-base:     var(--wp--preset--color--base);
 $color-contrast: var(--wp--preset--color--contrast);
 ```
 
-Declared once, in `theme.json`, and the editor and the stylesheet cannot
-disagree about what the brand is.
+Or keep the kit's `--color-*` names and map them in `theme.json` / `:root`.
+Do not put `--wp--preset--*` inside Static Kit itself.
 
 ### Why this is a convention and not a feature
 
