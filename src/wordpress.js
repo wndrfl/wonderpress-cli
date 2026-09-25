@@ -410,11 +410,14 @@ export async function installMuPlugin(url, ref = null) {
 	await fs.emptyDirSync(tmpDir);
 
 	const refArg = ref ? ` --branch ${ref}` : '';
-	const cmd = `git clone ${url}${refArg} ${tmpDir} --depth=1 --progress --verbose`;
-	const cloned = sh.exec(cmd);
+	const cloned = sh.exec(`git clone ${url}${refArg} ${tmpDir} --depth=1`, { silent: true });
 
 	if (cloned.code !== 0) {
 		log.error(`Could not install ${url}${ref ? ` at ${ref}` : ''}. Refusing to continue with a different version than the one requested.`);
+		const detail = String(cloned.stderr || cloned.stdout || '').trim();
+		if (detail) {
+			log.info(detail);
+		}
 		return false;
 	}
 

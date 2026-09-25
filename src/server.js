@@ -39,15 +39,45 @@ export async function start(dir) {
 		return false;
 	}
 
-	const result = await env.getCurrent().start();
+	const backend = env.getCurrent();
+	const detached = !!(backend.capabilities && backend.capabilities.detachedServer);
+	const url = typeof backend.siteUrl === 'function' ? backend.siteUrl() : null;
+
+	// A foreground backend hands the terminal to `wp server` and never returns,
+	// so its addresses have to be on screen BEFORE it starts. A detached one
+	// prints them afterwards, where they land under the backend's own startup
+	// noise instead of being scrolled away by it.
+	if (url && !detached) {
+		reportUrls(url);
+	}
+
+	const result = await backend.start();
 
 	// A detached backend has returned with the site still up, so say where it
 	// is. A foreground one never reaches this line.
-	if (result && result.detached && result.url) {
-		log.success(`The development environment is running at ${result.url}`);
+	if (result && result.detached) {
+		const running = result.url || url;
+		if (running) {
+			reportUrls(running);
+		}
 	}
 
 	return true;
+}
+
+/**
+ * Where to point a browser.
+ *
+ * `server` used to end on one line naming the site and nothing else, which left
+ * out wp-admin — the address people actually want the morning after an init.
+ * Same card `init` ends on, minus the credentials: nothing at start time knows
+ * what was chosen at install, where init still has the config in hand.
+ **/
+function reportUrls(url) {
+	log.card([
+		['Site', url],
+		['Admin', `${url}/wp-admin`],
+	]);
 }
 
 /**

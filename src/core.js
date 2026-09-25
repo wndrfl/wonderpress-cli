@@ -336,13 +336,19 @@ export async function init(dir, initConfig) {
 
     const envSource = resolveEnvSource();
     const envRefArg = envSource.ref ? ` --branch ${envSource.ref}` : '';
-    const cloned = sh.exec(`git clone ${envSource.repo}${envRefArg} ${tmpDir} --depth=1 --progress --verbose`);
+    // Silent: git's protocol dump (--progress --verbose, inherited stdio) sat
+    // flush-left in the middle of the gutter log. Failures still print stderr.
+    const cloned = sh.exec(`git clone ${envSource.repo}${envRefArg} ${tmpDir} --depth=1`, { silent: true });
 
     // Stop rather than carry on into a half-scaffolded directory. This used to
     // ignore the exit code entirely, so a failed clone produced an environment
     // with no theme and an error message about something else entirely.
     if (cloned.code !== 0) {
       log.error(`Could not clone the environment scaffold from ${envSource.repo}${envRefArg}.`);
+      const detail = String(cloned.stderr || cloned.stdout || '').trim();
+      if (detail) {
+        log.info(detail);
+      }
       return false;
     }
 
@@ -537,17 +543,17 @@ function reportWhereTheSiteIs(backend, initConfig) {
   const credentials = [login.user, login.password].filter(Boolean).join(' / ');
   const note = login.note ? `  (${login.note})` : '';
 
-  log.raw('');
-  log.raw(`  Site      ${url}`);
-  log.raw(`  Admin     ${url}/wp-admin`);
-  log.raw(`  Login     ${credentials}${note}`);
+  log.card([
+    ['Site', url],
+    ['Admin', `${url}/wp-admin`],
+    ['Login', `${credentials}${note}`],
 
-  // The two backends differ on whether anything still has to be started, and
-  // getting that wrong sends someone to a dead port.
-  log.raw(backend.capabilities && backend.capabilities.detachedServer
-    ? `  Serving   already — this backend keeps running in the background`
-    : `  Serving   not yet — run \`wonderpress server\``);
-  log.raw('');
+    // The two backends differ on whether anything still has to be started, and
+    // getting that wrong sends someone to a dead port.
+    ['Serving', backend.capabilities && backend.capabilities.detachedServer
+      ? 'already — this backend keeps running in the background'
+      : 'not yet — run `wonderpress server`'],
+  ]);
 }
 
 /**

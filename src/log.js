@@ -192,6 +192,30 @@ export function instructions(msg) {
 }
 
 /**
+ * A block of label/value lines: the "what do I open?" card.
+ *
+ * No gutter glyph, because these lines are an address rather than an event —
+ * severity has nothing to say about a URL. Labels share one column so the
+ * values line up, and the blank lines above and below are what separate the
+ * card from the run of log lines it lands after.
+ *
+ * Shared by `init` and `server` so the two places that answer the same question
+ * cannot drift into two different shapes.
+ *
+ * @param {Array<[string, string]>} rows Label/value pairs.
+ **/
+export function card(rows) {
+	const entries = rows.filter(Boolean);
+	const width = Math.max(0, ...entries.map(([label]) => String(label).length));
+
+	write('');
+	for (const [label, value] of entries) {
+		raw(`${INDENT}${String(label).padEnd(width + 2)}${value}`);
+	}
+	write('');
+}
+
+/**
  * Print a simple left-aligned table of strings (a header row + data rows).
  * Used by the `list` commands so their output stays scannable.
  **/
