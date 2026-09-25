@@ -56,11 +56,13 @@ function wpCli(args, dir) {
 /** Backend-specific init flags. */
 function initFlags() {
 	if (BACKEND === 'wp-env') {
-		// No --db-* or --wp-url: the container fixes both, and the CLI refuses
-		// them rather than ignoring them.
+		// No --db-*, --wp-url or --admin-user: the container fixes all three,
+		// and the CLI refuses them rather than ignoring them. Refusal is by
+		// presence, not value, so even `--admin-user admin` — the user wp-env
+		// creates anyway — is rejected.
 		return ['--env', 'wp-env'];
 	}
-	return ['--db-host', DB_HOST, '--db-user', DB_USER, '--db-name', DB_NAME, '--wp-url', 'example.test'];
+	return ['--db-host', DB_HOST, '--db-user', DB_USER, '--db-name', DB_NAME, '--wp-url', 'example.test', '--admin-user', 'admin'];
 }
 
 /**
@@ -99,7 +101,7 @@ test('lifecycle: init -> create partial -> lint -> teardown', { skip: !RUN, time
 			BIN, 'init',
 			'--dir', dir, '--yes',
 			...initFlags(),
-			'--wp-title', 'E2E', '--admin-user', 'admin',
+			'--wp-title', 'E2E',
 			'--admin-email', 'admin@example.com', '--theme', 'wonderpress', '--skip-readme',
 		], { encoding: 'utf8', env: childEnv });
 
