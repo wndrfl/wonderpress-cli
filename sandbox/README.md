@@ -127,9 +127,11 @@ wrapper goes, the partial stays. `partial remove --with-block` removes both.
 should exist on disk — nothing is recorded that was not actually written.
 
 **The style/JS half is delegated.** `--js` scaffolds
-`static/src/js/lib/partials/<Name>.js`; the SCSS stub comes by default. Both are
+`static/src/js/components/<Name>.js`; the SCSS stub comes by default. Both are
 written by Static Kit, not by WonderPress. Without `static/.staticrc` they are
 skipped with a warning and, importantly, are then absent from the manifest.
+Older stamps may still use `src/scss/partials` and `src/js/lib/partials`; the
+manifest path is what `remove` deletes.
 
 ## See it in a browser
 

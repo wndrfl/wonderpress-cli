@@ -1254,7 +1254,7 @@ export async function removePartial(themeDir, name, options = {}) {
 		}
 	}
 
-	for (const key of ['class', 'view']) {
+	for (const key of ['class', 'view', 'style', 'script']) {
 		if (!artifacts[key]) {
 			continue;
 		}

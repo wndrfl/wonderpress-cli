@@ -32,15 +32,17 @@ invent a second classname. Theme `style.css` is WordPress metadata only.
 src/
 ├─ scss/
 │  ├─ <page>.scss          ← per-page ENTRY (home.scss, single.scss, archive-*.scss …)
-│  ├─ lib/                 ← shared: _utilities (global a11y), _pallette, _mixins, _grid …
-│  └─ partials/            ← per-COMPONENT styles: _<ns>-<slug>.scss
+│  ├─ lib/                 ← kit primitives: tokens, functions, flex, type, utilities, reset
+│  └─ components/          ← per-COMPONENT styles: _<slug>.scss
 └─ js/
    ├─ <page>.js            ← per-page ENTRY (home.js, single.js …)
-   └─ lib/
-      ├─ global.js         ← init bundled into EVERY page (bootstraps theme-level JS)
-      ├─ partials/         ← per-COMPONENT behavior: <Name>.js (class-based)
-      ├─ mixins/ · utils/
+   ├─ components/          ← per-COMPONENT behavior: <Pascal>.js
+   └─ lib/                 ← kit JS helpers
 ```
+
+New stamps use `components/`. Older trees may still have `src/scss/partials` and
+`src/js/lib/partials`; the path recorded on the partial manifest is source of
+truth for `remove`.
 
 ## Namespaces communicate scope (where it lives / is used)
 
@@ -54,32 +56,28 @@ The prefix on a component's class is a **scope namespace**, a signal to devs:
 A page entry composes both: theme-level partials it reuses **and** any
 page-level ones specific to it.
 
-## SCSS component partial
+## SCSS component
 
-`src/scss/partials/_<ns>-<slug>.scss`, selector `.<ns>-<slug>`, composed from
+`src/scss/components/_<slug>.scss`, selector `.<slug>`, composed from kit
 tokens; BEM `&--modifier` / `&__element`:
 
 ```scss
-@use "../lib/pallette" as *;
-@use "../lib/mixins" as *;
-.theme-cta-banner {
-  @include section-padding;
+@use "../lib/tokens" as *;
+.cta-banner {
+  //
   &--white { background-color: $color-white; }
 }
 ```
 
-Opt-in per page: an entry does `@use 'partials/theme-cta-banner';` only where
+Opt-in per page: an entry does `@use 'components/cta-banner';` only where
 needed.
 
-## JS component partial + global bootstrap
+## JS component + page entry
 
-- `src/js/lib/partials/<Name>.js` — a `class <Name>` (component behavior;
-  e.g. `ThemeBusinessBrowser`).
-- `src/js/lib/global.js` — an **init function bundled into every page** that
-  bootstraps theme-level JS that must load everywhere. (Name is a convention;
-  could be renamed — `bootstrap`/`main` — if preferred.)
-- Each page entry imports `global` + the partial classes that page needs and
-  inits them — mirroring the SCSS entry's `@use` list.
+- `src/js/components/<Pascal>.js` — a `class <Pascal>` (component behavior).
+- Each page entry imports the component classes that page needs and inits
+  them — mirroring the SCSS entry's `@use` list. Nothing under `components/`
+  is auto-wired.
 
 ## Design tokens: `theme.json` publishes, the project's SCSS subscribes
 
@@ -89,7 +87,7 @@ owned by different projects:
 - **`theme.json`** declares the palette, font sizes and spacing ladder. This is
   what constrains the editor — it is the reason a client's colour picker offers
   three swatches instead of the spectrum.
-- **`static/src/scss/lib/_pallette.scss`** declares the same values as Sass
+- **`static/src/scss/lib/tokens/`** declares the same values as Sass
   variables, for the CSS that actually renders the site.
 
 Left alone, a project types its brand colours into both and they drift. Setting
@@ -98,12 +96,12 @@ one problem, not a someday one.
 
 **The rule: kit CSS variables are the shared names. `theme.json` fills them.**
 
-Static Kit 3.0 ships `$color-accent: var(--color-accent, …)` (and the rest of
-the palette). A WonderPress theme binds WordPress presets onto those names so
+Static Kit 3.1 ships `$color-accent: var(--color-accent, …)` (and the rest of
+the palette) in `lib/tokens`. A WonderPress theme binds WordPress presets onto those names so
 the editor and the stylesheet cannot disagree:
 
 ```scss
-// static/src/scss/lib/_pallette.scss — in a WonderPress project, after install
+// static/src/scss/lib/tokens/_color.scss — in a WonderPress project, after install
 $color-accent:   var(--wp--preset--color--accent);
 $color-base:     var(--wp--preset--color--base);
 $color-contrast: var(--wp--preset--color--contrast);
@@ -115,7 +113,7 @@ Do not put `--wp--preset--*` inside Static Kit itself.
 ### Why this is a convention and not a feature
 
 Static Kit is a **general** asset framework with no knowledge of WordPress —
-grep it and there is not one reference. Teaching `_pallette.scss` to reach for
+grep it and there is not one reference. Teaching token files to reach for
 `--wp--preset--*` in Static Kit itself would couple a WordPress-agnostic project
 to WordPress, which is exactly the seam this document exists to protect.
 
@@ -131,12 +129,10 @@ it lives here as a convention rather than in anybody's code.
   `color-mix()` covers most of what that was for; where it genuinely does not,
   declare that one derived colour as its own `theme.json` slot rather than
   reaching back for a literal.
-- **Only colour maps cleanly today.** Static Kit's sole token file is
-  `_pallette.scss`; type and spacing sizes are baked directly into `%h1`,
-  `%title` and `%paragraph` placeholders rather than exposed as a named scale.
-  `theme.json`'s type and spacing slots therefore *introduce* a scale rather
-  than subscribing to one, and adopting them is a change to Static Kit's model.
-  **Do colour now; treat type and spacing as their own decision.**
+- **Only colour maps cleanly today.** Type and spacing sizes in the kit are
+  their own token files, but a WonderPress `theme.json` type/spacing ladder
+  still has to be bound by the project. **Do colour now; treat type and spacing
+  as their own decision.**
 
 ### The alternative, and why not
 

@@ -185,8 +185,8 @@ component dictionary; template manifests are the page-template sentence.
     "view": "partials/call-to-action.php",
     "block": "blocks/call-to-action/block.json",
     "render": "blocks/call-to-action/render.php",
-    "style": "static/src/scss/partials/_call-to-action.scss",
-    "script": "static/src/js/lib/partials/CallToAction.js"
+    "style": "static/src/scss/components/_call-to-action.scss",
+    "script": "static/src/js/components/CallToAction.js"
   }
 }
 ```
@@ -214,9 +214,11 @@ This keeps a single source of truth for anything under `static/`: if the Static
 Kit layout changes, WonderPress inherits it for free instead of drifting.
 
 `partial create` records the paths `component.create` returns. `partial remove`
-calls `component.remove`. `installKit` keys off a config file and merges into
-a seeded directory, so this CLI does not park files aside or write into
-`static/` itself.
+calls `component.remove`, then deletes the `style` and `script` paths the
+manifest recorded — so a 3.0-era `lib/partials` tree is not orphaned when the
+installed kit only knows about `components/`. `installKit` keys off a config
+file and merges into a seeded directory, so this CLI does not park files aside
+or write into `static/` itself.
 
 ### Versioning
 

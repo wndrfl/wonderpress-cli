@@ -66,10 +66,10 @@ test('--js opts in: the JS behavior class is delegated to Static Kit and recorde
 	try {
 		await writePartial(paramsFromFlags({ '--name': 'Call_To_Action', '--js': true }), dir);
 
-		assert.ok(fs.existsSync(path.join(dir, 'static/src/js/lib/partials/CallToAction.js')), 'JS behavior class should exist');
+		assert.ok(fs.existsSync(path.join(dir, 'static/src/js/components/CallToAction.js')), 'JS behavior class should exist');
 		const m = manifestOf(dir, 'call-to-action');
-		assert.equal(m.artifacts.script, 'static/src/js/lib/partials/CallToAction.js');
-		assert.equal(m.artifacts.style, 'static/src/scss/partials/_call-to-action.scss');
+		assert.equal(m.artifacts.script, 'static/src/js/components/CallToAction.js');
+		assert.equal(m.artifacts.style, 'static/src/scss/components/_call-to-action.scss');
 	} finally {
 		fs.removeSync(dir);
 	}
@@ -80,7 +80,7 @@ test('the JS half is off by default (a partial has no behavior unless asked)', a
 	try {
 		await writePartial(paramsFromFlags({ '--name': 'Hero' }), dir);
 
-		assert.ok(!fs.existsSync(path.join(dir, 'static/src/js/lib/partials/Hero.js')), 'no JS without --js');
+		assert.ok(!fs.existsSync(path.join(dir, 'static/src/js/components/Hero.js')), 'no JS without --js');
 		assert.equal(manifestOf(dir, 'hero').artifacts.script, undefined);
 	} finally {
 		fs.removeSync(dir);
@@ -221,13 +221,44 @@ test('partial remove --with-block cascades over every recorded artifact', async 
 	const dir = tmpTheme();
 	try {
 		await writePartial(paramsFromFlags({ '--name': 'Testimonial', '--block': true, '--js': true }), dir);
-		for (const rel of ['src/partials/class-testimonial.php', 'partials/testimonial.php', 'static/src/scss/partials/_testimonial.scss', 'static/src/js/lib/partials/Testimonial.js']) {
+		for (const rel of ['src/partials/class-testimonial.php', 'partials/testimonial.php', 'static/src/scss/components/_testimonial.scss', 'static/src/js/components/Testimonial.js']) {
 			assert.ok(fs.existsSync(path.join(dir, rel)), `${rel} should exist first`);
 		}
 
 		assert.equal(await removePartial(dir, 'Testimonial', { withBlock: true }), true);
 
-		for (const rel of ['src/partials/class-testimonial.php', 'partials/testimonial.php', 'static/src/scss/partials/_testimonial.scss', 'static/src/js/lib/partials/Testimonial.js', 'blocks/testimonial', '.wonderpress/manifest/partials/testimonial.json']) {
+		for (const rel of ['src/partials/class-testimonial.php', 'partials/testimonial.php', 'static/src/scss/components/_testimonial.scss', 'static/src/js/components/Testimonial.js', 'blocks/testimonial', '.wonderpress/manifest/partials/testimonial.json']) {
+			assert.ok(!fs.existsSync(path.join(dir, rel)), `${rel} should be gone`);
+		}
+	} finally {
+		fs.removeSync(dir);
+	}
+});
+
+test('partial remove deletes static files recorded at the 3.0 layout', async () => {
+	const dir = tmpTheme();
+	try {
+		const style = 'static/src/scss/partials/_hero.scss';
+		const script = 'static/src/js/lib/partials/Hero.js';
+		const classRel = 'src/partials/class-hero.php';
+		const viewRel = 'partials/hero.php';
+		for (const rel of [style, script, classRel, viewRel]) {
+			const abs = path.join(dir, rel);
+			fs.ensureDirSync(path.dirname(abs));
+			fs.writeFileSync(abs, 'legacy\n');
+		}
+		fs.ensureDirSync(path.join(dir, '.wonderpress/manifest/partials'));
+		fs.writeFileSync(path.join(dir, '.wonderpress/manifest/partials/hero.json'), JSON.stringify({
+			name: 'Hero',
+			slug: 'hero',
+			acf_compatible: false,
+			properties: [],
+			artifacts: { class: classRel, view: viewRel, style, script },
+		}, null, 2) + '\n');
+
+		assert.equal(await removePartial(dir, 'Hero'), true);
+
+		for (const rel of [style, script, classRel, viewRel, '.wonderpress/manifest/partials/hero.json']) {
 			assert.ok(!fs.existsSync(path.join(dir, rel)), `${rel} should be gone`);
 		}
 	} finally {
@@ -340,7 +371,7 @@ test('--js with --no-template records no script artifact', async () => {
 		assert.equal(m.artifacts.view, undefined, 'no view was requested');
 		assert.equal(m.artifacts.script, undefined, 'a behavior class needs a view to attach to');
 		assert.equal(m.artifacts.style, undefined);
-		assert.ok(!fs.existsSync(path.join(dir, 'static/src/js/lib/partials/Hero.js')), 'nothing delegated was written');
+		assert.ok(!fs.existsSync(path.join(dir, 'static/src/js/components/Hero.js')), 'nothing delegated was written');
 	} finally {
 		fs.removeSync(dir);
 	}
@@ -352,12 +383,12 @@ test('partial add-js scaffolds a behavior class and records it', async () => {
 	const dir = tmpTheme();
 	try {
 		await writePartial(paramsFromFlags({ '--name': 'Hero' }), dir);
-		assert.ok(!fs.existsSync(path.join(dir, 'static/src/js/lib/partials/Hero.js')));
+		assert.ok(!fs.existsSync(path.join(dir, 'static/src/js/components/Hero.js')));
 
 		assert.equal(await addScript(dir, 'Hero'), true);
 
-		assert.ok(fs.existsSync(path.join(dir, 'static/src/js/lib/partials/Hero.js')));
-		assert.equal(manifestOf(dir, 'hero').artifacts.script, 'static/src/js/lib/partials/Hero.js');
+		assert.ok(fs.existsSync(path.join(dir, 'static/src/js/components/Hero.js')));
+		assert.equal(manifestOf(dir, 'hero').artifacts.script, 'static/src/js/components/Hero.js');
 	} finally {
 		fs.removeSync(dir);
 	}
@@ -367,14 +398,14 @@ test('partial add-js does not clobber an existing SCSS stub', async () => {
 	const dir = tmpTheme();
 	try {
 		await writePartial(paramsFromFlags({ '--name': 'Hero' }), dir);
-		const stylePath = path.join(dir, 'static/src/scss/partials/_hero.scss');
+		const stylePath = path.join(dir, 'static/src/scss/components/_hero.scss');
 		const original = fs.readFileSync(stylePath, 'utf8');
 		fs.writeFileSync(stylePath, original + '\n/* keep me */\n');
 
 		assert.equal(await addScript(dir, 'Hero'), true);
 
 		assert.match(fs.readFileSync(stylePath, 'utf8'), /keep me/);
-		assert.equal(manifestOf(dir, 'hero').artifacts.style, 'static/src/scss/partials/_hero.scss');
+		assert.equal(manifestOf(dir, 'hero').artifacts.style, 'static/src/scss/components/_hero.scss');
 	} finally {
 		fs.removeSync(dir);
 	}
@@ -386,12 +417,12 @@ test('partial add-js is idempotent and does not overwrite custom JS', async () =
 		await writePartial(paramsFromFlags({ '--name': 'Hero' }), dir);
 		assert.equal(await addScript(dir, 'Hero'), true);
 
-		const jsPath = path.join(dir, 'static/src/js/lib/partials/Hero.js');
+		const jsPath = path.join(dir, 'static/src/js/components/Hero.js');
 		fs.writeFileSync(jsPath, '// custom behavior\n');
 
 		assert.equal(await addScript(dir, 'Hero'), true);
 		assert.equal(fs.readFileSync(jsPath, 'utf8'), '// custom behavior\n');
-		assert.equal(manifestOf(dir, 'hero').artifacts.script, 'static/src/js/lib/partials/Hero.js');
+		assert.equal(manifestOf(dir, 'hero').artifacts.script, 'static/src/js/components/Hero.js');
 	} finally {
 		fs.removeSync(dir);
 	}
@@ -401,13 +432,13 @@ test('partial add-js records an existing unindexed JS file without rewriting it'
 	const dir = tmpTheme();
 	try {
 		await writePartial(paramsFromFlags({ '--name': 'Hero' }), dir);
-		const jsPath = path.join(dir, 'static/src/js/lib/partials/Hero.js');
+		const jsPath = path.join(dir, 'static/src/js/components/Hero.js');
 		fs.ensureDirSync(path.dirname(jsPath));
 		fs.writeFileSync(jsPath, '// dropped by hand\n');
 
 		assert.equal(await addScript(dir, 'Hero'), true);
 		assert.equal(fs.readFileSync(jsPath, 'utf8'), '// dropped by hand\n');
-		assert.equal(manifestOf(dir, 'hero').artifacts.script, 'static/src/js/lib/partials/Hero.js');
+		assert.equal(manifestOf(dir, 'hero').artifacts.script, 'static/src/js/components/Hero.js');
 	} finally {
 		fs.removeSync(dir);
 	}
@@ -421,7 +452,7 @@ test('--js and a later add-js produce the same script path and file', async () =
 		await writePartial(paramsFromFlags({ '--name': 'Hero' }), t2);
 		assert.equal(await addScript(t2, 'Hero'), true);
 
-		const rel = 'static/src/js/lib/partials/Hero.js';
+		const rel = 'static/src/js/components/Hero.js';
 		assert.equal(fs.readFileSync(path.join(t1, rel), 'utf8'), fs.readFileSync(path.join(t2, rel), 'utf8'));
 		assert.equal(manifestOf(t1, 'hero').artifacts.script, manifestOf(t2, 'hero').artifacts.script);
 	} finally {
@@ -436,7 +467,7 @@ test('partial add-js refuses a missing view', async () => {
 		await writePartial(paramsFromFlags({ '--name': 'Hero', '--no-template': true }), dir);
 		assert.equal(await addScript(dir, 'Hero'), false);
 		assert.equal(manifestOf(dir, 'hero').artifacts.script, undefined);
-		assert.ok(!fs.existsSync(path.join(dir, 'static/src/js/lib/partials/Hero.js')));
+		assert.ok(!fs.existsSync(path.join(dir, 'static/src/js/components/Hero.js')));
 	} finally {
 		fs.removeSync(dir);
 	}
@@ -457,7 +488,7 @@ test('partial add-js refuses to invent a partial that does not exist', async () 
 	const dir = tmpTheme();
 	try {
 		assert.equal(await addScript(dir, 'Nope'), false);
-		assert.ok(!fs.existsSync(path.join(dir, 'static/src/js/lib/partials/Nope.js')));
+		assert.ok(!fs.existsSync(path.join(dir, 'static/src/js/components/Nope.js')));
 	} finally {
 		fs.removeSync(dir);
 	}
@@ -468,7 +499,7 @@ test('partial add-js accepts a slug as well as a class name', async () => {
 	try {
 		await writePartial(paramsFromFlags({ '--name': 'Call_To_Action' }), dir);
 		assert.equal(await addScript(dir, 'call-to-action'), true);
-		assert.equal(manifestOf(dir, 'call-to-action').artifacts.script, 'static/src/js/lib/partials/CallToAction.js');
+		assert.equal(manifestOf(dir, 'call-to-action').artifacts.script, 'static/src/js/components/CallToAction.js');
 	} finally {
 		fs.removeSync(dir);
 	}

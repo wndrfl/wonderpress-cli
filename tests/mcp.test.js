@@ -226,8 +226,8 @@ test('partial_add_js scaffolds JS onto an existing partial', async () => {
 
 		const added = parse(await handlers.partial_add_js({ dir: root, theme: 'acme', name: 'Quote' }));
 		assert.equal(added.ok, true);
-		assert.equal(added.script, 'static/src/js/lib/partials/Quote.js');
-		assert.ok(fs.existsSync(path.join(themeDir, 'static/src/js/lib/partials/Quote.js')));
+		assert.equal(added.script, 'static/src/js/components/Quote.js');
+		assert.ok(fs.existsSync(path.join(themeDir, 'static/src/js/components/Quote.js')));
 	} finally {
 		process.chdir(cwd);
 		fs.removeSync(root);

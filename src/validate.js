@@ -347,7 +347,7 @@ export function resolveWithin(rootDir, relPath) {
 
 /**
  * PascalCase name for a slug, matching how Static Kit names a component's JS
- * behavior class file (`<src js>/lib/partials/<Pascal>.js`). Kept in lockstep
+ * behavior class file (`<src js>/components/<Pascal>.js`). Kept in lockstep
  * with `staticCli.component.create` so the manifest can record the path of a
  * file that Static Kit actually wrote.
  * e.g. call-to-action -> CallToAction

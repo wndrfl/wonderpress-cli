@@ -12,7 +12,7 @@ test('Static Kit is a declared dependency (not vendored)', () => {
 	const pkg = JSON.parse(read('package.json'));
 	const dep = pkg.dependencies['@wndrfl/static-kit-cli'];
 	assert.ok(dep, '@wndrfl/static-kit-cli must be a declared dependency');
-	assert.match(dep, /^\^3\./, 'Static Kit must resolve from the registry, not a local checkout');
+	assert.match(dep, /^\^3\.1/, 'Static Kit 3.1+ must resolve from the registry, not a local checkout');
 });
 
 test('node_modules is git-ignored (nothing vendored is committed)', () => {
