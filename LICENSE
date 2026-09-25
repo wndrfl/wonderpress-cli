@@ -1,3 +1,12 @@
+Wonderpress CLI (the Node.js program in `bin/`, `src/`, and related files)
+is licensed under the MIT License, except as follows.
+
+The PHP templates in `src/templates/` that emit WordPress PHP are licensed
+under the GNU General Public License, version 2 or later (GPL-2.0-or-later),
+matching wonderpress-core and the Wonderpress theme.
+
+---
+
 MIT License
 
 Copyright (c) 2022 Wonderful

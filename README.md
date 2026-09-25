@@ -329,4 +329,4 @@ Issues: [github.com/wndrfl/wonderpress-cli](https://github.com/wndrfl/wonderpres
 
 ## License
 
-MIT © [Wonderful](https://wonderful.io) — see [LICENSE](LICENSE).
+MIT © [Wonderful](https://wonderful.io) — see [LICENSE](LICENSE). PHP templates in `src/templates/` that emit WordPress PHP are GPL-2.0-or-later.
