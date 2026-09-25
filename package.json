@@ -1,6 +1,6 @@
 {
   "name": "@wndrfl/wonderpress-cli",
-  "version": "2.12.0",
+  "version": "2.12.1",
   "description": "CLI for Wonderpress: bootstrap WordPress environments and author themes from manifests.",
   "main": "./bin/wonderpress.js",
   "type": "module",
