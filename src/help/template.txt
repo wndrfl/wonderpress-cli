@@ -11,6 +11,12 @@ page-only ACF via `wonder_template_composition_field( 'intro' )` and HTML in
 this template. See AGENTS.md. Do not wrap the page in
 `wonder_render_template_sections()`.
 
+The manifest's `$schema` key points at
+`.wonderpress/manifest/schema/page-template.schema.json`. The editor completes
+composition rows from that file: a partial (`id` + `partial`), page-only
+fields (`id` + `properties`), or a tab (`id` + `items`). A row has only one
+of those.
+
 COMMANDS
   template create           Scaffold the PHP file, manifest, and Static Kit entries
   template list             List every page template recorded in this theme

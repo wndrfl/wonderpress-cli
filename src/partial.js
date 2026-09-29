@@ -32,7 +32,9 @@ import {
 	validateManifestProperty,
 	partialManifestPath,
 	PARTIAL_MANIFEST_DIR,
+	PARTIAL_MANIFEST_SCHEMA_REF,
 } from './validate.js';
+import { ensureManifestSchemas, stampManifestSchemas } from './manifest-schema.js';
 import * as config from './config.js';
 import { pickOne, canAsk } from './prompt.js';
 import {
@@ -792,6 +794,7 @@ export function writeManifest(params, themeDir, written = {}) {
 	}
 
 	const manifest = {
+		$schema: PARTIAL_MANIFEST_SCHEMA_REF,
 		name: params.class_name,
 		slug,
 		// Only a partial that opted in to being a block advertises one. The
@@ -805,6 +808,7 @@ export function writeManifest(params, themeDir, written = {}) {
 
 	const file = manifestPath(themeDir, slug);
 	fs.ensureDirSync(path.dirname(file));
+	ensureManifestSchemas(themeDir);
 	fs.writeFileSync(file, JSON.stringify(manifest, null, 2) + '\n');
 	log.success(`Manifest created at: ${file}`);
 
@@ -1319,6 +1323,8 @@ export async function installManifest(args) {
 		log.error(`Failed to install manifest for "${slug}".`);
 		return false;
 	}
+
+	stampManifestSchemas(themeDir);
 
 	log.success(`Installed core manifest: ${dest}`);
 	log.info('Add the partial to a template composition or wonderpress_template_fields so ACF registers the field group where editors need it.');

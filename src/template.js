@@ -19,6 +19,7 @@ import {
   PARTIAL_MANIFEST_DIR,
   resolveWithin,
 } from './validate.js';
+import { ensureManifestSchemas } from './manifest-schema.js';
 
 /**
  * Accept and route a command.
@@ -421,6 +422,7 @@ export async function create(templateName, opts) {
 
   const manifestDir = pageTemplateManifestDir(themeDir);
   fs.ensureDirSync(manifestDir);
+  ensureManifestSchemas(themeDir);
 
   const manifestPath = `${manifestDir}/${fileName.replace(/\.php$/, '.json')}`;
   fs.writeFileSync(manifestPath, JSON.stringify(validated.data, null, 2) + '\n');

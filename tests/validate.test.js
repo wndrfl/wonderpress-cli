@@ -236,6 +236,7 @@ test('buildDefaultTemplateManifest includes schemaVersion and template filename'
 		lock: 'all',
 		sections: [{ id: 'hero-main', partial: 'landing-hero' }],
 	});
+	assert.equal(data.$schema, '../schema/page-template.schema.json');
 	assert.equal(data.schemaVersion, TEMPLATE_MANIFEST_SCHEMA_VERSION);
 	assert.equal(data.template, 'template-landing.php');
 	assert.equal(data.composition.length, 1);

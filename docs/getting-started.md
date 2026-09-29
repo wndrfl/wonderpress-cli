@@ -255,6 +255,15 @@ with `"schemaVersion": 1`. That file declares:
   set `editor.acf.tabPlacement` to force **left** or **top**, or omit for the default.
   Save manifests under `.wonderpress/manifest/page-templates/` (strict JSON).
 
+Each manifest starts with `$schema`, a relative path to
+`.wonderpress/manifest/schema/page-template.schema.json` (partials use
+`partial.schema.json`). The editor reads that file and completes keys, property
+types, lock values, and tab placement while you edit, and underlines a row that
+mixes `partial`, `properties`, and `items`. `template create`, `partial create`,
+`partial sync`, and `agents write` write the schema files and the `$schema`
+key. The schema cannot tell whether a partial slug exists in this theme, or
+whether two rows share an id — those checks stay in the CLI.
+
 Manifest files must be **strict JSON** (no `//` comments or trailing commas). A
 parse error skips the whole file, and partials fall back to per-slug ACF groups
 from `wonderpress_template_fields` — which can look like fields “went global.”

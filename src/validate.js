@@ -480,6 +480,15 @@ export function assertDualAuthorable(subject, options = {}) {
 export const MANIFEST_ROOT = '.wonderpress/manifest';
 export const PARTIAL_MANIFEST_DIR = `${MANIFEST_ROOT}/partials`;
 export const PAGE_TEMPLATE_MANIFEST_DIR = `${MANIFEST_ROOT}/page-templates`;
+export const MANIFEST_SCHEMA_DIR = `${MANIFEST_ROOT}/schema`;
+
+/**
+ * `$schema` values written into manifests. Relative to the manifest file, so
+ * the editor resolves `.wonderpress/manifest/schema/*.schema.json`.
+ * `src/manifest-schema.js` emits those files from the constants in this module.
+ */
+export const PARTIAL_MANIFEST_SCHEMA_REF = '../schema/partial.schema.json';
+export const PAGE_TEMPLATE_MANIFEST_SCHEMA_REF = '../schema/page-template.schema.json';
 
 /** Supported page-template manifest schema version. */
 export const TEMPLATE_MANIFEST_SCHEMA_VERSION = 1;
@@ -867,6 +876,7 @@ export function buildDefaultTemplateManifest(templatePhpFile, opts = {}) {
 	}));
 
 	return {
+		$schema: PAGE_TEMPLATE_MANIFEST_SCHEMA_REF,
 		schemaVersion: TEMPLATE_MANIFEST_SCHEMA_VERSION,
 		template: templatePhpFile,
 		editor: {
