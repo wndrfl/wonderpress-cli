@@ -111,7 +111,10 @@ function propertySchema({ types, repeaterRef }) {
 			enum: [...types],
 			description: 'How the value is stored and which editor control it gets.',
 		},
-		required: { type: 'boolean', description: 'Whether the editor requires a value.' },
+		required: {
+			type: 'boolean',
+			description: 'Whether the editor requires a value. Not allowed on boolean, link, or partial: ACF treats a required true/false as "must be checked", and copies a required group onto every sub-field.',
+		},
 		description: { type: 'string', description: 'Help text. Shown as ACF instructions.' },
 		label: { type: 'string', description: 'Editor label. Defaults to a title derived from name.' },
 		choices: {
@@ -176,6 +179,18 @@ function propertySchema({ types, repeaterRef }) {
 				required: ['type'],
 			},
 			then: { required: ['partial'] },
+		},
+		{
+			if: {
+				properties: { type: { enum: ['boolean', 'link', 'partial'] } },
+				required: ['type'],
+			},
+			then: {
+				not: {
+					properties: { required: { const: true } },
+					required: ['required'],
+				},
+			},
 		},
 		forbidUnless('format', 'string'),
 		forbidUnless('rows', 'string'),

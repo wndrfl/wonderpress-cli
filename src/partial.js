@@ -27,6 +27,7 @@ import {
 	PROP_TYPES,
 	PROP_TYPE_TO_BLOCK,
 	REPEATER_SUB_TYPES,
+	REQUIRED_FORBIDDEN_TYPES,
 	assertDualAuthorable,
 	LEGACY_NAMESPACE,
 	validateManifestProperty,
@@ -1549,7 +1550,7 @@ async function runWizard(themeDir, args = {}) {
 				message: 'Should this property be validated as required?',
 				suffix: '\nIf "yes", then Wonderpress will enforce a value upon instantiation:',
 				when: function (answers) {
-					return answers.add_another;
+					return answers.add_another && !REQUIRED_FORBIDDEN_TYPES.includes(answers.type);
 				}
 			}
 		]);
@@ -1620,7 +1621,7 @@ async function promptRepeaterSubs(parentName) {
 				type: 'confirm',
 				name: 'required',
 				message: 'Required?',
-				when: (a) => a.add_another,
+				when: (a) => a.add_another && !REQUIRED_FORBIDDEN_TYPES.includes(a.type),
 			},
 		]);
 

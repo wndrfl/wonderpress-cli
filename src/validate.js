@@ -40,6 +40,13 @@ export const DUAL_AUTHORABLE_TYPES = [
 // What a repeater row may contain. Nested repeaters are a later slice.
 export const REPEATER_SUB_TYPES = ['boolean', 'email', 'image', 'link', 'partial', 'select', 'string'];
 
+/**
+ * Types that must not set `required`. A required true/false means "must be
+ * checked". `link` and `partial` compile to an ACF group, and ACF copies a
+ * required group onto every sub-field during validation.
+ */
+export const REQUIRED_FORBIDDEN_TYPES = ['boolean', 'link', 'partial'];
+
 /** ACF conditional operators allowed in manifest `when` rules. */
 export const MANIFEST_WHEN_OPERATORS = [
 	'==',
@@ -626,6 +633,18 @@ function validateOneManifestProperty(p, errors, pathLabel, { asRepeaterSub = fal
 	if (p.type === 'partial') {
 		if (!p.partial || !isSafeSlug(p.partial)) {
 			errors.push(`${pathLabel}: partial property "${p.name}" must declare a valid partial slug (partial).`);
+		}
+	}
+
+	if (p.required && REQUIRED_FORBIDDEN_TYPES.includes(p.type)) {
+		if (p.type === 'boolean') {
+			errors.push(
+				`${pathLabel}: property "${p.name}" cannot be required. ACF validates a required true/false as "must be checked".`,
+			);
+		} else {
+			errors.push(
+				`${pathLabel}: property "${p.name}" cannot be required. It compiles to an ACF group, and ACF copies a required group onto every sub-field.`,
+			);
 		}
 	}
 

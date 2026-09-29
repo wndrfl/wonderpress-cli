@@ -432,6 +432,30 @@ test('parseSectionFlag parses id:partial', () => {
 	assert.throws(() => parseSectionFlag('bad id:hero'), /Invalid composition id/);
 });
 
+test('validateManifestProperty rejects required on booleans and ACF groups', () => {
+	assert.throws(
+		() => validateManifestProperty({ name: 'open_in_new_tab', type: 'boolean', required: true }),
+		/must be checked/,
+	);
+	assert.throws(
+		() => validateManifestProperty({ name: 'cta', type: 'link', required: true }),
+		/ACF group/,
+	);
+	assert.throws(
+		() => validateManifestProperty({ name: 'cta', type: 'partial', partial: 'link', required: true }),
+		/ACF group/,
+	);
+	assert.doesNotThrow(() => validateManifestProperty(
+		{ name: 'open_in_new_tab', type: 'boolean', required: false },
+	));
+	assert.doesNotThrow(() => validateManifestProperty({
+		name: 'actions',
+		type: 'repeater',
+		required: true,
+		properties: [{ name: 'label', type: 'string', required: true }],
+	}));
+});
+
 test('validateManifestProperty accepts partial refs', () => {
 	assert.doesNotThrow(() => validateManifestProperty(
 		{ name: 'cta', type: 'partial', partial: 'link' },
