@@ -15,7 +15,7 @@ ENVIRONMENT
   server        Start (or `server stop`) the local development environment
   static        Compile (or `--watch`) the theme's Static Kit assets
   destroy       Tear the environment down, keeping the theme and its files
-  lint          Run phpcs and manifest drift over the theme
+  lint          Run phpcs, partial drift, and page-template checks
   acf           Install ACF or ACF PRO from the official distribution
   version       Print the installed version
   agents        Write AGENTS.md from conventions and manifests
@@ -24,7 +24,7 @@ ENVIRONMENT
 AUTHORING
   partial       Reusable render primitives — the unit of markup in a theme
   block         Editor wrappers that expose a partial in Gutenberg
-  template      Page templates — create, list, and remove
+  template      Page templates — create, list, validate, and remove
   readme        Generate a project README
 
 Run `wonderpress <command> help` for detail. Start with

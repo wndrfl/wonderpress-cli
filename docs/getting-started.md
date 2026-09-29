@@ -262,7 +262,9 @@ types, lock values, and tab placement while you edit, and underlines a row that
 mixes `partial`, `properties`, and `items`. `template create`, `partial create`,
 `partial sync`, and `agents write` write the schema files and the `$schema`
 key. The schema cannot tell whether a partial slug exists in this theme, or
-whether two rows share an id — those checks stay in the CLI.
+whether two rows share an id. `wonderpress template validate` (also run by
+`wonderpress lint`) checks those, and that each composition row is rendered
+in the template PHP.
 
 Manifest files must be **strict JSON** (no `//` comments or trailing commas). A
 parse error skips the whole file, and partials fall back to per-slug ACF groups

@@ -715,7 +715,7 @@ export function flattenTemplateComposition(composition) {
 /**
  * Validate a partial instance or inline field-group row (root or tab child).
  **/
-function validateCompositionContentRow(row, ids, errors, partialSlugs, pathLabel) {
+function validateCompositionContentRow(row, ids, errors, partialSlugs, pathLabel, checkPartialSlugs = false) {
 	if (!row?.id || !COMPOSITION_ID_RE.test(row.id)) {
 		errors.push(`${pathLabel} needs a valid id (a-z, 0-9, hyphen).`);
 		return;
@@ -757,7 +757,7 @@ function validateCompositionContentRow(row, ids, errors, partialSlugs, pathLabel
 
 	if (!isSafeSlug(row.partial)) {
 		errors.push(`Composition row "${row.id}" needs a valid partial slug.`);
-	} else if (partialSlugs.length && !partialSlugs.includes(row.partial)) {
+	} else if ((checkPartialSlugs || partialSlugs.length) && !partialSlugs.includes(row.partial)) {
 		errors.push(`Composition row "${row.id}" references unknown partial "${row.partial}".`);
 	}
 }
@@ -765,7 +765,7 @@ function validateCompositionContentRow(row, ids, errors, partialSlugs, pathLabel
 /**
  * Validate template composition (flat instances and tab containers).
  **/
-export function validateTemplateComposition(composition, { partialSlugs = [] } = {}) {
+export function validateTemplateComposition(composition, { partialSlugs = [], checkPartialSlugs = false } = {}) {
 	const errors = [];
 
 	if (composition === undefined) {
@@ -826,13 +826,14 @@ export function validateTemplateComposition(composition, { partialSlugs = [] } =
 					errors,
 					partialSlugs,
 					`Composition item under tab "${row.id}"`,
+					checkPartialSlugs,
 				);
 			}
 			continue;
 		}
 
 		if (hasPartial || hasProperties) {
-			validateCompositionContentRow(row, ids, errors, partialSlugs, `Composition row "${row.id}"`);
+			validateCompositionContentRow(row, ids, errors, partialSlugs, `Composition row "${row.id}"`, checkPartialSlugs);
 			continue;
 		}
 
@@ -897,7 +898,7 @@ export function buildDefaultTemplateManifest(templatePhpFile, opts = {}) {
  * Validate a parsed template manifest object.
  * @returns {{ ok: true, data: object } | { ok: false, errors: string[] }}
  **/
-export function validateTemplateManifest(data, { partialSlugs = [] } = {}) {
+export function validateTemplateManifest(data, { partialSlugs = [], checkPartialSlugs = false } = {}) {
 	const errors = [];
 
 	if (!data || typeof data !== 'object') {
@@ -933,7 +934,7 @@ export function validateTemplateManifest(data, { partialSlugs = [] } = {}) {
 		errors.push('editor.acf.tabPlacement must be left or top.');
 	}
 
-	errors.push(...validateTemplateComposition(data.composition, { partialSlugs }));
+	errors.push(...validateTemplateComposition(data.composition, { partialSlugs, checkPartialSlugs }));
 
 	if (errors.length) {
 		return { ok: false, errors };

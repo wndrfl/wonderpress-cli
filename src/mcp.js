@@ -324,7 +324,7 @@ export function createWonderpressMcpServer() {
 	}, (args) => handlers.partial_check_drift(args));
 
 	server.registerTool('lint_theme', {
-		description: 'Run phpcs and partial check-drift on the theme. Pass fix: true to run phpcbf (CLI --fix / -f); does not repair manifest drift (use partial_sync).',
+		description: 'Run phpcs, partial check-drift, and page-template validation on the theme. Pass fix: true to run phpcbf (CLI --fix / -f); does not repair drift (use partial_sync) or template errors (edit the manifest or PHP).',
 		inputSchema: {
 			...locShape,
 			fix: z.boolean().optional().describe('Run phpcbf on the theme (CLI --fix / -f). Only runs when phpcs failed. Does not repair drift; use partial_sync.'),

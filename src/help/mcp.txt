@@ -4,7 +4,9 @@ Exposes the same deterministic CLI operations as Model Context Protocol tools
 so an agent is a second client of the CLI, not a second codebase.
 
 Reads: partial_list, block_list, template_list, partial_get,
-partial_check_drift, lint_theme (inspect). lint_theme with fix: true is a
+partial_check_drift, lint_theme (inspect). lint_theme also validates
+page-template manifests and their render calls (`template validate`).
+lint_theme with fix: true is a
 write: phpcbf only; it does not repair drift (use partial_sync).
 
 Writes: partial_create, partial_sync, partial_add_js, block_create,

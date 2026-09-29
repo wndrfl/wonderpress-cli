@@ -20,6 +20,11 @@ of those.
 COMMANDS
   template create           Scaffold the PHP file, manifest, and Static Kit entries
   template list             List every page template recorded in this theme
+  template validate [<Name>]
+                            Check page-template manifests and that each
+                            composition row is rendered in the PHP. With no
+                            name, check every template. `wonderpress lint`
+                            runs the same check.
   template remove [<Name>]  Delete a template and its manifest. With no name,
                             pick from what the theme has.
 
@@ -39,6 +44,8 @@ EXAMPLES
   wonderpress template create --name Landing --lock insert \
     --section hero-main:landing-hero
   wonderpress template list
+  wonderpress template validate
+  wonderpress template validate Home
   wonderpress template remove Landing
 
 Run `wonderpress partial help` for partials that templates compose from.

@@ -79,6 +79,35 @@ test('inspectTheme with fix: true runs phpcbf only after phpcs failure', async (
 	}
 });
 
+test('inspectTheme fails a page template whose composition row is not rendered', async () => {
+	const { root, themeDir } = makeLintEnv();
+	const cwd = process.cwd();
+	try {
+		const manifestDir = path.join(themeDir, '.wonderpress/manifest/page-templates');
+		fs.ensureDirSync(manifestDir);
+		fs.ensureDirSync(path.join(themeDir, '.wonderpress/manifest/partials'));
+		fs.writeFileSync(path.join(themeDir, '.wonderpress/manifest/partials/hero.json'), JSON.stringify({
+			name: 'Hero',
+			slug: 'hero',
+		}));
+		fs.writeFileSync(path.join(manifestDir, 'template-home.json'), JSON.stringify({
+			schemaVersion: 1,
+			template: 'template-home.php',
+			composition: [{ id: 'hero-main', partial: 'hero' }],
+		}));
+		fs.writeFileSync(path.join(themeDir, 'template-home.php'), '<?php\n');
+		const result = await inspectTheme(root, { name: 'acme' });
+		assert.equal(result.ok, false);
+		assert.equal(result.data.phpcs.ok, true);
+		assert.equal(result.data.templates.ok, false);
+		assert.equal(result.data.templates.results[0].issues[0].code, 'unrendered_partial');
+		assert.match(result.data.hint, /template validate/);
+	} finally {
+		process.chdir(cwd);
+		fs.removeSync(root);
+	}
+});
+
 test('inspectTheme with fix: true does not run phpcbf when phpcs already passes', async () => {
 	const { root, logFile } = makeLintEnv({ failPhpcs: false });
 	const cwd = process.cwd();

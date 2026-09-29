@@ -6,6 +6,7 @@ import * as core from './core.js';
 import * as wordpress from './wordpress.js';
 import * as partial from './partial.js';
 import { checkPartialDrift } from './partial-drift.js';
+import { checkPageTemplates } from './template-check.js';
 
 /**
  * Accept and route a command.
@@ -82,17 +83,20 @@ export function applyPhpcsFix(themeDir, opts = {}) {
 	});
 }
 
-function lintHint({ phpcsOk, driftOk, wantedFix, didFix }) {
+function lintHint({ phpcsOk, driftOk, templatesOk, wantedFix, didFix }) {
+	const parts = [];
 	if (!phpcsOk && !wantedFix) {
-		return 'lint_theme with fix: true (or wonderpress lint --fix)';
-	}
-	if (!phpcsOk && didFix) {
-		return 'wonderpress lint --fix already ran; remaining phpcs issues need a manual edit';
+		parts.push('lint_theme with fix: true (or wonderpress lint --fix)');
+	} else if (!phpcsOk && didFix) {
+		parts.push('wonderpress lint --fix already ran; remaining phpcs issues need a manual edit');
 	}
 	if (!driftOk) {
-		return 'partial_sync with all: true (or wonderpress partial sync --all)';
+		parts.push('partial_sync with all: true (or wonderpress partial sync --all)');
 	}
-	return undefined;
+	if (!templatesOk) {
+		parts.push('wonderpress template validate');
+	}
+	return parts.length ? parts.join('; ') : undefined;
 }
 
 /**
@@ -113,16 +117,24 @@ export async function inspectTheme(dir, opts = {}) {
 		phpcs = runPhpcs(resolved.themeDir, { json: true });
 	}
 	const drift = collectDrift(resolved.themeDir);
-	const ok = phpcs.ok && drift.ok;
+	const templates = checkPageTemplates(resolved.themeDir);
+	const ok = phpcs.ok && drift.ok && templates.ok;
 	const data = {
 		theme: resolved.themeName,
 		phpcs: { ok: phpcs.ok, code: phpcs.code, report: phpcs.report },
 		drift,
+		templates,
 	};
 	if (fixed) {
 		data.fixed = true;
 	}
-	const hint = lintHint({ phpcsOk: phpcs.ok, driftOk: drift.ok, wantedFix: wantFix, didFix: fixed });
+	const hint = lintHint({
+		phpcsOk: phpcs.ok,
+		driftOk: drift.ok,
+		templatesOk: templates.ok,
+		wantedFix: wantFix,
+		didFix: fixed,
+	});
 	if (hint) {
 		data.hint = hint;
 	}
@@ -221,21 +233,56 @@ export async function theme(dir, opts) {
 		log.info('Fix with `wonderpress partial sync --all`.');
 	}
 
+	const templates = checkPageTemplates(themeDir);
+	if (!templates.results.length) {
+		if (!wantJson) {
+			log.info('No page templates to check.');
+		}
+	} else if (templates.ok) {
+		if (!wantJson) {
+			log.success(`Page templates: ${templates.results.length} valid.`);
+		}
+	} else if (!wantJson) {
+		log.error('Page template check failed.');
+		for (const result of templates.results.filter((r) => !r.ok)) {
+			log.error(`${result.template}:`);
+			for (const issue of result.issues) {
+				log.error(`  • ${issue.message}`);
+			}
+		}
+		log.info('Fix the reported manifest or PHP file. Re-run with `wonderpress template validate`.');
+	}
+
 	const data = {
 		theme: themeName,
 		phpcs: { ok: phpcs.ok, code: phpcs.code, report: phpcs.report },
 		drift,
+		templates,
 		axe: opts.axe ? { skipped: true, reason: 'not implemented' } : null,
 		budget: opts.budget ? { skipped: true, reason: 'not implemented' } : null,
 	};
 
-	const ok = phpcs.ok && drift.ok;
+	const ok = phpcs.ok && drift.ok && templates.ok;
 	if (!ok) {
-		const code = phpcs.ok ? 'drift' : 'phpcs';
-		const message = phpcs.ok
-			? 'One or more partials drifted from their manifests'
-			: 'phpcs reported issues';
-		const hint = phpcs.ok ? 'wonderpress partial sync --all' : 'wonderpress lint --fix';
+		let code = 'phpcs';
+		let message = 'phpcs reported issues';
+		if (phpcs.ok && !drift.ok && templates.ok) {
+			code = 'drift';
+			message = 'One or more partials drifted from their manifests';
+		} else if (phpcs.ok && drift.ok && !templates.ok) {
+			code = 'template';
+			message = 'One or more page templates failed validation';
+		} else if (phpcs.ok && !drift.ok && !templates.ok) {
+			code = 'drift';
+			message = 'Partial drift and page-template checks failed';
+		}
+		const hint = lintHint({
+			phpcsOk: phpcs.ok,
+			driftOk: drift.ok,
+			templatesOk: templates.ok,
+			wantedFix: !!opts.fix,
+			didFix: false,
+		});
 		return format.fail({ code, message, hint }, format.EXIT_FAIL, data);
 	}
 
