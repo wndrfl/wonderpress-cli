@@ -57,28 +57,36 @@ Everything else below can be changed whenever you like.
 ## 3. Set up the design tokens
 
 **Put the brand in `theme.json`** — `wp-content/themes/<theme>/theme.json`.
-Replace the placeholder palette with the real one. This file is the source of
-truth, and it is what constrains the editor: it is the reason a client's colour
-picker offers your five swatches instead of the spectrum.
+This file is the source of truth, and it is what constrains the editor: it is
+the reason a client's colour picker offers your swatches instead of the
+spectrum.
 
-**Then point the SCSS at it**, in `static/src/scss/lib/_pallette.scss`:
+Declare three things there:
 
-```scss
-$color-accent:   var(--wp--preset--color--accent);
-$color-base:     var(--wp--preset--color--base);
-$color-contrast: var(--wp--preset--color--contrast);
-```
+- The **palette** and **font families**. These become editor choices and
+  `--wp--preset--*` custom properties.
+- The **type scale** under `settings.custom.type`: per-role size, line-height,
+  weight, tracking, and the breakpoint variants (`sizeTablet`, and so on).
+  WordPress prints these as `--wp--custom--type--h2--size-tablet`.
+  `settings.typography.fontSizes` stays the editor's small-to-extra-large
+  dropdown.
+- **Status colors** such as `error` and `success` under `settings.custom.color`,
+  so they are available to CSS and stay out of the color picker.
 
-Now a colour is typed once. The cost is that Sass can no longer compute with it,
-so `darken($color-accent, 10%)` is gone — use `color-mix()`, or declare the
+wonderpress-core prints a `:root` rule that points Static Kit's `--color-*`,
+`--font-*`, and `--type-*` names at those WordPress variables. Leave
+`static/src/scss/lib/tokens/` as Static Kit installed it
+(`$color-blue: var(--color-blue, …)`). A project token the kit does not ship,
+such as `$font-mono`, belongs in that file as `var(--font-mono, …)` and needs
+a matching `theme.json` slot.
+
+`wonderpress lint` fails when a token file consumes a name `theme.json` does
+not bridge, or `theme.json` bridges a name no token file consumes.
+
+The cost is that Sass can no longer compute with a token, so
+`darken($color-accent, 10%)` is gone — use `color-mix()`, or declare the
 derived colour as its own `theme.json` slot. Full reasoning in
 [static-kit-conventions.md](static-kit-conventions.md).
-
-> **Colour only, for now.** Static Kit bakes type and spacing sizes into `%h1` /
-> `%title` / `%paragraph` placeholders rather than naming a scale, so
-> `theme.json`'s type and spacing slots have nothing to subscribe *to*. Set them
-> if you want the editor constrained, but expect to maintain them alongside the
-> SCSS until that is resolved.
 
 WonderPress also discards database-backed user Global Styles, which otherwise
 outrank this file without producing a repository diff. A project that
@@ -328,7 +336,7 @@ the PHP partial stays the only source of markup.
 
 ## Known rough edges
 
-- **Type and spacing tokens are not connected** to Static Kit. Colour is.
+- **Spacing tokens are not connected** to Static Kit. Colour, fonts, and the type scale are, through the `theme.json` bridge wonderpress-core prints.
 - **Blocks have no inner content.** They render from the partial and take their
   values from the sidebar; a client cannot type directly into one.
   ServerSideRender's HTML is inert, so live React InnerBlocks cannot occupy a

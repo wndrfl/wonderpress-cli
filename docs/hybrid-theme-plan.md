@@ -91,22 +91,25 @@ win here is constraint, not bytes; trimming the emitted CSS is a separate
 problem with a separate mechanism, and is not yet planned.
 
 **Token source of truth.** `theme.json` publishes CSS custom properties
-(`--wp--preset--color--accent`); it has no knowledge of Static Kit's SCSS in
-either direction. To avoid declaring every brand color twice, **`theme.json` is
-the source and the SCSS subscribes** via `var(--wp--preset--color--accent)`.
-The honest cost: a custom property is a runtime value, so Sass cannot compute
-with it and `darken()` is no longer available — `color-mix()` covers most of
-what that was for. The alternative (generate `theme.json` from SCSS tokens)
-keeps the Sass math but buys a build step and a file nobody may hand-edit.
+(`--wp--preset--color--accent`, and `--wp--custom--type--*` for the type
+scale). It has no knowledge of Static Kit's SCSS in either direction. To avoid
+declaring every brand value twice, **`theme.json` is the source and
+wonderpress-core bridges it**: a `:root` rule points Static Kit's `--color-*`,
+`--font-*`, and `--type-*` at the WordPress variables. The token files stay as
+Static Kit stamped them. The honest cost: a custom property is a runtime value,
+so Sass cannot compute with it and `darken()` is no longer available —
+`color-mix()` covers most of what that was for. The alternative (generate
+`theme.json` from SCSS tokens) keeps the Sass math but buys a build step and a
+file nobody may hand-edit.
 
-**This is not one migration, it is two.** Static Kit's only real token file is
-`_pallette.scss`, so **color** is a straight swap — the slugs shipped in #11
-mirror it exactly. **Type and spacing have no counterpart to mirror**: the SCSS
-bakes sizes directly into `%h1` / `%title` / `%paragraph` placeholders rather
-than exposing a named scale. Those slots therefore *introduce* a scale, and
-adopting them is a change to Static Kit's model rather than a subscription to
-an existing one. Sequence the color swap first; treat type and spacing as their
-own decision.
+**Type scale.** Static Kit's `lib/tokens/_type.scss` names per-role size,
+line-height, weight, tracking, and breakpoint variants. Those values live in
+`settings.custom.type`. `sizeTablet` prints as
+`--wp--custom--type--h2--size-tablet`, and the bridge exposes it as
+`--type-h2-size-tablet`. `settings.typography.fontSizes` remains the editor
+dropdown. Status colors that should stay out of that picker (`error`,
+`success`) live in `settings.custom.color`. `wonderpress lint` fails when the
+token files and `theme.json` disagree about a name.
 
 ### 2. The curated suite — `allowed_block_types_all` ✅ SHIPPED
 

@@ -7,6 +7,7 @@ import * as wordpress from './wordpress.js';
 import * as partial from './partial.js';
 import { checkPartialDrift } from './partial-drift.js';
 import { checkPageTemplates } from './template-check.js';
+import { checkThemeTokenDrift } from './token-drift.js';
 
 /**
  * Accept and route a command.
@@ -83,7 +84,7 @@ export function applyPhpcsFix(themeDir, opts = {}) {
 	});
 }
 
-function lintHint({ phpcsOk, driftOk, templatesOk, wantedFix, didFix }) {
+function lintHint({ phpcsOk, driftOk, templatesOk, tokensOk = true, wantedFix, didFix }) {
 	const parts = [];
 	if (!phpcsOk && !wantedFix) {
 		parts.push('lint_theme with fix: true (or wonderpress lint --fix)');
@@ -95,6 +96,9 @@ function lintHint({ phpcsOk, driftOk, templatesOk, wantedFix, didFix }) {
 	}
 	if (!templatesOk) {
 		parts.push('wonderpress template validate');
+	}
+	if (!tokensOk) {
+		parts.push('align theme.json with static/src/scss/lib/tokens/');
 	}
 	return parts.length ? parts.join('; ') : undefined;
 }
@@ -118,12 +122,14 @@ export async function inspectTheme(dir, opts = {}) {
 	}
 	const drift = collectDrift(resolved.themeDir);
 	const templates = checkPageTemplates(resolved.themeDir);
-	const ok = phpcs.ok && drift.ok && templates.ok;
+	const tokens = checkThemeTokenDrift(resolved.themeDir);
+	const ok = phpcs.ok && drift.ok && templates.ok && tokens.ok;
 	const data = {
 		theme: resolved.themeName,
 		phpcs: { ok: phpcs.ok, code: phpcs.code, report: phpcs.report },
 		drift,
 		templates,
+		tokens,
 	};
 	if (fixed) {
 		data.fixed = true;
@@ -132,6 +138,7 @@ export async function inspectTheme(dir, opts = {}) {
 		phpcsOk: phpcs.ok,
 		driftOk: drift.ok,
 		templatesOk: templates.ok,
+		tokensOk: tokens.ok,
 		wantedFix: wantFix,
 		didFix: fixed,
 	});
@@ -253,33 +260,56 @@ export async function theme(dir, opts) {
 		log.info('Fix the reported manifest or PHP file. Re-run with `wonderpress template validate`.');
 	}
 
+	const tokens = checkThemeTokenDrift(themeDir);
+	if (tokens.skipped) {
+		// No Static Kit token directory. Nothing to compare.
+	} else if (tokens.ok) {
+		if (!wantJson) {
+			log.success('Token drift: theme.json matches Static Kit tokens.');
+		}
+	} else if (!wantJson) {
+		log.error('Token drift detected.');
+		for (const issue of tokens.issues) {
+			log.error(`  • ${issue.message}`);
+		}
+		log.info('Align theme.json with static/src/scss/lib/tokens/.');
+	}
+
 	const data = {
 		theme: themeName,
 		phpcs: { ok: phpcs.ok, code: phpcs.code, report: phpcs.report },
 		drift,
 		templates,
+		tokens,
 		axe: opts.axe ? { skipped: true, reason: 'not implemented' } : null,
 		budget: opts.budget ? { skipped: true, reason: 'not implemented' } : null,
 	};
 
-	const ok = phpcs.ok && drift.ok && templates.ok;
+	const ok = phpcs.ok && drift.ok && templates.ok && tokens.ok;
 	if (!ok) {
 		let code = 'phpcs';
 		let message = 'phpcs reported issues';
-		if (phpcs.ok && !drift.ok && templates.ok) {
+		if (phpcs.ok && !drift.ok && templates.ok && tokens.ok) {
 			code = 'drift';
 			message = 'One or more partials drifted from their manifests';
-		} else if (phpcs.ok && drift.ok && !templates.ok) {
+		} else if (phpcs.ok && drift.ok && !templates.ok && tokens.ok) {
 			code = 'template';
 			message = 'One or more page templates failed validation';
-		} else if (phpcs.ok && !drift.ok && !templates.ok) {
+		} else if (phpcs.ok && !drift.ok && !templates.ok && tokens.ok) {
 			code = 'drift';
 			message = 'Partial drift and page-template checks failed';
+		} else if (phpcs.ok && drift.ok && templates.ok && !tokens.ok) {
+			code = 'tokens';
+			message = 'Static Kit tokens and theme.json are out of sync';
+		} else if (phpcs.ok) {
+			code = 'tokens';
+			message = 'Static Kit tokens and theme.json are out of sync';
 		}
 		const hint = lintHint({
 			phpcsOk: phpcs.ok,
 			driftOk: drift.ok,
 			templatesOk: templates.ok,
+			tokensOk: tokens.ok,
 			wantedFix: !!opts.fix,
 			didFix: false,
 		});
