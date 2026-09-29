@@ -168,6 +168,35 @@ test('refuses to install both editions beside each other', async () => {
 	assert.equal(result.error.code, 'edition_conflict');
 });
 
+test('PRO download uses the v2 connect endpoint', () => {
+	assert.match(ACF_PRO_URL, /^https:\/\/connect\.advancedcustomfields\.com\/v2\/plugins\/download\?p=pro$/);
+});
+
+test('surfaces the vendor JSON error message on a failed PRO download', async () => {
+	const dir = root();
+	try {
+		const result = await installAcf({
+			edition: 'pro',
+			licenseKey: 'bad-key',
+			backend: backend(),
+			root: dir,
+			fetchImpl: async () => ({
+				ok: false,
+				status: 404,
+				async text() {
+					return JSON.stringify({ code: 'license_not_found', message: 'Licence key not found.' });
+				},
+			}),
+		});
+		assert.equal(result.ok, false);
+		assert.equal(result.error.code, 'download');
+		assert.equal(result.error.message, 'ACF PRO download failed with HTTP 404: Licence key not found.');
+		assert.equal(fs.existsSync(path.join(dir, '.wonderpress-tmp')), false);
+	} finally {
+		fs.removeSync(dir);
+	}
+});
+
 test('rejects an HTML error page even when the download returns HTTP 200', async () => {
 	const dir = root();
 	try {
