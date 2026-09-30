@@ -126,7 +126,7 @@ test('--block maps image/link/repeater onto object/array attributes', async () =
 	}
 });
 
-test('syncPartialFromManifest updates class $_properties and block.json from manifest', async () => {
+test('syncPartialFromManifest updates class $properties and block.json from manifest', async () => {
 	const dir = tmpTheme();
 	try {
 		const params = paramsFromFlags({
