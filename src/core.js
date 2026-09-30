@@ -758,6 +758,10 @@ export async function setCwdToEnvironmentRoot() {
 
   if (path) {
     process.chdir(path);
+    // The backend was chosen from the shell's cwd before dispatch; now that
+    // the environment root is known, make sure it matches what THIS root was
+    // built with. See env.rebind().
+    env.rebind(path);
     return true;
   }
 

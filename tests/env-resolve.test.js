@@ -3,9 +3,11 @@ import assert from 'node:assert/strict';
 import fs from 'fs-extra';
 import os from 'node:os';
 import path from 'node:path';
+import * as env from '../src/env/index.js';
 import { resolveBackendName } from '../src/env/index.js';
 import * as wpEnv from '../src/env/wp-env.js';
 import * as hostEnv from '../src/env/host.js';
+import * as core from '../src/core.js';
 
 /**
  * Backend resolution precedence. Pure, so the whole table is cheap to pin.
@@ -79,6 +81,92 @@ test('an unrecognised recorded value falls back instead of failing', () => {
 	const r = resolveBackendName({ persisted: 'future-backend' });
 	assert.equal(r.name, 'host');
 	assert.equal(r.unknown, null);
+});
+
+// --- rebinding once the root is known ---
+//
+// cli.js resolves from the shell's cwd before dispatch. A command pointed at a
+// wp-env project from outside it (`--dir sandbox/wp` from the repo root, or an
+// MCP call carrying `dir`) used to keep the host backend the cwd resolved to,
+// and ran `wp` bare against a wp-config.php whose DB_HOST is a Docker service
+// name — surfacing as "the CLI can't reach the DB".
+
+function wpEnvProject() {
+	const dir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'wp-rebind-')));
+	fs.writeFileSync(path.join(dir, '.wonderpressrc'), JSON.stringify({ environment: { backend: 'wp-env' } }));
+	fs.writeFileSync(path.join(dir, '.wp-env.json'), '{}');
+	return dir;
+}
+
+test('finding the environment root rebinds to the backend it was built with', async () => {
+	const project = wpEnvProject();
+	const outside = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'wp-outside-')));
+	const cwd = process.cwd();
+	try {
+		process.chdir(outside);
+		env.resolve({ root: outside });
+		assert.equal(env.getCurrent().name, 'host', 'from outside any environment, the cwd resolves to host');
+
+		process.chdir(project);
+		assert.equal(await core.setCwdToEnvironmentRoot(), true);
+		assert.equal(env.getCurrent().name, 'wp-env');
+	} finally {
+		env.reset();
+		process.chdir(cwd);
+		fs.removeSync(project);
+		fs.removeSync(outside);
+	}
+});
+
+test('rebinding still honors an explicit --env choice', () => {
+	const project = wpEnvProject();
+	try {
+		env.resolve({ flag: 'host', root: os.tmpdir() });
+		const r = env.rebind(project);
+		assert.equal(env.getCurrent().name, 'host');
+		assert.equal(r.mismatch, true, 'the contradiction is still reported');
+	} finally {
+		env.reset();
+		fs.removeSync(project);
+	}
+});
+
+test('rebinding honors WONDERPRESS_ENV the same way', () => {
+	const project = wpEnvProject();
+	try {
+		env.resolve({ envVar: 'host', root: os.tmpdir() });
+		env.rebind(project);
+		assert.equal(env.getCurrent().name, 'host');
+	} finally {
+		env.reset();
+		fs.removeSync(project);
+	}
+});
+
+test('rebinding leaves an injected test backend alone', () => {
+	const project = wpEnvProject();
+	const fake = { name: 'fake' };
+	try {
+		env.activate(fake);
+		assert.equal(env.rebind(project), null);
+		assert.equal(env.getCurrent(), fake);
+	} finally {
+		env.reset();
+		fs.removeSync(project);
+	}
+});
+
+test('rebinding to the same answer keeps the same backend instance', () => {
+	const project = wpEnvProject();
+	try {
+		env.resolve({ root: project });
+		const before = env.getCurrent();
+		env.rebind(project);
+		assert.equal(env.getCurrent(), before);
+	} finally {
+		env.reset();
+		fs.removeSync(project);
+	}
 });
 
 // --- where the site is ---

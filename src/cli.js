@@ -146,9 +146,15 @@ export async function cli() {
   //
   // `init` may be creating an environment that does not exist yet, so it
   // resolves against its target directory rather than an existing root.
+  //
+  // Every other command honors --dir too: from outside any environment,
+  // resolving against the shell's cwd lands on the host backend regardless of
+  // what the target was built with. (setCwdToEnvironmentRoot() rebinds again
+  // once the root is definitively known, which also covers MCP calls that
+  // carry a `dir` of their own.)
   const envRoot = cmd === 'init'
     ? (args['--dir'] || process.cwd())
-    : ((await core.getRootDir()) || process.cwd());
+    : ((await core.getRootDir(args['--dir'] || undefined)) || args['--dir'] || process.cwd());
 
   const resolution = env.resolve({
     flag: args['--env'],

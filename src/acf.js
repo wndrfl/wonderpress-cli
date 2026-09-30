@@ -169,9 +169,14 @@ export async function command(subcommand, args) {
 	if (!await core.setCwdToEnvironmentRoot()) {
 		return format.fail({ code: 'environment', message: 'Could not find a WonderPress environment.' });
 	}
-	if (!await wordpress.isInstalled()) {
-		log.error('WordPress is not installed in this environment.');
-		return format.fail({ code: 'wordpress', message: 'WordPress is not installed in this environment.' });
+	const installed = await wordpress.coreInstallState();
+	if (!installed.installed) {
+		wordpress.reportCoreInstallState(installed);
+		return format.fail({
+			code: installed.unreachable ? 'database' : 'wordpress',
+			message: installed.message,
+			hint: installed.hint,
+		});
 	}
 
 	const edition = args['--free'] ? 'free' : 'pro';
