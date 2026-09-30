@@ -17,8 +17,8 @@ function tmpTheme() {
 	return dir;
 }
 
-test('parseClassPropertyNames reads $_properties keys', () => {
-	const sample = `protected static $_properties = array(
+test('parseClassPropertyNames reads $properties keys', () => {
+	const sample = `protected static $properties = array(
 		'headline' => array(
 			'description' => '',
 			'format' => 'string',

@@ -202,7 +202,7 @@ Dual partials (`--acf` and `--block` together) use **dual-authorable** types
 
 **Manifest-first:** field definitions live in
 `.wonderpress/manifest/partials/*.json`, not in the PHP class. After editing a
-manifest, run `wonderpress partial sync <Name>` so `$_properties` and
+manifest, run `wonderpress partial sync <Name>` so `$properties` and
 `block.json` stay aligned. See [manifest-first-partials.md](manifest-first-partials.md).
 
 Nested `type: "link"` on another partial still maps to a **simple** four-field

@@ -11,7 +11,7 @@ project-invariant contract.
 3. Put markup only in the PHP **view** (`partials/*.php`). Compose core Image
    and Link primitives instead of inventing `<img>` or new-tab `<a>` tags.
 
-Do **not** hand-edit `src/partials/class-*.php` `$_properties` or
+Do **not** hand-edit `src/partials/class-*.php` `$properties` or
 `blocks/<slug>/block.json` — they are generated and `partial sync` overwrites
 them. Check with `wonderpress partial check-drift --all`.
 

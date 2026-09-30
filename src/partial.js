@@ -429,7 +429,7 @@ export function validateParams(params, themeDir = null) {
  * produces identical output whether called from the flag path or the wizard.
  **/
 /**
- * Regenerate the partial PHP class from manifest properties ($_properties).
+ * Regenerate the partial PHP class from manifest properties ($properties).
  * Overwrites the class file; custom methods in that file are not preserved.
  *
  * @param {ReturnType<typeof paramsFromManifest>} params
@@ -934,7 +934,7 @@ export function listPartials(themeDir) {
  * List every partial the manifest index knows about.
  **/
 /**
- * Apply manifest contract to derived artifacts (class $_properties, block.json, manifest index).
+ * Apply manifest contract to derived artifacts (class $properties, block.json, manifest index).
  *
  * @param {object} manifest Parsed partial manifest.
  * @param {string} themeDir Theme root.
@@ -1097,7 +1097,7 @@ export async function sync(args) {
 }
 
 /**
- * Fail when manifest-derived artifacts drift (class $_properties, block.json).
+ * Fail when manifest-derived artifacts drift (class $properties, block.json).
  **/
 export async function checkDrift(args) {
 	const themeDir = await resolveThemeDir(args);

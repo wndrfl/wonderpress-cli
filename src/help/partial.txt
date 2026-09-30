@@ -22,7 +22,7 @@ COMMANDS
                            partial. With no name, pick from those that have a
                            view and no script yet.
   partial list             List every partial, and whether a block wraps it
-  partial sync [<Name>]    Regenerate class $_properties and block.json from
+  partial sync [<Name>]    Regenerate class $properties and block.json from
                            the manifest (after you edit properties in JSON)
   partial check-drift [<Name>]
                            Fail if class or block.json drift from manifest

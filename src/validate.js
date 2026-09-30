@@ -188,7 +188,7 @@ export function propertiesForClassTemplate(properties) {
 }
 
 /**
- * PHP $_properties format for a manifest type.
+ * PHP $properties format for a manifest type.
  * image / link / repeater are stored as arrays (ACF payloads / row lists).
  **/
 export function phpFormatForType(type) {

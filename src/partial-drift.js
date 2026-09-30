@@ -40,7 +40,7 @@ function paramsFromManifest(manifest) {
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 /**
- * Property names declared in a generated partial class $_properties block.
+ * Property names declared in a generated partial class $properties block.
  *
  * @param {string} source PHP file contents.
  * @returns {string[]}
