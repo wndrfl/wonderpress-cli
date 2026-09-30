@@ -84,6 +84,21 @@ export function applyPhpcsFix(themeDir, opts = {}) {
 	});
 }
 
+/**
+ * True when phpcs found something phpcbf can rewrite.
+ * Warnings do not fail the run (`ignore_warnings_on_exit`), so the exit code
+ * alone misses auto-fixable alignment and similar sniffs.
+ **/
+function phpcsHasFixable(phpcs) {
+	const reported = phpcs.report && phpcs.report.totals && phpcs.report.totals.fixable;
+	if (typeof reported === 'number') {
+		return reported > 0;
+	}
+	const stdout = typeof phpcs.stdout === 'string' ? phpcs.stdout : '';
+	const text = stdout.replace(/\u001b\[[0-9;]*m/g, '');
+	return /PHPCBF CAN FIX THE \d+ MARKED SNIFF VIOLATIONS AUTOMATICALLY/.test(text);
+}
+
 function lintHint({ phpcsOk, driftOk, templatesOk, tokensOk = true, wantedFix, didFix }) {
 	const parts = [];
 	if (!phpcsOk && !wantedFix) {
@@ -105,7 +120,8 @@ function lintHint({ phpcsOk, driftOk, templatesOk, tokensOk = true, wantedFix, d
 
 /**
  * Structured lint result (phpcs + drift). Used by the CLI and MCP.
- * `opts.fix` runs phpcbf only when phpcs failed (same as the CLI).
+ * `opts.fix` runs phpcbf when phpcs failed or reported auto-fixable issues
+ * (including warnings, which do not fail the run).
  **/
 export async function inspectTheme(dir, opts = {}) {
 	const resolved = await resolveLintTheme(dir, opts);
@@ -115,7 +131,7 @@ export async function inspectTheme(dir, opts = {}) {
 	const wantFix = opts.fix === true;
 	let phpcs = runPhpcs(resolved.themeDir, { json: true });
 	let fixed = false;
-	if (!phpcs.ok && wantFix) {
+	if (wantFix && (!phpcs.ok || phpcsHasFixable(phpcs))) {
 		applyPhpcsFix(resolved.themeDir, { silent: true });
 		fixed = true;
 		phpcs = runPhpcs(resolved.themeDir, { json: true });
@@ -170,6 +186,7 @@ function runPhpcs(themeDir, { json }) {
 		ok: lintResult.code === 0,
 		code: lintResult.code,
 		report,
+		stdout: lintResult.stdout,
 	};
 }
 
@@ -211,14 +228,16 @@ export async function theme(dir, opts) {
 
 	const phpcs = runPhpcs(themeDir, { json: wantJson });
 
+	if (opts.fix && (!phpcs.ok || phpcsHasFixable(phpcs))) {
+		applyPhpcsFix(themeDir, { silent: format.isJson() });
+		log.info('All issues that could be fixed were fixed. Rerunning phpcs...');
+		return theme(process.cwd(), { name: themeName, axe: opts.axe, budget: opts.budget });
+	}
+
 	if (phpcs.ok) {
 		if (!wantJson) {
 			log.success('Great! The theme passed phpcs.');
 		}
-	} else if (opts.fix) {
-		applyPhpcsFix(themeDir, { silent: format.isJson() });
-		log.info('All issues that could be fixed were fixed. Rerunning phpcs...');
-		return theme(process.cwd(), { name: themeName, axe: opts.axe, budget: opts.budget });
 	} else if (!wantJson) {
 		log.error('Issues were found during phpcs.');
 		log.info('If you would like Wonderpress to automatically fix as many issues as possible, add the --fix (or -f) flag to the command.');

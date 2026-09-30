@@ -10,7 +10,7 @@ import {
 	classNameToSlug,
 	defaultTemplateName,
 	normalizeProperty,
-	phpFormatForType,
+	propertiesForClassTemplate,
 	PROP_TYPE_TO_BLOCK,
 	resolveWithin,
 } from './validate.js';
@@ -74,10 +74,7 @@ export function renderPartialClassSource(params) {
 		partial_template_path: './partials/' + params.partial_template_name,
 		manifest_rel_path: `.wonderpress/manifest/partials/${slug}.json`,
 		sync_command: `wonderpress partial sync ${params.class_name}`,
-		properties: params.properties.map((p) => ({
-			...p,
-			format: phpFormatForType(p.type),
-		})),
+		properties: propertiesForClassTemplate(params.properties),
 	});
 }
 

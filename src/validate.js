@@ -173,6 +173,21 @@ export function parseSubFlag(str) {
 }
 
 /**
+ * Property rows for the partial class template.
+ * Pads `=>` so WordPress.Arrays.MultipleStatementAlignment is already satisfied.
+ * The longest key keeps a single space; shorter keys pad out to that column.
+ **/
+export function propertiesForClassTemplate(properties) {
+	const list = properties || [];
+	const max = list.reduce((longest, prop) => Math.max(longest, String(prop.name || '').length), 0);
+	return list.map((prop) => ({
+		...prop,
+		format: phpFormatForType(prop.type),
+		arrow_pad: ' '.repeat(Math.max(1, max - String(prop.name || '').length + 1)),
+	}));
+}
+
+/**
  * PHP $_properties format for a manifest type.
  * image / link / repeater are stored as arrays (ACF payloads / row lists).
  **/

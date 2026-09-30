@@ -15,7 +15,7 @@ import {
 	parsePropFlag,
 	parseSubFlag,
 	normalizeProperty,
-	phpFormatForType,
+	propertiesForClassTemplate,
 	classNameToFileSlug,
 	classNameToSlug,
 	humanizeClassName,
@@ -447,10 +447,7 @@ export function writePartialClass(params, themeDir) {
 		partial_template_path: partialTemplatePath,
 		manifest_rel_path: `.wonderpress/manifest/partials/${slug}.json`,
 		sync_command: `wonderpress partial sync ${params.class_name}`,
-		properties: params.properties.map((p) => ({
-			...p,
-			format: phpFormatForType(p.type),
-		})),
+		properties: propertiesForClassTemplate(params.properties),
 	});
 	const classFilePath = `${themeDir}/src/partials/${classNameToFileSlug(params.class_name)}.php`;
 	fs.ensureDirSync(path.dirname(classFilePath));
