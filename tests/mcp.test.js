@@ -19,28 +19,36 @@ function makeEnv() {
 	return { root, themeDir };
 }
 
-function makeLintEnv({ failPhpcs = false } = {}) {
+function makeLintEnv({ failPhpcs = false, warnPhpcs = false } = {}) {
 	const { root, themeDir } = makeEnv();
 	fs.writeFileSync(path.join(themeDir, 'style.css'), '/* Theme Name: Acme */');
 	const bin = path.join(root, 'vendor/bin');
 	fs.ensureDirSync(bin);
 	fs.writeFileSync(path.join(root, 'vendor/autoload.php'), '<?php');
 	const failFlag = path.join(root, '.phpcs-fail');
+	const warnFlag = path.join(root, '.phpcs-warn');
 	const logFile = path.join(root, 'phpcbf.log');
 	if (failPhpcs) {
 		fs.writeFileSync(failFlag, '1');
+	}
+	if (warnPhpcs) {
+		fs.writeFileSync(warnFlag, '1');
 	}
 	fs.writeFileSync(path.join(bin, 'phpcs'), `#!/bin/sh
 if [ -f ${JSON.stringify(failFlag)} ]; then
   echo '{"totals":{"errors":1,"warnings":0,"fixable":1},"files":{}}'
   exit 1
 fi
+if [ -f ${JSON.stringify(warnFlag)} ]; then
+  echo '{"totals":{"errors":0,"warnings":5,"fixable":5},"files":{}}'
+  exit 0
+fi
 echo '{"totals":{"errors":0,"warnings":0,"fixable":0},"files":{}}'
 exit 0
 `);
 	fs.writeFileSync(path.join(bin, 'phpcbf'), `#!/bin/sh
 echo ran >> ${JSON.stringify(logFile)}
-rm -f ${JSON.stringify(failFlag)}
+rm -f ${JSON.stringify(failFlag)} ${JSON.stringify(warnFlag)}
 exit 0
 `);
 	fs.chmodSync(path.join(bin, 'phpcs'), 0o755);
@@ -185,6 +193,22 @@ test('lint_theme with fix: true runs phpcbf then re-inspects', async () => {
 		assert.equal(fixed.phpcs.ok, true);
 		assert.equal(fixed.fixed, true);
 		assert.ok(fixed.drift);
+		assert.ok(fs.existsSync(logFile));
+	} finally {
+		process.chdir(cwd);
+		fs.removeSync(root);
+	}
+});
+
+test('lint_theme with fix: true runs phpcbf for auto-fixable warnings', async () => {
+	const { root, logFile } = makeLintEnv({ warnPhpcs: true });
+	const cwd = process.cwd();
+	try {
+		const fixed = parse(await handlers.lint_theme({ dir: root, theme: 'acme', fix: true }));
+		assert.equal(fixed.ok, true);
+		assert.equal(fixed.phpcs.ok, true);
+		assert.equal(fixed.phpcs.report.totals.fixable, 0);
+		assert.equal(fixed.fixed, true);
 		assert.ok(fs.existsSync(logFile));
 	} finally {
 		process.chdir(cwd);

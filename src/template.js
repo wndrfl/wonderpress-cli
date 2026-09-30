@@ -19,6 +19,8 @@ import {
   PARTIAL_MANIFEST_DIR,
   resolveWithin,
 } from './validate.js';
+import { ensureManifestSchemas } from './manifest-schema.js';
+import { checkPageTemplates } from './template-check.js';
 
 /**
  * Accept and route a command.
@@ -35,6 +37,9 @@ export async function command(subcommand, args) {
       break;
     case 'list':
       await list(args);
+      break;
+    case 'validate':
+      await validate(args);
       break;
     case 'remove':
       await remove(args);
@@ -222,6 +227,73 @@ export function removePageTemplate(themeDir, query, options = {}) {
 
   fs.removeSync(manifestPath);
   log.success(`Removed manifest: ${manifestPath}`);
+  return true;
+}
+
+/**
+ * Validate page-template manifests and their render calls (`template validate`).
+ **/
+export async function validate(args) {
+  const themeDir = await resolveThemeDir(args);
+  if (!themeDir) {
+    return format.fail({
+      code: 'theme',
+      message: 'Could not resolve the theme directory',
+      hint: 'Pass --theme <name> and --dir <env-root>.',
+    });
+  }
+
+  const query = (args._ && args._[2]) || args['--name'] || null;
+  let manifestPaths = null;
+  if (query) {
+    const found = findPageTemplateManifest(themeDir, query);
+    if (!found) {
+      log.error(`No page template named "${query}" is recorded in this theme. Run \`wonderpress template list\` to see what exists.`);
+      return format.fail({
+        code: 'template',
+        message: `No page template named "${query}"`,
+        hint: 'wonderpress template list',
+      });
+    }
+    manifestPaths = [found.manifestPath];
+  }
+
+  const report = checkPageTemplates(themeDir, { manifestPaths });
+  if (!report.results.length) {
+    if (format.isJson()) {
+      return format.ok(report);
+    }
+    log.info(`No page templates found in ${themeDir}.`);
+    return true;
+  }
+
+  for (const result of report.results) {
+    if (result.ok) {
+      log.success(`${result.template}: valid.`);
+      continue;
+    }
+    log.error(`${result.template}:`);
+    for (const issue of result.issues) {
+      log.error(`  • ${issue.message}`);
+    }
+  }
+
+  if (!report.ok) {
+    return format.fail(
+      {
+        code: 'template',
+        message: 'One or more page templates failed validation',
+        hint: 'Fix the reported manifest or PHP file.',
+      },
+      format.EXIT_FAIL,
+      report,
+    );
+  }
+
+  if (format.isJson()) {
+    return format.ok(report);
+  }
+  log.info(`${report.results.length} page template${report.results.length === 1 ? '' : 's'} checked.`);
   return true;
 }
 
@@ -421,6 +493,7 @@ export async function create(templateName, opts) {
 
   const manifestDir = pageTemplateManifestDir(themeDir);
   fs.ensureDirSync(manifestDir);
+  ensureManifestSchemas(themeDir);
 
   const manifestPath = `${manifestDir}/${fileName.replace(/\.php$/, '.json')}`;
   fs.writeFileSync(manifestPath, JSON.stringify(validated.data, null, 2) + '\n');

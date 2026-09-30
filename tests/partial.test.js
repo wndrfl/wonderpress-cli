@@ -71,8 +71,8 @@ test('writePartial: flag form and json form are byte-identical', async () => {
 		const b = fs.readFileSync(path.join(t2, 'src/partials/class-testimonial.php'), 'utf8');
 		assert.equal(a, b);
 
-		// $_properties must be unescaped (no leftover heredoc \$)
-		assert.match(a, /protected static \$_properties/);
+		// $properties must be unescaped (no leftover heredoc \$)
+		assert.match(a, /protected static \$properties/);
 		assert.doesNotMatch(a, /\\\$/);
 
 		// the view template is written too, and refuses to run outside WordPress
@@ -151,7 +151,7 @@ test('syncPartialFromManifest updates class $_properties and block.json from man
 
 		const classSrc = fs.readFileSync(path.join(dir, 'src/partials/class-scalar-demo.php'), 'utf8');
 		assert.match(classSrc, /'rich_link'/);
-		assert.match(classSrc, /'format' => 'array'/);
+		assert.match(classSrc, /'format' {6}=> 'array'/);
 
 		const block = JSON.parse(fs.readFileSync(path.join(dir, 'blocks/scalar-demo/block.json'), 'utf8'));
 		assert.equal(block.attributes.rich_link.type, 'object');
@@ -559,10 +559,10 @@ test('writePartial maps image/link/repeater formats for ACF-compatible partials'
 		assert.equal(m.properties.find((p) => p.name === 'items').properties[0].name, 'quote');
 
 		const php = fs.readFileSync(path.join(dir, 'src/partials/class-hero.php'), 'utf8');
-		assert.match(php, /'photo' => array\([\s\S]*'format' => 'array'/);
-		assert.match(php, /'cta' => array\([\s\S]*'format' => 'array'/);
-		assert.match(php, /'items' => array\([\s\S]*'format' => 'array'/);
-		assert.match(php, /'headline' => array\([\s\S]*'format' => 'string'/);
+		assert.match(php, /'photo' {4}=> array\([\s\S]*'format' {6}=> 'array'/);
+		assert.match(php, /'cta' {6}=> array\([\s\S]*'format' {6}=> 'array'/);
+		assert.match(php, /'items' {4}=> array\([\s\S]*'format' {6}=> 'array'/);
+		assert.match(php, /'headline' => array\([\s\S]*'format' {6}=> 'string'/);
 		assert.ok(!fs.existsSync(path.join(dir, 'blocks/hero/block.json')));
 	} finally {
 		fs.removeSync(dir);

@@ -10,6 +10,7 @@ import * as config from './config.js';
 import * as partial from './partial.js';
 import { listPageTemplates, findPageTemplateManifest } from './template.js';
 import { flattenTemplateComposition, isValidNamespace, LEGACY_NAMESPACE } from './validate.js';
+import { stampManifestSchemas } from './manifest-schema.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const TEMPLATE = path.join(__dirname, 'templates/agents.md.mustache');
@@ -228,6 +229,9 @@ export function upsertWonderpressMcpConfig(file, { key, extra = {}, envRoot, for
  **/
 export function writeAgentFiles({ root, themeDir, force = false }) {
 	const envRoot = path.resolve(root || process.cwd());
+	if (themeDir) {
+		stampManifestSchemas(themeDir);
+	}
 	const view = buildAgentView({ root: envRoot, themeDir });
 	const template = fs.readFileSync(TEMPLATE, 'utf8');
 	const body = mustache.render(template, view).replace(/\n+$/, '\n');

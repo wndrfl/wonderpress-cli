@@ -9,7 +9,7 @@
       "type": "boolean",
       "label": "Open in new tab?",
       "description": "Whether to open this link in a new tab.",
-      "required": true
+      "required": false
     },
     {
       "name": "type",

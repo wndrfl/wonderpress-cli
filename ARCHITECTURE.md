@@ -135,6 +135,9 @@ per-block JSX and no editor bundler. See
 
 All WonderPress manifests live under `.wonderpress/manifest/`, typed by path:
 `partials/` for components, `page-templates/` for page-template contracts.
+Each file points at a JSON Schema in `schema/` via `$schema`. Those schema
+files are generated from the same constants the CLI validates with
+(`src/manifest-schema.js`), so editor completion matches the validator.
 
 ### Partial manifests are the index
 

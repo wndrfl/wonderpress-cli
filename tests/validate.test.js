@@ -236,6 +236,7 @@ test('buildDefaultTemplateManifest includes schemaVersion and template filename'
 		lock: 'all',
 		sections: [{ id: 'hero-main', partial: 'landing-hero' }],
 	});
+	assert.equal(data.$schema, '../schema/page-template.schema.json');
 	assert.equal(data.schemaVersion, TEMPLATE_MANIFEST_SCHEMA_VERSION);
 	assert.equal(data.template, 'template-landing.php');
 	assert.equal(data.composition.length, 1);
@@ -429,6 +430,30 @@ test('validateTemplateManifest accepts mixed composition', () => {
 test('parseSectionFlag parses id:partial', () => {
 	assert.deepEqual(parseSectionFlag('hero-main:landing-hero'), { id: 'hero-main', partial: 'landing-hero' });
 	assert.throws(() => parseSectionFlag('bad id:hero'), /Invalid composition id/);
+});
+
+test('validateManifestProperty rejects required on booleans and ACF groups', () => {
+	assert.throws(
+		() => validateManifestProperty({ name: 'open_in_new_tab', type: 'boolean', required: true }),
+		/must be checked/,
+	);
+	assert.throws(
+		() => validateManifestProperty({ name: 'cta', type: 'link', required: true }),
+		/ACF group/,
+	);
+	assert.throws(
+		() => validateManifestProperty({ name: 'cta', type: 'partial', partial: 'link', required: true }),
+		/ACF group/,
+	);
+	assert.doesNotThrow(() => validateManifestProperty(
+		{ name: 'open_in_new_tab', type: 'boolean', required: false },
+	));
+	assert.doesNotThrow(() => validateManifestProperty({
+		name: 'actions',
+		type: 'repeater',
+		required: true,
+		properties: [{ name: 'label', type: 'string', required: true }],
+	}));
 });
 
 test('validateManifestProperty accepts partial refs', () => {

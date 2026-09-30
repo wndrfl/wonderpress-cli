@@ -133,7 +133,7 @@ Tear the environment down (database / containers) while keeping the theme and pr
 
 #### `wonderpress lint [-f, --fix]`
 
-Runs PHPCS against the [Wonderpress coding standards](https://github.com/wndrfl/wonderpress-development-environment/blob/master/phpcs.xml) **and** `partial check-drift`. `--fix` runs `phpcbf` on lightweight PHPCS issues; it does not repair drift — use `wonderpress partial sync` for that.
+Runs PHPCS against the [Wonderpress coding standards](https://github.com/wndrfl/wonderpress-development-environment/blob/master/phpcs.xml), `partial check-drift`, and `template validate`. `--fix` runs `phpcbf` on lightweight PHPCS issues; it does not repair drift — use `wonderpress partial sync` for that — and it does not edit page-template manifests or PHP.
 
 `--axe` and `--budget` are reserved and currently skipped.
 
@@ -248,6 +248,10 @@ Create a custom page template, a matching `.wonderpress/manifest/page-templates/
 #### `wonderpress template list` / `wonderpress template remove [<Name>]`
 
 List templates under `.wonderpress/manifest/page-templates/`. Remove deletes the PHP file, manifest, and delegated Static Kit JS/SCSS (pass `--no-static` to keep static files).
+
+#### `wonderpress template validate [<Name>]`
+
+Check every page-template manifest (or one by name). Reports invalid composition — unknown partials, duplicate ids, bad property types — and rows the template PHP does not render. A partial row needs `wonder_partial_props( 'slug', 'id' )`. A fields row needs `wonder_template_composition_field( 'id' )`. `wonderpress lint` runs the same check. Commented-out examples in the scaffold are ignored.
 
 #### `wonderpress static compile`
 

@@ -40,6 +40,13 @@ export const DUAL_AUTHORABLE_TYPES = [
 // What a repeater row may contain. Nested repeaters are a later slice.
 export const REPEATER_SUB_TYPES = ['boolean', 'email', 'image', 'link', 'partial', 'select', 'string'];
 
+/**
+ * Types that must not set `required`. A required true/false means "must be
+ * checked". `link` and `partial` compile to an ACF group, and ACF copies a
+ * required group onto every sub-field during validation.
+ */
+export const REQUIRED_FORBIDDEN_TYPES = ['boolean', 'link', 'partial'];
+
 /** ACF conditional operators allowed in manifest `when` rules. */
 export const MANIFEST_WHEN_OPERATORS = [
 	'==',
@@ -163,6 +170,21 @@ export function parseSubFlag(str) {
 	}
 
 	return { parent, name, type, required, description: '' };
+}
+
+/**
+ * Property rows for the partial class template.
+ * Pads `=>` so WordPress.Arrays.MultipleStatementAlignment is already satisfied.
+ * The longest key keeps a single space; shorter keys pad out to that column.
+ **/
+export function propertiesForClassTemplate(properties) {
+	const list = properties || [];
+	const max = list.reduce((longest, prop) => Math.max(longest, String(prop.name || '').length), 0);
+	return list.map((prop) => ({
+		...prop,
+		format: phpFormatForType(prop.type),
+		arrow_pad: ' '.repeat(Math.max(1, max - String(prop.name || '').length + 1)),
+	}));
 }
 
 /**
@@ -480,6 +502,15 @@ export function assertDualAuthorable(subject, options = {}) {
 export const MANIFEST_ROOT = '.wonderpress/manifest';
 export const PARTIAL_MANIFEST_DIR = `${MANIFEST_ROOT}/partials`;
 export const PAGE_TEMPLATE_MANIFEST_DIR = `${MANIFEST_ROOT}/page-templates`;
+export const MANIFEST_SCHEMA_DIR = `${MANIFEST_ROOT}/schema`;
+
+/**
+ * `$schema` values written into manifests. Relative to the manifest file, so
+ * the editor resolves `.wonderpress/manifest/schema/*.schema.json`.
+ * `src/manifest-schema.js` emits those files from the constants in this module.
+ */
+export const PARTIAL_MANIFEST_SCHEMA_REF = '../schema/partial.schema.json';
+export const PAGE_TEMPLATE_MANIFEST_SCHEMA_REF = '../schema/page-template.schema.json';
 
 /** Supported page-template manifest schema version. */
 export const TEMPLATE_MANIFEST_SCHEMA_VERSION = 1;
@@ -620,6 +651,18 @@ function validateOneManifestProperty(p, errors, pathLabel, { asRepeaterSub = fal
 		}
 	}
 
+	if (p.required && REQUIRED_FORBIDDEN_TYPES.includes(p.type)) {
+		if (p.type === 'boolean') {
+			errors.push(
+				`${pathLabel}: property "${p.name}" cannot be required. ACF validates a required true/false as "must be checked".`,
+			);
+		} else {
+			errors.push(
+				`${pathLabel}: property "${p.name}" cannot be required. It compiles to an ACF group, and ACF copies a required group onto every sub-field.`,
+			);
+		}
+	}
+
 	validateManifestSharedPropertyKeys(p, errors, pathLabel);
 	validateManifestAcfObject(p.acf, errors, pathLabel, p.name);
 	validateManifestWhen(p.when, errors, pathLabel, p.name, siblingNames);
@@ -706,7 +749,7 @@ export function flattenTemplateComposition(composition) {
 /**
  * Validate a partial instance or inline field-group row (root or tab child).
  **/
-function validateCompositionContentRow(row, ids, errors, partialSlugs, pathLabel) {
+function validateCompositionContentRow(row, ids, errors, partialSlugs, pathLabel, checkPartialSlugs = false) {
 	if (!row?.id || !COMPOSITION_ID_RE.test(row.id)) {
 		errors.push(`${pathLabel} needs a valid id (a-z, 0-9, hyphen).`);
 		return;
@@ -748,7 +791,7 @@ function validateCompositionContentRow(row, ids, errors, partialSlugs, pathLabel
 
 	if (!isSafeSlug(row.partial)) {
 		errors.push(`Composition row "${row.id}" needs a valid partial slug.`);
-	} else if (partialSlugs.length && !partialSlugs.includes(row.partial)) {
+	} else if ((checkPartialSlugs || partialSlugs.length) && !partialSlugs.includes(row.partial)) {
 		errors.push(`Composition row "${row.id}" references unknown partial "${row.partial}".`);
 	}
 }
@@ -756,7 +799,7 @@ function validateCompositionContentRow(row, ids, errors, partialSlugs, pathLabel
 /**
  * Validate template composition (flat instances and tab containers).
  **/
-export function validateTemplateComposition(composition, { partialSlugs = [] } = {}) {
+export function validateTemplateComposition(composition, { partialSlugs = [], checkPartialSlugs = false } = {}) {
 	const errors = [];
 
 	if (composition === undefined) {
@@ -817,13 +860,14 @@ export function validateTemplateComposition(composition, { partialSlugs = [] } =
 					errors,
 					partialSlugs,
 					`Composition item under tab "${row.id}"`,
+					checkPartialSlugs,
 				);
 			}
 			continue;
 		}
 
 		if (hasPartial || hasProperties) {
-			validateCompositionContentRow(row, ids, errors, partialSlugs, `Composition row "${row.id}"`);
+			validateCompositionContentRow(row, ids, errors, partialSlugs, `Composition row "${row.id}"`, checkPartialSlugs);
 			continue;
 		}
 
@@ -867,6 +911,7 @@ export function buildDefaultTemplateManifest(templatePhpFile, opts = {}) {
 	}));
 
 	return {
+		$schema: PAGE_TEMPLATE_MANIFEST_SCHEMA_REF,
 		schemaVersion: TEMPLATE_MANIFEST_SCHEMA_VERSION,
 		template: templatePhpFile,
 		editor: {
@@ -887,7 +932,7 @@ export function buildDefaultTemplateManifest(templatePhpFile, opts = {}) {
  * Validate a parsed template manifest object.
  * @returns {{ ok: true, data: object } | { ok: false, errors: string[] }}
  **/
-export function validateTemplateManifest(data, { partialSlugs = [] } = {}) {
+export function validateTemplateManifest(data, { partialSlugs = [], checkPartialSlugs = false } = {}) {
 	const errors = [];
 
 	if (!data || typeof data !== 'object') {
@@ -923,7 +968,7 @@ export function validateTemplateManifest(data, { partialSlugs = [] } = {}) {
 		errors.push('editor.acf.tabPlacement must be left or top.');
 	}
 
-	errors.push(...validateTemplateComposition(data.composition, { partialSlugs }));
+	errors.push(...validateTemplateComposition(data.composition, { partialSlugs, checkPartialSlugs }));
 
 	if (errors.length) {
 		return { ok: false, errors };

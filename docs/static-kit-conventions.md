@@ -79,48 +79,69 @@ needed.
   them — mirroring the SCSS entry's `@use` list. Nothing under `components/`
   is auto-wired.
 
-## Design tokens: `theme.json` publishes, the project's SCSS subscribes
+## Design tokens: `theme.json` publishes, wonderpress-core bridges
 
 A WonderPress theme has two places that know what "accent" means, and they are
 owned by different projects:
 
-- **`theme.json`** declares the palette, font sizes and spacing ladder. This is
-  what constrains the editor — it is the reason a client's colour picker offers
-  three swatches instead of the spectrum.
+- **`theme.json`** declares the palette, font families, and the type scale
+  (`settings.custom.type`). This is what constrains the editor — it is the
+  reason a client's colour picker offers three swatches instead of the spectrum.
 - **`static/src/scss/lib/tokens/`** declares the same values as Sass
-  variables, for the CSS that actually renders the site.
+  variables, for the CSS that actually renders the site. Each assignment is
+  `$id: var(--id, fallback)`.
 
 Left alone, a project types its brand colours into both and they drift. Setting
 brand colours is the first thing anyone does on a new project, so this is a day
 one problem, not a someday one.
 
-**The rule: kit CSS variables are the shared names. `theme.json` fills them.**
+**The rule: kit CSS variables are the shared names. `theme.json` fills them. wonderpress-core prints the join.**
 
-Static Kit 3.1 ships `$color-accent: var(--color-accent, …)` (and the rest of
-the palette) in `lib/tokens`. A WonderPress theme binds WordPress presets onto those names so
-the editor and the stylesheet cannot disagree:
+Static Kit 3.1 ships `$color-accent: var(--color-accent, …)` (and the same shape
+for fonts and type) in `lib/tokens`. The file comments say the host sets
+matching `--color-*`, `--font-*`, and `--type-*` properties on `:root`.
+wonderpress-core is that host. From `theme.json` it prints:
 
-```scss
-// static/src/scss/lib/tokens/_color.scss — in a WonderPress project, after install
-$color-accent:   var(--wp--preset--color--accent);
-$color-base:     var(--wp--preset--color--base);
-$color-contrast: var(--wp--preset--color--contrast);
+```css
+:root {
+  --color-blue: var(--wp--preset--color--blue);
+  --font-sans-serif: var(--wp--preset--font-family--sans-serif);
+  --type-h2-size-tablet: var(--wp--custom--type--h2--size-tablet);
+  --color-error: var(--wp--custom--color--error);
+}
 ```
 
-Or keep the kit's `--color-*` names and map them in `theme.json` / `:root`.
-Do not put `--wp--preset--*` inside Static Kit itself.
+Palette and font-family slugs use `--wp--preset--*`. The type scale lives in
+`settings.custom.type` because `fontSizes` is the editor's small / medium /
+large dropdown, and WordPress has no preset slot for per-level line-height,
+weight, tracking, or breakpoint variants. `sizeTablet` becomes
+`--wp--custom--type--h2--size-tablet`, and the bridge collapses that to the
+kit name `--type-h2-size-tablet`. Status colors that should stay out of the
+color picker (`error`, `success`) live in `settings.custom.color` and bridge
+to `--color-*` the same way.
 
-### Why this is a convention and not a feature
+Leave the token files as Static Kit stamped them. Do not put `--wp--preset--*`
+inside Static Kit itself, and do not rewrite a project's copies to those names.
+A reinstall restores the stamp, and the kit is host-agnostic on purpose.
+
+`wonderpress lint` fails in both directions: a token file consumes a name
+`theme.json` does not bridge, or `theme.json` bridges a name no token file
+consumes. That is what catches a Static Kit release that renames `--type-h2-lh`
+before a site silently falls back to the Sass default.
+
+### Why the bridge lives in core
 
 Static Kit is a **general** asset framework with no knowledge of WordPress —
 grep it and there is not one reference. Teaching token files to reach for
 `--wp--preset--*` in Static Kit itself would couple a WordPress-agnostic project
 to WordPress, which is exactly the seam this document exists to protect.
 
-It does not need to. `static/` is *installed* into a project rather than
-vendored, and the palette partial is then the project's own file. So this is a
-setup step a project takes, not a behaviour either tool imposes — which is why
-it lives here as a convention rather than in anybody's code.
+`static/` is *installed* into a project rather than vendored. The bridge is the
+host's half of the contract the token comments already describe, so it ships in
+wonderpress-core and applies to every theme. A project adds a token the kit
+does not ship (for example `$font-mono: var(--font-mono, …)`) in its own token
+file, and adds the matching slot to `theme.json`. The lint check reads the
+theme's token files, so that addition is part of the contract.
 
 ### The honest costs
 
@@ -129,10 +150,8 @@ it lives here as a convention rather than in anybody's code.
   `color-mix()` covers most of what that was for; where it genuinely does not,
   declare that one derived colour as its own `theme.json` slot rather than
   reaching back for a literal.
-- **Only colour maps cleanly today.** Type and spacing sizes in the kit are
-  their own token files, but a WonderPress `theme.json` type/spacing ladder
-  still has to be bound by the project. **Do colour now; treat type and spacing
-  as their own decision.**
+- **Spacing is still an editor ladder only.** Static Kit has no spacing token
+  file. `settings.spacing.spacingSizes` constrains the editor and is not bridged.
 
 ### The alternative, and why not
 

@@ -15,7 +15,7 @@ import {
 	parsePropFlag,
 	parseSubFlag,
 	normalizeProperty,
-	phpFormatForType,
+	propertiesForClassTemplate,
 	classNameToFileSlug,
 	classNameToSlug,
 	humanizeClassName,
@@ -27,12 +27,15 @@ import {
 	PROP_TYPES,
 	PROP_TYPE_TO_BLOCK,
 	REPEATER_SUB_TYPES,
+	REQUIRED_FORBIDDEN_TYPES,
 	assertDualAuthorable,
 	LEGACY_NAMESPACE,
 	validateManifestProperty,
 	partialManifestPath,
 	PARTIAL_MANIFEST_DIR,
+	PARTIAL_MANIFEST_SCHEMA_REF,
 } from './validate.js';
+import { ensureManifestSchemas, stampManifestSchemas } from './manifest-schema.js';
 import * as config from './config.js';
 import { pickOne, canAsk } from './prompt.js';
 import {
@@ -444,10 +447,7 @@ export function writePartialClass(params, themeDir) {
 		partial_template_path: partialTemplatePath,
 		manifest_rel_path: `.wonderpress/manifest/partials/${slug}.json`,
 		sync_command: `wonderpress partial sync ${params.class_name}`,
-		properties: params.properties.map((p) => ({
-			...p,
-			format: phpFormatForType(p.type),
-		})),
+		properties: propertiesForClassTemplate(params.properties),
 	});
 	const classFilePath = `${themeDir}/src/partials/${classNameToFileSlug(params.class_name)}.php`;
 	fs.ensureDirSync(path.dirname(classFilePath));
@@ -792,6 +792,7 @@ export function writeManifest(params, themeDir, written = {}) {
 	}
 
 	const manifest = {
+		$schema: PARTIAL_MANIFEST_SCHEMA_REF,
 		name: params.class_name,
 		slug,
 		// Only a partial that opted in to being a block advertises one. The
@@ -805,6 +806,7 @@ export function writeManifest(params, themeDir, written = {}) {
 
 	const file = manifestPath(themeDir, slug);
 	fs.ensureDirSync(path.dirname(file));
+	ensureManifestSchemas(themeDir);
 	fs.writeFileSync(file, JSON.stringify(manifest, null, 2) + '\n');
 	log.success(`Manifest created at: ${file}`);
 
@@ -1320,6 +1322,8 @@ export async function installManifest(args) {
 		return false;
 	}
 
+	stampManifestSchemas(themeDir);
+
 	log.success(`Installed core manifest: ${dest}`);
 	log.info('Add the partial to a template composition or wonderpress_template_fields so ACF registers the field group where editors need it.');
 	return true;
@@ -1543,7 +1547,7 @@ async function runWizard(themeDir, args = {}) {
 				message: 'Should this property be validated as required?',
 				suffix: '\nIf "yes", then Wonderpress will enforce a value upon instantiation:',
 				when: function (answers) {
-					return answers.add_another;
+					return answers.add_another && !REQUIRED_FORBIDDEN_TYPES.includes(answers.type);
 				}
 			}
 		]);
@@ -1614,7 +1618,7 @@ async function promptRepeaterSubs(parentName) {
 				type: 'confirm',
 				name: 'required',
 				message: 'Required?',
-				when: (a) => a.add_another,
+				when: (a) => a.add_another && !REQUIRED_FORBIDDEN_TYPES.includes(a.type),
 			},
 		]);
 

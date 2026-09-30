@@ -8,7 +8,9 @@ import * as log from './log.js';
 import * as wordpress from './wordpress.js';
 
 export const ACF_FREE_URL = 'https://www.advancedcustomfields.com/latest/';
-export const ACF_PRO_URL = 'https://connect.advancedcustomfields.com/index.php?p=pro&a=download';
+// The legacy `index.php?p=pro&a=download` endpoint now returns a bare 404 for
+// every key; `/v2/plugins/download` is the endpoint ACF's own updater uses.
+export const ACF_PRO_URL = 'https://connect.advancedcustomfields.com/v2/plugins/download?p=pro';
 
 const EDITIONS = {
 	free: {
@@ -32,6 +34,24 @@ export function downloadUrl(edition, licenseKey) {
 
 function failure(code, message, hint = null) {
 	return { ok: false, error: { code, message, hint } };
+}
+
+/**
+ * ACF's connect API answers failed downloads with JSON such as
+ * `{"code":"license_not_found","message":"Licence key not found..."}`.
+ * Pull the message out so the user sees the vendor's reason, not just a status.
+ */
+async function vendorErrorMessage(response) {
+	try {
+		const text = await response.text();
+		const body = JSON.parse(text);
+		if (body && typeof body.message === 'string' && body.message.trim()) {
+			return body.message.trim();
+		}
+	} catch {
+		// Non-JSON bodies (nginx HTML pages) carry nothing worth showing.
+	}
+	return null;
 }
 
 function cleanDownload(dir, file) {
@@ -114,9 +134,10 @@ export async function installAcf({
 			return failure('download', `${selected.label} could not be downloaded from advancedcustomfields.com.`);
 		}
 		if (!response.ok) {
+			const reason = await vendorErrorMessage(response);
 			return failure(
 				'download',
-				`${selected.label} download failed with HTTP ${response.status}.`,
+				`${selected.label} download failed with HTTP ${response.status}${reason ? `: ${reason}` : '.'}`,
 				edition === 'pro' ? 'Check ACF_PRO_LICENSE and the license status.' : null,
 			);
 		}

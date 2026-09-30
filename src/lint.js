@@ -6,6 +6,8 @@ import * as core from './core.js';
 import * as wordpress from './wordpress.js';
 import * as partial from './partial.js';
 import { checkPartialDrift } from './partial-drift.js';
+import { checkPageTemplates } from './template-check.js';
+import { checkThemeTokenDrift } from './token-drift.js';
 
 /**
  * Accept and route a command.
@@ -82,22 +84,44 @@ export function applyPhpcsFix(themeDir, opts = {}) {
 	});
 }
 
-function lintHint({ phpcsOk, driftOk, wantedFix, didFix }) {
-	if (!phpcsOk && !wantedFix) {
-		return 'lint_theme with fix: true (or wonderpress lint --fix)';
+/**
+ * True when phpcs found something phpcbf can rewrite.
+ * Warnings do not fail the run (`ignore_warnings_on_exit`), so the exit code
+ * alone misses auto-fixable alignment and similar sniffs.
+ **/
+function phpcsHasFixable(phpcs) {
+	const reported = phpcs.report && phpcs.report.totals && phpcs.report.totals.fixable;
+	if (typeof reported === 'number') {
+		return reported > 0;
 	}
-	if (!phpcsOk && didFix) {
-		return 'wonderpress lint --fix already ran; remaining phpcs issues need a manual edit';
+	const stdout = typeof phpcs.stdout === 'string' ? phpcs.stdout : '';
+	const text = stdout.replace(/\u001b\[[0-9;]*m/g, '');
+	return /PHPCBF CAN FIX THE \d+ MARKED SNIFF VIOLATIONS AUTOMATICALLY/.test(text);
+}
+
+function lintHint({ phpcsOk, driftOk, templatesOk, tokensOk = true, wantedFix, didFix }) {
+	const parts = [];
+	if (!phpcsOk && !wantedFix) {
+		parts.push('lint_theme with fix: true (or wonderpress lint --fix)');
+	} else if (!phpcsOk && didFix) {
+		parts.push('wonderpress lint --fix already ran; remaining phpcs issues need a manual edit');
 	}
 	if (!driftOk) {
-		return 'partial_sync with all: true (or wonderpress partial sync --all)';
+		parts.push('partial_sync with all: true (or wonderpress partial sync --all)');
 	}
-	return undefined;
+	if (!templatesOk) {
+		parts.push('wonderpress template validate');
+	}
+	if (!tokensOk) {
+		parts.push('align theme.json with static/src/scss/lib/tokens/');
+	}
+	return parts.length ? parts.join('; ') : undefined;
 }
 
 /**
  * Structured lint result (phpcs + drift). Used by the CLI and MCP.
- * `opts.fix` runs phpcbf only when phpcs failed (same as the CLI).
+ * `opts.fix` runs phpcbf when phpcs failed or reported auto-fixable issues
+ * (including warnings, which do not fail the run).
  **/
 export async function inspectTheme(dir, opts = {}) {
 	const resolved = await resolveLintTheme(dir, opts);
@@ -107,22 +131,33 @@ export async function inspectTheme(dir, opts = {}) {
 	const wantFix = opts.fix === true;
 	let phpcs = runPhpcs(resolved.themeDir, { json: true });
 	let fixed = false;
-	if (!phpcs.ok && wantFix) {
+	if (wantFix && (!phpcs.ok || phpcsHasFixable(phpcs))) {
 		applyPhpcsFix(resolved.themeDir, { silent: true });
 		fixed = true;
 		phpcs = runPhpcs(resolved.themeDir, { json: true });
 	}
 	const drift = collectDrift(resolved.themeDir);
-	const ok = phpcs.ok && drift.ok;
+	const templates = checkPageTemplates(resolved.themeDir);
+	const tokens = checkThemeTokenDrift(resolved.themeDir);
+	const ok = phpcs.ok && drift.ok && templates.ok && tokens.ok;
 	const data = {
 		theme: resolved.themeName,
 		phpcs: { ok: phpcs.ok, code: phpcs.code, report: phpcs.report },
 		drift,
+		templates,
+		tokens,
 	};
 	if (fixed) {
 		data.fixed = true;
 	}
-	const hint = lintHint({ phpcsOk: phpcs.ok, driftOk: drift.ok, wantedFix: wantFix, didFix: fixed });
+	const hint = lintHint({
+		phpcsOk: phpcs.ok,
+		driftOk: drift.ok,
+		templatesOk: templates.ok,
+		tokensOk: tokens.ok,
+		wantedFix: wantFix,
+		didFix: fixed,
+	});
 	if (hint) {
 		data.hint = hint;
 	}
@@ -151,6 +186,7 @@ function runPhpcs(themeDir, { json }) {
 		ok: lintResult.code === 0,
 		code: lintResult.code,
 		report,
+		stdout: lintResult.stdout,
 	};
 }
 
@@ -192,14 +228,16 @@ export async function theme(dir, opts) {
 
 	const phpcs = runPhpcs(themeDir, { json: wantJson });
 
+	if (opts.fix && (!phpcs.ok || phpcsHasFixable(phpcs))) {
+		applyPhpcsFix(themeDir, { silent: format.isJson() });
+		log.info('All issues that could be fixed were fixed. Rerunning phpcs...');
+		return theme(process.cwd(), { name: themeName, axe: opts.axe, budget: opts.budget });
+	}
+
 	if (phpcs.ok) {
 		if (!wantJson) {
 			log.success('Great! The theme passed phpcs.');
 		}
-	} else if (opts.fix) {
-		applyPhpcsFix(themeDir, { silent: format.isJson() });
-		log.info('All issues that could be fixed were fixed. Rerunning phpcs...');
-		return theme(process.cwd(), { name: themeName, axe: opts.axe, budget: opts.budget });
 	} else if (!wantJson) {
 		log.error('Issues were found during phpcs.');
 		log.info('If you would like Wonderpress to automatically fix as many issues as possible, add the --fix (or -f) flag to the command.');
@@ -221,21 +259,79 @@ export async function theme(dir, opts) {
 		log.info('Fix with `wonderpress partial sync --all`.');
 	}
 
+	const templates = checkPageTemplates(themeDir);
+	if (!templates.results.length) {
+		if (!wantJson) {
+			log.info('No page templates to check.');
+		}
+	} else if (templates.ok) {
+		if (!wantJson) {
+			log.success(`Page templates: ${templates.results.length} valid.`);
+		}
+	} else if (!wantJson) {
+		log.error('Page template check failed.');
+		for (const result of templates.results.filter((r) => !r.ok)) {
+			log.error(`${result.template}:`);
+			for (const issue of result.issues) {
+				log.error(`  • ${issue.message}`);
+			}
+		}
+		log.info('Fix the reported manifest or PHP file. Re-run with `wonderpress template validate`.');
+	}
+
+	const tokens = checkThemeTokenDrift(themeDir);
+	if (tokens.skipped) {
+		// No Static Kit token directory. Nothing to compare.
+	} else if (tokens.ok) {
+		if (!wantJson) {
+			log.success('Token drift: theme.json matches Static Kit tokens.');
+		}
+	} else if (!wantJson) {
+		log.error('Token drift detected.');
+		for (const issue of tokens.issues) {
+			log.error(`  • ${issue.message}`);
+		}
+		log.info('Align theme.json with static/src/scss/lib/tokens/.');
+	}
+
 	const data = {
 		theme: themeName,
 		phpcs: { ok: phpcs.ok, code: phpcs.code, report: phpcs.report },
 		drift,
+		templates,
+		tokens,
 		axe: opts.axe ? { skipped: true, reason: 'not implemented' } : null,
 		budget: opts.budget ? { skipped: true, reason: 'not implemented' } : null,
 	};
 
-	const ok = phpcs.ok && drift.ok;
+	const ok = phpcs.ok && drift.ok && templates.ok && tokens.ok;
 	if (!ok) {
-		const code = phpcs.ok ? 'drift' : 'phpcs';
-		const message = phpcs.ok
-			? 'One or more partials drifted from their manifests'
-			: 'phpcs reported issues';
-		const hint = phpcs.ok ? 'wonderpress partial sync --all' : 'wonderpress lint --fix';
+		let code = 'phpcs';
+		let message = 'phpcs reported issues';
+		if (phpcs.ok && !drift.ok && templates.ok && tokens.ok) {
+			code = 'drift';
+			message = 'One or more partials drifted from their manifests';
+		} else if (phpcs.ok && drift.ok && !templates.ok && tokens.ok) {
+			code = 'template';
+			message = 'One or more page templates failed validation';
+		} else if (phpcs.ok && !drift.ok && !templates.ok && tokens.ok) {
+			code = 'drift';
+			message = 'Partial drift and page-template checks failed';
+		} else if (phpcs.ok && drift.ok && templates.ok && !tokens.ok) {
+			code = 'tokens';
+			message = 'Static Kit tokens and theme.json are out of sync';
+		} else if (phpcs.ok) {
+			code = 'tokens';
+			message = 'Static Kit tokens and theme.json are out of sync';
+		}
+		const hint = lintHint({
+			phpcsOk: phpcs.ok,
+			driftOk: drift.ok,
+			templatesOk: templates.ok,
+			tokensOk: tokens.ok,
+			wantedFix: !!opts.fix,
+			didFix: false,
+		});
 		return format.fail({ code, message, hint }, format.EXIT_FAIL, data);
 	}
 
