@@ -23,6 +23,16 @@ const BACKENDS = {
 
 let current = null;
 
+// True when a test handed activate() a backend object. rebind() must leave an
+// injected fake alone, or every command that finds its environment root would
+// swap the fake out for a real backend mid-test.
+let injected = false;
+
+// What the last resolve() was told explicitly, so rebind() can re-run the same
+// decision against a different root without the caller re-plumbing --env and
+// WONDERPRESS_ENV through every command.
+let lastExplicit = { flag: undefined, envVar: undefined };
+
 /**
  * Every registered backend name.
  **/
@@ -38,8 +48,11 @@ export function activate(backendOrName) {
 
 	if (backendOrName && typeof backendOrName === 'object') {
 		current = backendOrName;
+		injected = true;
 		return current;
 	}
+
+	injected = false;
 
 	const name = backendOrName || 'host';
 	const factory = BACKENDS[name];
@@ -68,6 +81,8 @@ export function getCurrent() {
  **/
 export function reset() {
 	current = null;
+	injected = false;
+	lastExplicit = { flag: undefined, envVar: undefined };
 }
 
 export const DEFAULT_BACKEND = 'host';
@@ -130,6 +145,8 @@ export function resolve({ flag, envVar, root } = {}) {
 
 	const dir = root || process.cwd();
 
+	lastExplicit = { flag, envVar };
+
 	const resolution = resolveBackendName({
 		flag,
 		envVar,
@@ -138,6 +155,46 @@ export function resolve({ flag, envVar, root } = {}) {
 	});
 
 	if (!resolution.unknown) {
+		activate(resolution.name);
+	}
+
+	return resolution;
+}
+
+/**
+ * Re-resolve the backend once the environment root is actually known.
+ *
+ * cli.js resolves before dispatch, from the shell's cwd. A command that is
+ * then pointed elsewhere — `--dir sandbox/wp` from the repo root, or an MCP
+ * call carrying `dir` — finds its root only after chdir, and until this
+ * existed it kept whatever the cwd resolved to. From outside any environment
+ * that is the host backend, so a wp-env project's `wp theme list` ran bare on
+ * the host, against a wp-config.php whose DB_HOST is a Docker service name,
+ * and failed with "Error establishing a database connection". The symptom
+ * read as "the CLI can't reach the DB" when the CLI had simply picked the
+ * wrong way in.
+ *
+ * Honors the same --env / WONDERPRESS_ENV precedence the first resolve did,
+ * so an explicit choice still wins. Leaves an injected test fake alone. Does
+ * nothing when the answer is unchanged, so a backend is never rebuilt for the
+ * common case of a command run from inside its own environment.
+ **/
+export function rebind(root) {
+
+	if (injected) {
+		return null;
+	}
+
+	const dir = root || process.cwd();
+
+	const resolution = resolveBackendName({
+		flag: lastExplicit.flag,
+		envVar: lastExplicit.envVar,
+		persisted: config.getBackend(dir),
+		detected: fs.existsSync(path.join(dir, '.wp-env.json')) ? 'wp-env' : null,
+	});
+
+	if (!resolution.unknown && (!current || current.name !== resolution.name)) {
 		activate(resolution.name);
 	}
 

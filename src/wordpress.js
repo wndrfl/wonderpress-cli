@@ -183,8 +183,9 @@ export async function createThemesDirectory() {
 		return false;
 	}
 
-	if (! await this.isInstalled()) {
-		log.error('WordPress is not installed. Please install WordPress, first.');
+	const installed = await this.coreInstallState();
+	if (!installed.installed) {
+		reportCoreInstallState(installed);
 		return false;
 	}
 
@@ -213,8 +214,11 @@ export async function getActiveTheme(opts) {
 
 	if (!quiet) log.info('Grabbing the currently active theme...');
 
-	if (! await this.isInstalled()) {
-		if (!quiet) log.error('WordPress is not installed. Please install WordPress, first.');
+	const installed = await this.coreInstallState();
+	if (!installed.installed) {
+		// `quiet` callers (lint) have a fallback and should not be told to
+		// install WordPress on the way to succeeding without it.
+		if (!quiet) reportCoreInstallState(installed);
 		return false;
 	}
 
@@ -482,9 +486,69 @@ export async function installTheme(url, opts) {
 }
 
 /**
+ * What `wp core is-installed` actually said.
+ *
+ * WP-CLI exits non-zero for both "core has not been installed" and "I cannot
+ * reach the database", and the second one is what a restricted shell produces
+ * against a site that is installed and fine. Collapsing both into "WordPress
+ * is not installed" sends the reader off to reinstall a working site.
+ *
+ * Pure: the caller runs WP-CLI. A connection failure is recognised from the
+ * text WP-CLI prints (the `Error:` line, or the mysqli warning beneath it)
+ * rather than from the exit code, which cannot tell the two apart.
+ *
+ * @param {{ code?: number, stdout?: string, stderr?: string }} result
+ * @returns {{ installed: boolean, unreachable: boolean, message: string|null, hint: string|null }}
+ **/
+export function interpretCoreIsInstalled(result) {
+
+	if (result && result.code === 0) {
+		return { installed: true, unreachable: false, message: null, hint: null };
+	}
+
+	const raw = `${result && result.stderr || ''}\n${result && result.stdout || ''}`;
+	const errorLine = raw.split('\n').map((line) => line.trim()).find((line) => /^Error:/i.test(line));
+	const unreachable = /database connection|mysqli_real_connect|getaddrinfo|Can't connect to/i.test(raw);
+
+	if (unreachable) {
+		return {
+			installed: false,
+			unreachable: true,
+			message: errorLine
+				? errorLine.replace(/^Error:\s*/i, '')
+				: 'This shell cannot reach the database named in wp-config.php.',
+			hint: 'A restricted shell often cannot open a database socket. Re-run without that restriction, or pass --theme <name> to skip the lookup.',
+		};
+	}
+
+	return {
+		installed: false,
+		unreachable: false,
+		message: 'WordPress is not installed. Please install WordPress, first.',
+		hint: null,
+	};
+}
+
+/**
+ * Run `wp core is-installed` and say which of the two failures it was.
+ *
+ * Silent on purpose. Left to itself, WP-CLI prints PHP warnings about the
+ * socket before our own line, and the two together read as a crash rather
+ * than a reason.
+ **/
+export async function coreInstallState() {
+	const result = env.getCurrent().wpCli(['core', 'is-installed'], { silent: true });
+	return interpretCoreIsInstalled(result);
+}
+
+export function reportCoreInstallState(state) {
+	log.error(state.message);
+	if (state.hint) log.info(state.hint);
+}
+
+/**
  * Check whether WordPress Core is installed
  **/
 export async function isInstalled() {
-	let isInstalled = env.getCurrent().wpCli(['core', 'is-installed']).code;
-	return (isInstalled === 0);
+	return (await coreInstallState()).installed;
 }
