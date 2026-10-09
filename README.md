@@ -198,7 +198,7 @@ List every partial (name, slug, wrapping block if any). Indexed from `.wonderpre
 
 #### `wonderpress partial sync [<Name>]`
 
-Regenerate class `$_properties` and `block.json` from the manifest after editing properties in JSON.
+Regenerate class `$properties` and `block.json` from the manifest after editing properties in JSON.
 
 | Flag | Description |
 | --- | --- |
