@@ -17,8 +17,8 @@ function tmpTheme() {
 	return dir;
 }
 
-test('parseClassPropertyNames reads $properties keys', () => {
-	const sample = `protected static $properties = array(
+test('parseClassPropertyNames reads $properties keys, including the legacy name', () => {
+	const keys = `
 		'headline' => array(
 			'description' => '',
 			'format' => 'string',
@@ -30,7 +30,8 @@ test('parseClassPropertyNames reads $properties keys', () => {
 			'required' => false,
 		),
 	);`;
-	assert.deepEqual(parseClassPropertyNames(sample), ['headline', 'photo']);
+	assert.deepEqual(parseClassPropertyNames(`protected static $properties = array(${keys});`), ['headline', 'photo']);
+	assert.deepEqual(parseClassPropertyNames(`protected static $_properties = array(${keys});`), ['headline', 'photo']);
 });
 
 test('checkPartialDrift passes after sync', async () => {
@@ -104,4 +105,11 @@ test('renderPartialClassSource includes manifest banner', () => {
 	assert.match(src, /GENERATED FILE/);
 	assert.match(src, /\.wonderpress\/manifest\/partials\/hero\.json/);
 	assert.match(src, /partial sync Hero/);
+	assert.match(src, /protected static \$properties = array\(/);
+	assert.match(src, /protected \$partial_template = /);
+	assert.doesNotMatch(src, /\$_properties|\$_partial_template/);
+
+	const acf = renderPartialClassSource(paramsFromFlags({ '--name': 'Hero', '--acf': true, '--prop': ['title:string'] }));
+	assert.match(acf, /protected \$acf_compatible = true;/);
+	assert.doesNotMatch(acf, /\$_acf_compatible/);
 });

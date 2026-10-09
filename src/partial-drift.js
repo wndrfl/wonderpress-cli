@@ -41,6 +41,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 /**
  * Property names declared in a generated partial class $properties block.
+ * Also matches classes that still declare the legacy $_properties name.
  *
  * @param {string} source PHP file contents.
  * @returns {string[]}
