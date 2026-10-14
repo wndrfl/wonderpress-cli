@@ -358,11 +358,24 @@ Where it surfaces:
   `states` (counts) and `partials`.
 - `partial sync <Name>` refuses a partial in conflict before writing anything
   (`error.code` `conflict`, naming the partial and artifact/region; the hint
-  says resolve in the IDE or use `--force`). The class writer's own refusals
-  (`class_unfenced`, `class_fence`) are checked first. `sync --dry-run` plans
-  carry `state`, `changes`, and `blocked`. `sync --all` (and MCP `partial_sync`
-  with `all`) skips conflicted partials with a warning and reports them in
-  `data.skipped[]` rather than aborting the run.
+  says resolve in the IDE or use `--force`). A class that lost its markers or
+  has broken ones since the last sync (`unfenced`, `malformed`) is a conflict
+  too, refused with code `conflict` and the class writer's recovery advice
+  appended. Without a lock, the writer's own refusals stand (`class_unfenced`,
+  `class_fence`). `sync --dry-run` plans carry `state`, `changes`, and
+  `blocked`. `sync --all` (and MCP `partial_sync` with `all`) skips every
+  refused partial (conflicts and lock-less fence refusals) with a warning and
+  reports it in `data.skipped[]` (`{ slug, code, ... }`) rather than aborting
+  the run.
+- **Every writer of generated output honours a conflict, not just sync.**
+  Re-running `partial create` for an existing partial regenerates its class
+  region and block.json and re-records the lock, and `block create` on a
+  partial that is already a block regenerates block.json; either would erase a
+  hand edit and leave the partial reading `clean`. Both refuse a conflict the
+  same way (code `conflict`, hint naming their own `--force`); `block create`
+  only checks block.json, the one file it rewrites. MCP `partial_create` and
+  `block_create` take `force` for the same override. The shared check is
+  `assertNoConflict()` in [`src/partial.js`](src/partial.js).
 - **`--force` overrides refusals; it does not widen the write.** Forcing past a
   conflict on an intact fence still replaces only the region and keeps every
   byte outside it. Only a class with no or malformed markers is rewritten

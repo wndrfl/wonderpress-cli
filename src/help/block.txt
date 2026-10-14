@@ -25,6 +25,10 @@ COMMANDS
 
 OPTIONS
   --theme <name>           Target a theme by name, skipping the active lookup
+  --force                  block create: rewrite block.json even when it was
+                           edited by hand since the last sync (a conflict;
+                           see wonderpress partial check-drift). Without it,
+                           block create refuses rather than lose the edit.
 
 EXAMPLES
   wonderpress block create Testimonial
