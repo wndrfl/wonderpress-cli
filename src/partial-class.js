@@ -80,6 +80,52 @@ export function renderLegacyPartialClassSource(params) {
 	return mustache.render(readTemplate('partial.class.legacy.mustache'), templateView(params));
 }
 
+// One `$properties` entry exactly as the legacy template printed it. Mustache
+// HTML-escapes {{description}} and {{format}}, so neither can hold a raw quote.
+const LEGACY_PROPERTY = /^\t\t'([a-zA-Z0-9_]+)' +=> array\(\n\t\t\t'description' => '([^'\n]*)',\n\t\t\t'format' {6}=> '([^'\n]*)',\n\t\t\t'required' {4}=> (true|false),\n\t\t\),$/gm;
+
+/**
+ * Whether an unfenced class file is byte-for-byte what the pre-fence template
+ * generated for SOME params, i.e. it holds nothing a human wrote.
+ *
+ * Comparing against the render for the current params alone is not enough:
+ * the usual reason to sync is that the manifest just changed, so a pristine
+ * legacy file was generated from the previous properties. Instead the
+ * generated values (ACF flag, view path, property rows) are read back out of
+ * the file and re-rendered through the frozen legacy template with this
+ * partial's name. Any hand-written line — a method, a comment, a reformatted
+ * row — is absent from that re-render, so equality proves the file is pure
+ * generator output and safe to replace.
+ *
+ * @param {string} source Existing file contents.
+ * @param {object} params Current params (supplies the class name and paths).
+ * @returns {boolean}
+ */
+export function isPristineLegacySource(source, params) {
+	const lf = toLf(source);
+	if (lf === toLf(renderLegacyPartialClassSource(params))) {
+		return true;
+	}
+	const templateMatch = lf.match(/^\tprotected \$partial_template = '([^'\n]*)';$/m);
+	const rows = [];
+	LEGACY_PROPERTY.lastIndex = 0;
+	let match;
+	while ((match = LEGACY_PROPERTY.exec(lf)) !== null) {
+		rows.push({ name: match[1], description: match[2], format: match[3], required: match[4] });
+	}
+	const longest = rows.reduce((max, row) => Math.max(max, row.name.length), 0);
+	const view = {
+		...templateView(params),
+		is_acf_compatible: /^\tprotected \$acf_compatible = true;$/m.test(lf),
+		has_partial_template: !!templateMatch,
+		partial_template_path: templateMatch ? templateMatch[1] : '',
+		properties: rows.map((row) => ({ ...row, arrow_pad: ' '.repeat(longest - row.name.length + 1) })),
+	};
+	// The values were read back already escaped, so render them verbatim.
+	const rerendered = mustache.render(readTemplate('partial.class.legacy.mustache'), view, {}, { escape: (s) => String(s) });
+	return lf === rerendered;
+}
+
 function lineStarts(source, re) {
 	re.lastIndex = 0;
 	const hits = [];
@@ -170,8 +216,10 @@ export function regionsEqual(a, b) {
  * - `update`   fenced file: only the fenced region is replaced; every byte
  *              outside it is kept.
  * - `unchanged` fenced file whose region already matches.
- * - `migrate`  unfenced file identical to what the pre-fence template would
- *              have generated: nothing custom to lose, so it gains fences.
+ * - `migrate`  unfenced file identical to what the pre-fence template
+ *              generated (for these or earlier properties; see
+ *              isPristineLegacySource): nothing custom to lose, so it is
+ *              rewritten with fences.
  * - `force`    `--force`: the full fenced render, discarding the old file.
  *
  * An unfenced file that differs from the legacy render may hold hand-written
@@ -210,7 +258,7 @@ export function planPartialClassWrite(existing, params, options = {}) {
 		return { mode: source === existing ? 'unchanged' : 'update', source };
 	}
 
-	if (toLf(existing) === toLf(renderLegacyPartialClassSource(params))) {
+	if (isPristineLegacySource(existing, params)) {
 		return { mode: 'migrate', source: matchEol(rendered, existing) };
 	}
 
