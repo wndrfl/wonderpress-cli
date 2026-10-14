@@ -1,9 +1,13 @@
 import fs from 'fs-extra';
-import net from 'net';
 import path from 'path';
 import sh from 'shelljs';
 import { execFileSync } from 'child_process';
+import * as doctor from '../doctor.js';
 import * as log from '../log.js';
+import { DEFAULT_WP_ENV_PORT, isPortFree, isPortListening, readWpEnvPort } from './probe.js';
+
+// Re-exported: this is where callers and tests have always found it.
+export { isPortFree };
 
 /**
  * The wp-env environment backend: WordPress, MariaDB and a pinned PHP running
@@ -25,7 +29,7 @@ import * as log from '../log.js';
  *   as a bare "Error while running docker compose command." So we check first.
  **/
 
-const DEFAULT_PORT = 8888;
+const DEFAULT_PORT = DEFAULT_WP_ENV_PORT;
 
 // The config wp-env reads. Kept here (rather than in the scaffold) while the
 // backend is opt-in and hand-driven; it moves into
@@ -87,19 +91,6 @@ export function portFromUrl(url) {
 }
 
 /**
- * Is a TCP port free? Bound on 0.0.0.0 because Docker publishes on every
- * interface — checking only loopback would miss a conflict.
- **/
-export function isPortFree(port) {
-	return new Promise((resolve) => {
-		const server = net.createServer();
-		server.once('error', () => resolve(false));
-		server.once('listening', () => server.close(() => resolve(true)));
-		server.listen(port, '0.0.0.0');
-	});
-}
-
-/**
  * Insert the `--` separator wp-env uses to pass flags through to the inner
  * command, so a `--debug` or `--config` meant for wp is never eaten by
  * wp-env's own option parser.
@@ -111,12 +102,7 @@ export function splitForWpEnv(args) {
 }
 
 function readPort(root) {
-	const configPath = path.join(root, '.wp-env.json');
-	try {
-		return JSON.parse(fs.readFileSync(configPath, 'utf8')).port || DEFAULT_PORT;
-	} catch (e) {
-		return DEFAULT_PORT;
-	}
+	return readWpEnvPort(root);
 }
 
 /**
@@ -219,38 +205,9 @@ export function create() {
 		 * available is the whole premise of this being opt-in.
 		 **/
 		async preflight() {
-
-			const errors = [];
-
-			if (!sh.which('docker')) {
-				errors.push(`Docker is not installed, and \`--env wp-env\` needs it.\n  macOS / Windows   https://docs.docker.com/desktop/\n  Linux             https://docs.docker.com/engine/install/\nOr build the host environment instead: wonderpress init`);
-			} else {
-				// wp-env spawns `docker compose`; the old standalone
-				// docker-compose v1 does not satisfy it.
-				if (sh.exec('docker compose version', { silent: true }).code !== 0) {
-					errors.push(`Docker is running, but the Compose v2 plugin is missing.\nwp-env runs \`docker compose\`, not \`docker-compose\`.\n  Install:  https://docs.docker.com/compose/install/`);
-				}
-				// `docker version` succeeds against a dead daemon, so this is
-				// the check a PATH lookup misses.
-				if (sh.exec('docker info', { silent: true }).code !== 0) {
-					errors.push(`Docker is installed, but the daemon is not responding.\nStart Docker Desktop and wait for it to settle, then check: docker info\nNothing has been written yet, so re-run once Docker is up.`);
-				}
-			}
-
-			// Deliberately NOT checking for the wp-env binary here. Preflight
-			// runs before init has changed into the target directory, so a
-			// project-local lookup would examine the wrong one — and the
-			// binary is a devDependency this backend installs itself during
-			// prepare(). Docker and WP-CLI are the things the user must supply.
-
-			// Still required: `wp core download` runs on the HOST and must
-			// happen before wp-env starts. wp-env replaces MySQL, not the PHP
-			// toolchain.
-			if (!sh.which('wp')) {
-				errors.push(`Wonderpress leans heavily on the WP CLI. Please visit https://wp-cli.org/ and follow installation instructions before trying again.`);
-			}
-
-			return { ok: errors.length === 0, errors };
+			// The checks themselves are doctor's (src/doctor.js), so `wonderpress
+			// doctor` and a failed init report the same things in the same words.
+			return doctor.preflight('wp-env');
 		},
 
 		/**
@@ -315,7 +272,7 @@ export function create() {
 			if (! await isPortFree(port)) {
 				return {
 					ok: false,
-					errors: [`Port ${port} is already in use, so wp-env cannot start.\n  See what has it:  lsof -nP -iTCP:${port} -sTCP:LISTEN\n  Most likely another wp-env environment — run \`wp-env stop\` in that project.\nOr change "port" in .wp-env.json.`],
+					errors: [doctor.portInUseHint(port)],
 				};
 			}
 
@@ -391,15 +348,59 @@ export function create() {
 			const port = readPort(cwd);
 
 			log.info('Starting the Docker environment...');
-			runWpEnv(bin(), ['start'], { cwd, silent: false });
+			const started = runWpEnv(bin(), ['start'], { cwd, silent: false });
 
-			return { url: `http://localhost:${port}`, detached: true };
+			// `ok` is new; the human path ignores it as it always has. JSON mode
+			// needs it, or a start that failed would report the site as up.
+			return {
+				ok: started.code === 0,
+				errors: started.code === 0 ? [] : [`wp-env could not start the environment.\n${started.stderr || started.stdout}`.trim()],
+				url: `http://localhost:${port}`,
+				detached: true,
+			};
 		},
 
 		async stop() {
 			log.info('Stopping the Docker environment...');
-			runWpEnv(bin(), ['stop'], { cwd: root(), silent: false });
-			return true;
+			const stopped = runWpEnv(bin(), ['stop'], { cwd: root(), silent: false });
+			return stopped.code === 0;
+		},
+
+		/**
+		 * Is the environment up?
+		 *
+		 * `wp-env status --json` answers from Docker itself, and knows the real
+		 * URL and port. It arrived after 11.12, the oldest version projects pin,
+		 * so when it is missing (or there is no wp-env binary at all) this falls
+		 * back to connecting to the configured port from Node.
+		 *
+		 * That fallback can only ever prove a negative. Nothing answering means
+		 * this environment is not serving; something answering means only that
+		 * SOMETHING holds the port — most often another project's wp-env, the
+		 * usual 8888 conflict. Reporting that as running told the app a
+		 * never-started project was up, and turned doctor's port conflict into a
+		 * pass. So a listener wp-env did not vouch for is `null`: unknown.
+		 **/
+		async status() {
+
+			const cwd = root();
+			const port = readPort(cwd);
+			const fallback = { url: `http://localhost:${port}`, port, pid: null };
+			const wpEnvBin = bin();
+
+			if (wpEnvBin) {
+				const reported = parseWpEnvStatus(runWpEnv(wpEnvBin, ['status', '--json'], { cwd }));
+				if (reported) {
+					return {
+						...fallback,
+						url: reported.url || fallback.url,
+						port: reported.port || port,
+						running: reported.running,
+					};
+				}
+			}
+
+			return { ...fallback, running: (await isPortListening(port)) ? null : false };
 		},
 
 		/**
@@ -446,5 +447,42 @@ export function create() {
 
 			return { ok: true, errors: [] };
 		},
+	};
+}
+
+/**
+ * Read `wp-env status --json`, or null when it gave nothing usable (an older
+ * wp-env without the command exits non-zero).
+ *
+ * The JSON is the last `{` line: wp-env's spinner can leave chrome ahead of
+ * it. `uninitialized` (never started here) and `stopped` both mean not
+ * running.
+ **/
+export function parseWpEnvStatus(result) {
+
+	if (!result || result.code !== 0) {
+		return null;
+	}
+
+	const line = String(result.stdout || '').split('\n').map((l) => l.trim()).filter((l) => l.startsWith('{')).pop();
+	if (!line) {
+		return null;
+	}
+
+	let parsed;
+	try {
+		parsed = JSON.parse(line);
+	} catch (e) {
+		return null;
+	}
+
+	if (!parsed || typeof parsed.status !== 'string') {
+		return null;
+	}
+
+	return {
+		running: parsed.status === 'running',
+		url: (parsed.urls && parsed.urls.development) || null,
+		port: (parsed.ports && Number(parsed.ports.development)) || null,
 	};
 }

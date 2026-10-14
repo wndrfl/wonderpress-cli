@@ -380,3 +380,79 @@ Where it surfaces:
   conflict on an intact fence still replaces only the region and keeps every
   byte outside it. Only a class with no or malformed markers is rewritten
   whole.
+
+## App-facing commands and the version pin
+
+The desktop app drives the CLI through `wonderpress mcp` and through one-shot
+commands run with `--format json`, reading exactly one `{ ok, data, error }`
+envelope off stdout. These commands exist so that contract covers the
+environment lifecycle, prerequisites, and the manifest schema, and so a project
+can say which CLI it was built with.
+
+### `server` in JSON
+
+`server start|stop|status --format json` all return
+`data: { backend, detached, running, url, adminUrl, port, pid }`.
+
+- **status** asks the backend. wp-env answers with `wp-env status --json`
+  (Docker's own view, including the real port); when that command is missing
+  (it arrived after 11.12) or there is no wp-env binary, the configured port is
+  probed — and a probe can only prove a negative. Nothing answering is
+  `running: false`; something answering is `running: null`, because it is as
+  likely another project's wp-env (the usual 8888 conflict) as this one. The host's `wp server` is someone else's foreground job, so status
+  connects to its port from Node ([`src/env/probe.js`](src/env/probe.js)). Never
+  `lsof`/`netstat`: they do not exist on Windows.
+- **start** on wp-env prints the envelope after `wp-env start` returns. On the
+  host, `wp server` blocks, so JSON mode spawns it with its stdout and stderr
+  wired to the CLI's stderr, waits until the port answers, prints the envelope
+  (with the child's `pid`), and keeps serving. stdout carries the envelope and
+  nothing else; a server that dies before it is ready is an `ok: false`
+  envelope instead. Human mode is unchanged (`execSync('wp server')`).
+  `wp server` is WP-CLI running `php -S` as its own child, and the grandchild
+  holds the port, so JSON mode spawns it as the leader of a new process group
+  (POSIX), forwards SIGINT/SIGTERM/SIGHUP to the group, and sweeps the group
+  whenever the leader exits — signalling only the CLI or only the `wp` pid used
+  to orphan a still-listening `php -S`. The reported `pid` is the group id. A
+  server that ends after the envelope went out exits the CLI 0 if it was asked
+  to stop (a forwarded signal, or a stop signal sent to it directly) and 1,
+  with a line on stderr, if it crashed — the exit code is the only channel a
+  supervisor has left by then.
+- **stop** on the host cannot stop anything — it reports the probed state
+  rather than claiming success, with a note on stderr.
+- An unknown subcommand is an error. It used to fall through to start.
+
+### `doctor`
+
+[`src/doctor.js`](src/doctor.js) owns every prerequisite check; each backend's
+`preflight()` is `doctor.preflight(<backend>)`, and `init` still calls
+`backend.preflight()`, so a failed init and `wonderpress doctor` report the
+same things in the same words (a check's `hint` is the message init has always
+printed). A check is `{ check, label, ok, backend, platform, hint, detail }`;
+`backend`/`platform` say where it applies. Scope: `--env`/`WONDERPRESS_ENV`,
+else the project's backend, else every backend. The wp-env port check is
+doctor-only (preflight runs before `.wp-env.json` exists; provision checks the
+port itself with the same message) and passes when the port is held by the
+project's own running environment — confirmed by wp-env, not inferred from
+something answering on the port. Composer is checked for both backends (it
+installs the theme's packages on the host either way); before it was, a
+missing Composer surfaced mid-init, after the clone and npm install. On Windows the host backend is a single
+failing `host-platform` check pointing at wp-env, and every-backend mode skips
+the host there.
+
+### `manifest schema`
+
+`manifest schema [partial|template]` prints `buildPartialManifestSchema()` /
+`buildPageTemplateManifestSchema()` from
+[`src/manifest-schema.js`](src/manifest-schema.js) — both as
+`{ partial, template }` when no kind is given. Consumers validate against the
+schema of the CLI version the project pins instead of carrying a copy.
+
+### The `cliVersion` pin
+
+`init` writes `"cliVersion": "<running version>"` into `.wonderpressrc` when the
+project has no pin yet; an existing pin is never bumped silently. `cli.js`
+resolves the project root once before dispatch and, when the pin differs from
+the running version, writes one warning to **stderr** — in every mode, since
+stdout belongs to the JSON envelope or the MCP protocol. No pin, or no project,
+means no warning. `version --format json` carries
+`cliVersionMismatch: { pinned, current } | null`.

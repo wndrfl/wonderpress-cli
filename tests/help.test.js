@@ -103,6 +103,7 @@ test('every advertised topic has a screen', () => {
 	for (const topic of [
 		'main', 'partial', 'block', 'init', 'template', 'acf', 'agents', 'mcp',
 		'lint', 'server', 'destroy', 'version', 'readme', 'static',
+		'doctor', 'manifest',
 	]) {
 		assert.equal(help.has(topic), true, `${topic} should have a help screen`);
 	}

@@ -133,3 +133,29 @@ export function getBackend(root) {
   const { data } = read(root);
   return (data && data.environment && data.environment.backend) || null;
 }
+
+/**
+ * The CLI version this project pins, or null.
+ *
+ * `cliVersion` is written by `init` and committed with the project. It is the
+ * whole of the version pin: the app and the (future) shim resolve which CLI to
+ * run from it, and the CLI itself warns when it is not the one pinned.
+ **/
+export function getCliVersion(root) {
+  const { data } = read(root);
+  return (data && typeof data.cliVersion === 'string' && data.cliVersion) ? data.cliVersion : null;
+}
+
+/**
+ * { pinned, current } when a project pins a different CLI than the one
+ * running, else null. No pin is not a mismatch: projects built before the pin
+ * existed have none, and nagging every one of them would teach people to
+ * ignore the warning that matters.
+ **/
+export function cliVersionMismatch(root, current) {
+  if (!root) {
+    return null;
+  }
+  const pinned = getCliVersion(root);
+  return (pinned && pinned !== current) ? { pinned, current } : null;
+}
