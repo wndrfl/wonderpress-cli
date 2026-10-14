@@ -1,8 +1,8 @@
 wonderpress doctor — check this machine's prerequisites
 
-Runs the checks `init` runs before building anything — WP-CLI for the host
-backend; Docker, Compose v2, a live Docker daemon, WP-CLI and a free port for
-wp-env — and reports them in one place. Prints failures only, each with how to
+Runs the checks `init` runs before building anything — WP-CLI and Composer
+for the host backend; Docker, Compose v2, a live Docker daemon, WP-CLI,
+Composer and a free port for wp-env — and reports them in one place. Prints failures only, each with how to
 fix it, then a one-line summary. Exits 1 when anything fails.
 
 Which checks run:

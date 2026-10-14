@@ -31,6 +31,10 @@ export const HINTS = {
 	docker: `Docker is not installed, and \`--env wp-env\` needs it.\n  macOS / Windows   https://docs.docker.com/desktop/\n  Linux             https://docs.docker.com/engine/install/\nOr build the host environment instead: wonderpress init`,
 	compose: `Docker is running, but the Compose v2 plugin is missing.\nwp-env runs \`docker compose\`, not \`docker-compose\`.\n  Install:  https://docs.docker.com/compose/install/`,
 	daemon: `Docker is installed, but the daemon is not responding.\nStart Docker Desktop and wait for it to settle, then check: docker info\nNothing has been written yet, so re-run once Docker is up.`,
+	// The same sentence installComposer prints when it finds no Composer
+	// mid-init — after the clone and npm install, which is what doctor and
+	// preflight exist to head off.
+	composer: `Composer is not installed, or is not on your PATH. See https://getcomposer.org/download/`,
 	hostOnWindows: `The host backend is not supported on Windows.\nUse the Docker backend instead: wonderpress init --env wp-env`,
 };
 
@@ -87,6 +91,24 @@ function wpCliCheck(deps) {
 }
 
 /**
+ * Composer installs the theme's PHP dependencies (wonderpress-core among them)
+ * on the host, under either backend — wp-env does not run it inside the
+ * container. init only reaches that step after cloning the scaffold and
+ * installing npm packages, so a missing Composer used to surface late.
+ **/
+function composerCheck(deps) {
+	const found = deps.which('composer');
+	return check({
+		check: 'composer',
+		label: 'Composer on PATH',
+		ok: !!found,
+		backend: 'any',
+		hint: HINTS.composer,
+		detail: found || 'composer was not found on PATH.',
+	});
+}
+
+/**
  * The host backend's checks.
  *
  * On Windows, one failing check and nothing else. A checklist of PHP, MySQL
@@ -105,12 +127,13 @@ function hostChecks(deps, platform) {
 			detail: 'The host backend runs PHP, MySQL and WP-CLI natively, which is supported on macOS and Linux only.',
 		})];
 	}
-	return [wpCliCheck(deps)];
+	return [wpCliCheck(deps), composerCheck(deps)];
 }
 
 /**
  * The wp-env backend's checks: Docker, Compose v2, a live daemon, and — still —
- * WP-CLI, because `wp core download` runs on the host before wp-env starts.
+ * WP-CLI, because `wp core download` runs on the host before wp-env starts, and
+ * Composer, which installs the theme's packages on the host too.
  *
  * Deliberately NOT checking for the wp-env binary. It is a devDependency the
  * backend installs itself during prepare(), and preflight runs before init has
@@ -165,6 +188,7 @@ async function wpEnvChecks(deps, opts) {
 	}
 
 	checks.push(wpCliCheck(deps));
+	checks.push(composerCheck(deps));
 
 	// The port check only means something once there is a port to check, so
 	// preflight (which runs before .wp-env.json exists) leaves it out, and
@@ -226,7 +250,7 @@ export async function run(backend, opts = {}) {
 			? hostChecks(deps, platform)
 			: await wpEnvChecks(deps, opts);
 		for (const c of found) {
-			// WP-CLI is required by both backends; list it once.
+			// WP-CLI and Composer are required by both backends; list them once.
 			if (!checks.some((existing) => existing.check === c.check)) {
 				checks.push(c);
 			}

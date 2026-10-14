@@ -270,7 +270,10 @@ printed). A check is `{ check, label, ok, backend, platform, hint, detail }`;
 else the project's backend, else every backend. The wp-env port check is
 doctor-only (preflight runs before `.wp-env.json` exists; provision checks the
 port itself with the same message) and passes when the port is held by the
-project's own running environment. On Windows the host backend is a single
+project's own running environment — confirmed by wp-env, not inferred from
+something answering on the port. Composer is checked for both backends (it
+installs the theme's packages on the host either way); before it was, a
+missing Composer surfaced mid-init, after the clone and npm install. On Windows the host backend is a single
 failing `host-platform` check pointing at wp-env, and every-backend mode skips
 the host there.
 

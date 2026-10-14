@@ -345,7 +345,7 @@ test('every check has the documented shape', async () => {
 	assert.equal(report.ok, true);
 	assert.equal(report.backend, null);
 	assert.equal(report.platform, 'darwin');
-	assert.deepEqual(report.checks.map((c) => c.check), ['wp-cli', 'docker', 'docker-compose', 'docker-daemon', 'wp-env-port']);
+	assert.deepEqual(report.checks.map((c) => c.check), ['wp-cli', 'composer', 'docker', 'docker-compose', 'docker-daemon', 'wp-env-port']);
 	for (const c of report.checks) {
 		assert.deepEqual(Object.keys(c).sort(), CHECK_KEYS);
 		assert.ok(['host', 'wp-env', 'any'].includes(c.backend));
@@ -381,6 +381,47 @@ test('a missing WP-CLI fails the host check with the message init has always pri
 	assert.match(doctor.HINTS.wpCli, /^Wonderpress leans heavily on the WP CLI/);
 });
 
+test('a machine with WP-CLI but no Composer is not ready, under either backend', async () => {
+	// init needs Composer for the theme's packages, and used to find it missing
+	// only after the clone and npm install. doctor is the checklist that is
+	// supposed to say so first.
+	const onlyWp = { ...allPresent, which: (bin) => (bin === 'composer' ? null : `/usr/bin/${bin}`) };
+	for (const backend of ['host', 'wp-env']) {
+		const report = await doctor.run(backend, { platform: 'darwin', deps: onlyWp });
+		assert.equal(report.ok, false, backend);
+		const composer = report.checks.find((c) => c.check === 'composer');
+		assert.equal(composer.ok, false);
+		assert.equal(composer.backend, 'any');
+		assert.equal(composer.hint, doctor.HINTS.composer);
+		assert.match(composer.hint, /getcomposer\.org/);
+
+		const preflight = await doctor.preflight(backend, { platform: 'darwin', deps: onlyWp });
+		assert.deepEqual(preflight, { ok: false, errors: [doctor.HINTS.composer] }, 'init stops before it clones anything');
+	}
+});
+
+test('doctor run with only WP-CLI on PATH fails on Composer', { skip: process.platform === 'win32' && 'a sh stub stands in for wp' }, () => {
+	// End to end: PATH holds node and a stub `wp`, nothing else.
+	const bin = tmp('wp-path-');
+	fs.writeFileSync(path.join(bin, 'wp'), '#!/bin/sh\nexit 0\n', { mode: 0o755 });
+	fs.symlinkSync(process.execPath, path.join(bin, 'node'));
+	try {
+		const result = spawnSync(process.execPath, [BIN, 'doctor', '--env', 'host', '--format', 'json'], {
+			encoding: 'utf8',
+			cwd: os.tmpdir(),
+			env: { ...process.env, WONDERPRESS_ENV: '', PATH: bin },
+		});
+		const body = onlyEnvelope(result.stdout);
+		assert.equal(body.ok, false);
+		assert.equal(result.status, 1);
+		const byId = Object.fromEntries(body.data.checks.map((c) => [c.check, c]));
+		assert.equal(byId['wp-cli'].ok, true);
+		assert.equal(byId.composer.ok, false);
+	} finally {
+		fs.removeSync(bin);
+	}
+});
+
 test('without Docker, the Compose and daemon checks are reported but not reached', async () => {
 	const report = await doctor.run('wp-env', { platform: 'darwin', deps: { ...allPresent, which: () => null } });
 	const byId = Object.fromEntries(report.checks.map((c) => [c.check, c]));
@@ -389,10 +430,11 @@ test('without Docker, the Compose and daemon checks are reported but not reached
 	assert.equal(byId['docker-compose'].hint, null);
 	assert.match(byId['docker-daemon'].detail, /Not checked/);
 
-	// And preflight says exactly what the old inline preflight said: Docker,
-	// then WP-CLI, nothing about Compose or the daemon.
+	// And preflight says what the old inline preflight said — Docker, then
+	// WP-CLI, nothing about Compose or the daemon — plus Composer, which it
+	// never checked.
 	const preflight = await doctor.preflight('wp-env', { platform: 'darwin', deps: { ...allPresent, which: () => null } });
-	assert.deepEqual(preflight, { ok: false, errors: [doctor.HINTS.docker, doctor.HINTS.wpCli] });
+	assert.deepEqual(preflight, { ok: false, errors: [doctor.HINTS.docker, doctor.HINTS.wpCli, doctor.HINTS.composer] });
 });
 
 test('a dead daemon and a missing Compose plugin are separate failures', async () => {
