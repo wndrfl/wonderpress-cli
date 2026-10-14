@@ -1382,8 +1382,10 @@ export function driftLine(result, name = result.slug) {
 	if (result.state === 'clean') {
 		return null;
 	}
+	const LOCK_KINDS = { no_lock: 'no sync lock yet', lock_invalid: 'sync lock unreadable' };
 	const what = result.changes
-		.map((c) => `${c.artifact === 'block' ? 'block.json' : c.artifact}${c.region === 'fence' ? ' generated region' : ''} ${c.kind.replace(/_/g, ' ')}`)
+		.map((c) => LOCK_KINDS[c.kind]
+			|| `${c.artifact === 'block' ? 'block.json' : c.artifact}${c.region === 'fence' ? ' generated region' : ''} ${c.kind.replace(/_/g, ' ')}`)
 		.join('; ');
 	const next = result.state === 'conflict'
 		? `resolve in your IDE, or: wonderpress partial sync ${name} --force`

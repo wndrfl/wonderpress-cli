@@ -16,7 +16,7 @@ import { addBlock } from '../src/block.js';
 import { checkPartialDrift } from '../src/partial-drift.js';
 import { FENCE_CLOSE, FENCE_OPEN, extractFencedRegion } from '../src/partial-class.js';
 import { contentHash, partialLockPath, sha256 } from '../src/partial-lock.js';
-import { inspectTheme } from '../src/lint.js';
+import { command as lintCommand, inspectTheme } from '../src/lint.js';
 import { handlers } from '../src/mcp.js';
 import { parseEnvelope } from '../src/format.js';
 import pkg from '../package.json' with { type: 'json' };
@@ -442,6 +442,36 @@ test('lint: conflict is an error, pending with matching files is a warning', asy
 		assert.deepEqual(result.data.drift.states, { clean: 0, pending: 0, conflict: 1 });
 		assert.match(result.data.hint, /conflict/);
 	} finally {
+		process.chdir(cwd);
+		fs.removeSync(root);
+	}
+});
+
+test('lint (human): one line per non-clean partial; a conflict fails, pending warns', async () => {
+	const { root, themeDir } = mcpEnv();
+	const cwd = process.cwd();
+	const previousExit = process.exitCode;
+	const lines = [];
+	const original = console.log;
+	console.log = (line) => lines.push(String(line));
+	try {
+		process.chdir(root);
+		await createHero(themeDir);
+		fs.removeSync(path.join(themeDir, LOCK));
+		process.exitCode = 0;
+		await lintCommand('theme', { '--dir': root, '--name': 'acme' });
+		assert.equal(process.exitCode ?? 0, 0, 'pending with matching files passes lint');
+		assert.equal(lines.filter((l) => /hero: pending \(no sync lock yet\)/.test(l)).length, 1);
+
+		syncPartialFromManifest(readManifest(themeDir), themeDir);
+		editFence(themeDir);
+		lines.length = 0;
+		await lintCommand('theme', { '--dir': root, '--name': 'acme' });
+		assert.equal(process.exitCode, 1);
+		assert.equal(lines.filter((l) => /hero: conflict \(class generated region edited\)/.test(l)).length, 1);
+	} finally {
+		console.log = original;
+		process.exitCode = previousExit;
 		process.chdir(cwd);
 		fs.removeSync(root);
 	}
