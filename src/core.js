@@ -256,6 +256,9 @@ export async function init(dir, initConfig) {
   // costs 200ms; failing after the scaffold clone and npm install costs
   // minutes.
   const backend = env.getCurrent();
+  //
+  // The real backends' preflight() is `wonderpress doctor` scoped to that
+  // backend (src/doctor.js), so a failed init and doctor say the same thing.
   const preflight = await backend.preflight();
   if (!preflight.ok) {
     preflight.errors.forEach((error) => log.error(error));
@@ -382,9 +385,15 @@ export async function init(dir, initConfig) {
   // reason: it is written into the client's content as `<!-- wp:acme/hero -->`,
   // so it must be decided once and never drift. Recording it here means a
   // later theme rename cannot silently re-namespace content already placed.
+  //
+  // The CLI version is pinned alongside them, but only when the project has
+  // no pin yet. Re-running init with a newer CLI must not quietly bump a
+  // committed pin — moving it is a deliberate edit, and the mismatch warning
+  // says when one is due.
   config.write(process.cwd(), {
     environment: { backend: backend.name },
     namespace: resolveProjectNamespace(process.cwd(), initConfig),
+    ...(config.getCliVersion(process.cwd()) ? {} : { cliVersion: pkg.version }),
   });
 
   // Anything the backend needs on disk before it can provision.
@@ -772,10 +781,14 @@ export async function setCwdToEnvironmentRoot() {
 /**
  * Get the current version.
  **/
-export function version(args = {}) {
+export function version(args = {}, ctx = {}) {
   const data = {
     name: pkg.name,
     version: pkg.version,
+    // { pinned, current } when this runs inside a project pinned to another
+    // CLI version, else null. Resolved once by cli.js, which also prints the
+    // human warning; null when called outside the CLI entry point.
+    cliVersionMismatch: ctx.cliVersionMismatch ?? null,
   };
   if (format.isJson()) {
     return format.ok(data);
