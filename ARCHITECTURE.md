@@ -263,8 +263,10 @@ One renderer ([`src/partial-class.js`](src/partial-class.js)) serves both the
 writer (`writePartialClass` in [`src/partial.js`](src/partial.js)) and drift
 ([`src/partial-drift.js`](src/partial-drift.js)), so they can never disagree
 about what sync would write. The class path comes from `manifest.artifacts.class`
-(falling back to `src/partials/class-<slug>.php`), and sync keeps that path when
-it normalizes the manifest.
+(falling back to `src/partials/class-<slug>.php`). Every writer that rewrites
+the manifest (`partial create`, `partial sync`, `block create`, `partial add-js`)
+keeps a recorded path (`recordedClassRelPath`), so none re-points the class at
+the default location and leaves a duplicate class beside the user's file.
 
 What a class write does to an existing file:
 

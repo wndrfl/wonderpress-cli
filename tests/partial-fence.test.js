@@ -6,6 +6,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
 import { paramsFromFlags, writePartial, syncPartialFromManifest } from '../src/partial.js';
+import { addBlock } from '../src/block.js';
 import { checkPartialDrift } from '../src/partial-drift.js';
 import {
 	FenceError,
@@ -248,6 +249,64 @@ test('sync honors manifest.artifacts.class and keeps that path in the manifest',
 		const normalized = JSON.parse(fs.readFileSync(path.join(dir, MANIFEST), 'utf8'));
 		assert.equal(normalized.artifacts.class, custom);
 		assert.equal(checkPartialDrift(normalized, dir).ok, true);
+	} finally {
+		fs.removeSync(path.dirname(dir));
+	}
+});
+
+// Moves the generated class to a custom path, points the manifest at it, and
+// syncs once so the custom file is the live one.
+async function moveHeroClass(dir, custom) {
+	let manifest = await createHero(dir);
+	fs.ensureDirSync(path.dirname(path.join(dir, custom)));
+	fs.moveSync(path.join(dir, CLASS), path.join(dir, custom));
+	fs.writeFileSync(path.join(dir, custom), insertBelowFence(fs.readFileSync(path.join(dir, custom), 'utf8'), USER_METHOD));
+	manifest.artifacts.class = custom;
+	fs.writeFileSync(path.join(dir, MANIFEST), JSON.stringify(manifest, null, 2) + '\n');
+	syncPartialFromManifest(manifest, dir);
+	return JSON.parse(fs.readFileSync(path.join(dir, MANIFEST), 'utf8'));
+}
+
+test('block create keeps a custom artifacts.class; the next sync does not write a duplicate class', async () => {
+	const dir = tmpTheme();
+	try {
+		const custom = 'inc/hero.php';
+		await moveHeroClass(dir, custom);
+
+		assert.equal(addBlock(dir, 'Hero'), true);
+		let manifest = JSON.parse(fs.readFileSync(path.join(dir, MANIFEST), 'utf8'));
+		assert.equal(manifest.artifacts.class, custom, 'block create must not re-point the class');
+		assert.ok(manifest.block, 'block recorded');
+
+		manifest = addProp(dir, manifest, 'dek');
+		syncPartialFromManifest(manifest, dir);
+
+		assert.equal(fs.existsSync(path.join(dir, CLASS)), false, 'no duplicate class at the default path');
+		const after = fs.readFileSync(path.join(dir, custom), 'utf8');
+		assert.match(after, /'dek'/);
+		assert.match(after, /variant_class/, 'user method survives');
+		const normalized = JSON.parse(fs.readFileSync(path.join(dir, MANIFEST), 'utf8'));
+		assert.equal(normalized.artifacts.class, custom);
+		assert.equal(checkPartialDrift(normalized, dir).ok, true);
+	} finally {
+		fs.removeSync(path.dirname(dir));
+	}
+});
+
+test('partial create over an existing manifest writes the recorded class path, not the default', async () => {
+	const dir = tmpTheme();
+	try {
+		const custom = 'inc/hero.php';
+		await moveHeroClass(dir, custom);
+
+		await writePartial(paramsFromFlags({ '--name': 'Hero', '--prop': ['title:string:required', 'dek:string'], '--no-style': true }), dir);
+
+		assert.equal(fs.existsSync(path.join(dir, CLASS)), false, 'no duplicate class at the default path');
+		const after = fs.readFileSync(path.join(dir, custom), 'utf8');
+		assert.match(after, /'dek'/);
+		assert.match(after, /variant_class/, 'user method survives');
+		const manifest = JSON.parse(fs.readFileSync(path.join(dir, MANIFEST), 'utf8'));
+		assert.equal(manifest.artifacts.class, custom);
 	} finally {
 		fs.removeSync(path.dirname(dir));
 	}

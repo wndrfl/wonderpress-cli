@@ -92,7 +92,7 @@ FENCES
   exactly what sync generated. If it was edited, sync refuses rather than lose
   your code: move the custom code aside, run sync with --force, then put it
   back below the closing marker. The class path comes from the manifest's
-  artifacts.class.
+  artifacts.class; create, sync, and block create all keep it.
 
 REMOVE OPTIONS
   --with-block             Also remove the block wrapping this partial.

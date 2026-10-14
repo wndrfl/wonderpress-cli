@@ -460,6 +460,31 @@ export function defaultClassRelPath(className) {
 }
 
 /**
+ * The class path an existing manifest records for this partial, or null.
+ *
+ * A user may move the class file and point manifest.artifacts.class at it.
+ * Every writer (create, block create, add-js, sync) resolves the path through
+ * here, so none of them silently re-points the manifest at the convention and
+ * leaves a second class with the same name next to the user's real one. Read
+ * quietly: a malformed or missing manifest just means "no recorded path"; the
+ * caller that owns that manifest reports it.
+ **/
+export function recordedClassRelPath(themeDir, className) {
+	const file = manifestPath(themeDir, classNameToSlug(className));
+	let manifest;
+	try {
+		manifest = JSON.parse(fs.readFileSync(file, 'utf8'));
+	} catch {
+		return null;
+	}
+	const rel = manifest && typeof manifest === 'object' && manifest.artifacts && manifest.artifacts.class;
+	if (typeof rel !== 'string' || !rel || !resolveWithin(themeDir, rel)) {
+		return null;
+	}
+	return rel;
+}
+
+/**
  * Write the partial PHP class, honoring the fence contract (see
  * partial-class.js): an existing fenced file has only its generated region
  * replaced; an unfenced legacy file is migrated when it is still exactly what
@@ -493,7 +518,13 @@ export async function writePartial(params, themeDir, options = {}) {
 
 	// Throws (before anything else is written) when an existing class file
 	// holds code a rewrite would lose; see writePartialClass.
-	const classFilePath = writePartialClass(params, themeDir, { force: !!options.force }).path;
+	// Re-creating a partial whose manifest points its class elsewhere updates
+	// that file, not a fresh duplicate at the conventional path.
+	const classResult = writePartialClass(params, themeDir, {
+		force: !!options.force,
+		classPath: recordedClassRelPath(themeDir, params.class_name),
+	});
+	const classFilePath = classResult.path;
 	log.success(`Partial class created at: ${classFilePath}`);
 
 	// The view template (optional)
@@ -561,7 +592,7 @@ export async function writePartial(params, themeDir, options = {}) {
 	// Agent-readable manifest (AI half) — the contract + the artifacts that
 	// actually exist.
 	if (emit.manifest !== false) {
-		writeManifest(params, themeDir, { style: wroteStyle, script: wroteScript });
+		writeManifest(params, themeDir, { class: classResult.rel, style: wroteStyle, script: wroteScript });
 	}
 }
 
@@ -810,10 +841,14 @@ export function writeManifest(params, themeDir, written = {}) {
 	const slug = classNameToSlug(params.class_name);
 	const emit = params.emit || {};
 
-	// A manifest may point its class somewhere other than the convention;
-	// sync passes that path through so normalizing never re-points it.
+	// A manifest may point its class somewhere other than the convention.
+	// Writers that wrote the class pass its path; the rest (block create,
+	// add-js) fall back to what the manifest on disk already records, so
+	// rewriting the manifest never re-points the class at the default path.
 	const artifacts = {
-		class: (typeof written.class === 'string' && written.class) || defaultClassRelPath(params.class_name),
+		class: (typeof written.class === 'string' && written.class)
+			|| recordedClassRelPath(themeDir, params.class_name)
+			|| defaultClassRelPath(params.class_name),
 	};
 	if (params.has_partial_template) {
 		artifacts.view = `partials/${params.partial_template_name}`;
