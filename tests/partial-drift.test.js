@@ -4,11 +4,8 @@ import fs from 'fs-extra';
 import os from 'node:os';
 import path from 'node:path';
 import { paramsFromFlags, writePartial, syncPartialFromManifest } from '../src/partial.js';
-import {
-	checkPartialDrift,
-	parseClassPropertyNames,
-	renderPartialClassSource,
-} from '../src/partial-drift.js';
+import { checkPartialDrift, parseClassPropertyNames } from '../src/partial-drift.js';
+import { renderPartialClassSource } from '../src/partial-class.js';
 
 function tmpTheme() {
 	const dir = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'wp-drift-')), 'wonderpress');
@@ -102,7 +99,8 @@ test('syncPartialFromManifest clears drift', async () => {
 test('renderPartialClassSource includes manifest banner', () => {
 	const params = paramsFromFlags({ '--name': 'Hero', '--prop': ['title:string'] });
 	const src = renderPartialClassSource(params);
-	assert.match(src, /GENERATED FILE/);
+	assert.match(src, /\/\/ <wonderpress:generated>/);
+	assert.match(src, /\/\/ <\/wonderpress:generated>/);
 	assert.match(src, /\.wonderpress\/manifest\/partials\/hero\.json/);
 	assert.match(src, /partial sync Hero/);
 	assert.match(src, /protected static \$properties = array\(/);

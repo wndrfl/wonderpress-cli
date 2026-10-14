@@ -55,7 +55,15 @@ export async function command(subcommand, args) {
  * partial was created with — so the result is identical to having passed
  * `--block` at creation time.
  **/
-export function addBlock(themeDir, name) {
+/**
+ * @param {string} themeDir
+ * @param {string} name
+ * @param {{ force?: boolean }} [options] force overwrites a hand-edited block.json.
+ * @returns {boolean}
+ * @throws {partial.SyncConflictError} When block.json was edited by hand since
+ *   the last sync and force is not set.
+ */
+export function addBlock(themeDir, name, options = {}) {
 
 	const lookupSlug = nameToSlug(name);
 	if (!isSafeSlug(lookupSlug)) {
@@ -89,6 +97,17 @@ export function addBlock(themeDir, name) {
 	// Resolved from the project, not the manifest being rewrapped — so a block
 	// added later lands in the same namespace as the ones already placed.
 	params.namespace = partial.resolveNamespace(themeDir);
+
+	// Rewriting the wrapper regenerates block.json, so hand edits to it since
+	// the last sync would be lost without a word (and the regenerated file
+	// matches the lock again, so check-drift would read clean). Refuse, like
+	// partial sync does. Only block.json is rewritten here, so a class
+	// conflict is not this command's business.
+	partial.assertNoConflict(params, themeDir, {
+		force: !!options.force,
+		artifacts: ['block'],
+		command: `wonderpress block create ${manifest.name}`,
+	});
 
 	partial.writeBlock(params, themeDir);
 	partial.writeManifest(params, themeDir, {
@@ -138,7 +157,17 @@ export async function create(args) {
 		}
 	}
 
-	const ok = addBlock(themeDir, name);
+	let ok;
+	try {
+		ok = addBlock(themeDir, name, { force: args['--force'] === true });
+	} catch (err) {
+		if (!(err instanceof partial.SyncConflictError)) {
+			throw err;
+		}
+		log.error(err.message);
+		log.info(err.hint);
+		return format.fail({ code: err.code, message: err.message, hint: err.hint });
+	}
 	if (!ok) {
 		return format.fail({
 			code: 'block',

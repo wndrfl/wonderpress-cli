@@ -127,3 +127,15 @@ test('a topic name cannot wander out of the help directory', () => {
 	assert.equal(help.has('../package'), false);
 	assert.equal(help.has('../../etc/passwd'), false);
 });
+
+test('partial help documents the fence contract and sync --force', () => {
+	const { out } = run('partial', 'help');
+	assert.match(out, /\/\/ <wonderpress:generated>/);
+	assert.match(out, /below the closing marker/);
+	assert.match(out, /--force\s+Sync even a partial in conflict/);
+	assert.match(out, /SYNC STATES/);
+	assert.match(out, /\.wonderpress\/lock\/partials\/<slug>\.json/);
+	for (const state of ['clean', 'pending', 'conflict']) {
+		assert.match(out, new RegExp(`^    ${state} `, 'm'));
+	}
+});

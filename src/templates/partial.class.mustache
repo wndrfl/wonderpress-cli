@@ -2,11 +2,15 @@
 /**
  * An {{ class_name }} partial class.
  *
- * GENERATED FILE — do not edit property definitions here.
+ * Property definitions live in the generated region between the
+ * <wonderpress:generated> markers below. That region is rewritten on every
+ * sync — do not edit inside it; edit the manifest and re-sync instead.
  * Source of truth: {{{ manifest_rel_path }}}
  * Regenerate: {{{ sync_command }}}
  *
- * Edit the view template for markup. Keep custom PHP in helpers, not this class.
+ * Everything outside the markers is yours and survives sync byte for byte.
+ * Custom PHP (methods, constants, overrides) belongs inside the class below
+ * the closing marker. Edit the view template for markup.
  *
  * @package Wonderpress Theme
  * @license GPL-2.0-or-later
@@ -31,25 +35,26 @@ if ( ! class_exists( 'Wonderpress_Core\Partials\Abstract_Partial' ) ) {
  * Wonderpress\Partials\{{ class_name }}
  */
 class {{ class_name }} extends Abstract_Partial {
-	{{# is_acf_compatible }}
 
+	// <wonderpress:generated>
+	{{# is_acf_compatible }}
 	/**
 	 * Whether this partial accepts an ACF parameter for easy hydration.
 	 *
 	 * @var Boolean $acf_compatible
 	 */
 	protected $acf_compatible = true;
+
 	{{/ is_acf_compatible }}
 	{{# has_partial_template }}
-
 	/**
 	 * A relative path to a partial template to use as the view for this partial.
 	 *
 	 * @var String|Boolean $partial_template
 	 */
 	protected $partial_template = '{{{ partial_template_path }}}';
-	{{/ has_partial_template }}
 
+	{{/ has_partial_template }}
 	/**
 	 * A definition of all available properties.
 	 *
@@ -64,4 +69,5 @@ class {{ class_name }} extends Abstract_Partial {
 		),
 		{{/ properties }}
 	);
+	// </wonderpress:generated>
 }

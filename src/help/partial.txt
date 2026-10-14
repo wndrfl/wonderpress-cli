@@ -22,11 +22,12 @@ COMMANDS
                            partial. With no name, pick from those that have a
                            view and no script yet.
   partial list             List every partial, and whether a block wraps it
-  partial sync [<Name>]    Regenerate class $properties and block.json from
-                           the manifest (after you edit properties in JSON)
+  partial sync [<Name>]    Regenerate the class's generated region and
+                           block.json from the manifest (after you edit
+                           properties in JSON). Custom PHP is kept; see FENCES
   partial check-drift [<Name>]
-                           Fail if class or block.json drift from manifest
-                           (use in CI; fix with partial sync)
+                           Report each partial as clean, pending, or conflict
+                           against its last sync (see SYNC STATES; use in CI)
   partial remove [<Name>]  Delete a partial and everything it owns. With no
                            name, pick from what the theme has.
   partial install-manifest <slug>
@@ -56,6 +57,9 @@ CREATE OPTIONS
   --no-manifest            Skip the manifest (cannot be combined with --block
                            or --acf)
   --json <spec|@file>      Create from a JSON spec instead of flags
+  --force                  Re-create an existing partial even when its
+                           generated output was edited by hand since the last
+                           sync (a conflict), or its class lost its markers
   --theme <name>           Target a theme by name, skipping the active lookup
   --format json            Machine-readable envelope (list, sync --dry-run,
                            check-drift)
@@ -69,7 +73,54 @@ SYNC OPTIONS
   --all                    Sync every partial manifest in the theme
   --slug <slug>            Partial slug (alternative to positional name)
   --dry-run                Print what would be written, without changing files
+                           (JSON plans include classAction: create, update,
+                           unchanged, migrate, force, or refuse)
   --properties-only        Update class + block.json only (skip render.php)
+  --force                  Sync even a partial in conflict, overwriting hand
+                           edits inside the fence and in block.json. Code
+                           outside an intact fence is still kept. A class with
+                           no or malformed markers is rewritten whole.
+
+FENCES
+  The partial class has one machine-owned region:
+
+      // <wonderpress:generated>
+      ...$acf_compatible, $partial_template, $properties...
+      // </wonderpress:generated>
+
+  Sync rewrites only that region, from the manifest. Everything else in the
+  file is yours and is kept byte for byte: put custom methods inside the class
+  below the closing marker. Editing inside the fence is a conflict (check-drift
+  reports it, sync refuses it); change the manifest and sync instead.
+
+  A class from before fences is upgraded on its next sync when it is still
+  exactly what sync generated. If it was edited, sync refuses rather than lose
+  your code: move the custom code aside, run sync with --force, then put it
+  back below the closing marker. The class path comes from the manifest's
+  artifacts.class; create, sync, and block create all keep it.
+
+SYNC STATES
+  Every sync (and create) records hashes of what it wrote in
+  .wonderpress/lock/partials/<slug>.json. Commit it. check-drift compares
+  the manifest, the generated files, and that lock:
+
+    clean      nothing changed since the last sync (prints nothing)
+    pending    the manifest changed, a generated file is missing, or there
+               is no lock yet. Sync is owed and safe.
+    conflict   the generated region of the class, or block.json, was edited
+               by hand since the last sync. Sync refuses it: move custom PHP
+               below the closing marker (or put the change in the manifest,
+               or revert it) in your editor, or run sync --force to overwrite.
+
+  check-drift prints one line per partial that is not clean and exits 1 on a
+  conflict or when generated files no longer match the manifest. A pending
+  partial whose files still match (no lock yet) is reported but exits 0.
+  sync --all skips partials it refuses (conflict, or a lock-less class with
+  hand edits and no markers) with a warning and syncs the rest. Re-running
+  partial create on a partial in conflict is refused the same way; add
+  --force to regenerate it.
+  --format json: data.partials[] of { slug, state, changes[] }, where each
+  change is { artifact, region, kind, state, message }.
 
 REMOVE OPTIONS
   --with-block             Also remove the block wrapping this partial.
@@ -82,6 +133,7 @@ EXAMPLES
   wonderpress partial create --name Testimonials --acf --prop items:repeater --sub items:quote:string:required
   wonderpress partial sync Scalar_Demo
   wonderpress partial sync --all
+  wonderpress partial sync Hero --force
   wonderpress partial check-drift --all
   wonderpress partial create
       No flags runs the interactive wizard, which asks the same questions.

@@ -50,7 +50,7 @@ export async function cli() {
     '--with-block': Boolean,
     '--confirm': Boolean,
 
-    // agents write
+    // agents write, partial sync/create (fence override)
     '--force': Boolean,
 
     // lint

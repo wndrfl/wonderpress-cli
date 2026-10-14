@@ -44,6 +44,60 @@ import {
 	resolveCoreBundledPartialManifest,
 } from './partial-manifests.js';
 import { checkPartialDrift } from './partial-drift.js';
+import { readPartialLock, removePartialLock, writePartialLock } from './partial-lock.js';
+import {
+	FenceError,
+	FENCE_OPEN,
+	FENCE_CLOSE,
+	extractFencedRegion,
+	planPartialClassWrite,
+	renderFencedRegion,
+	renderPartialClassSource,
+} from './partial-class.js';
+
+// Re-exported so callers that already import partial.js get the one renderer
+// and the fence helpers without a second import.
+export {
+	FenceError,
+	FENCE_OPEN,
+	FENCE_CLOSE,
+	extractFencedRegion,
+	planPartialClassWrite,
+	renderFencedRegion,
+	renderPartialClassSource,
+};
+
+/**
+ * A sync refused because machine-owned output (the class's fenced region,
+ * block.json) was edited by hand since the last sync. Shaped like FenceError
+ * (code + hint) so every caller reports it the same way.
+ */
+export class SyncConflictError extends Error {
+	/**
+	 * @param {string} slug
+	 * @param {Array<{ state: string, artifact: string, region: string|null, kind: string, message: string }>} changes
+	 * @param {string} className
+	 * @param {{ detail?: string, command?: string }} [options] detail is the
+	 *   writer's own refusal (an unfenced or malformed class), appended because
+	 *   it says exactly how to recover that file; command is the command whose
+	 *   --force overrides the refusal (partial sync unless a create re-run or
+	 *   block create names itself).
+	 */
+	constructor(slug, changes, className, options = {}) {
+		const conflicts = changes.filter((c) => c.state === 'conflict');
+		const what = conflicts
+			.map((c) => (c.artifact === 'class' ? `class ${c.region === 'fence' ? 'generated region' : 'file'} (${c.kind})` : `block.json (${c.kind})`))
+			.join(', ');
+		const command = options.command || `wonderpress partial sync ${className}`;
+		const verb = options.command ? 'regenerate' : 'sync';
+		super(`Refusing to ${verb} ${slug}: hand edits to generated output since the last sync would be overwritten — ${what}. ${conflicts.map((c) => c.message).join(' ')}${options.detail ? ` ${options.detail}` : ''}`);
+		this.name = 'SyncConflictError';
+		this.code = 'conflict';
+		this.hint = `Resolve it in your IDE (move custom code below the closing // </wonderpress:generated> line, or put the change in the manifest), then re-run; or overwrite with: ${command} --force`;
+		this.slug = slug;
+		this.changes = conflicts;
+	}
+}
 
 /**
  * Accept and route a command.
@@ -236,7 +290,18 @@ export async function create(args) {
 	// is resolved from the project rather than gathered with the other params.
 	params.namespace = resolveNamespace(themeDir);
 
-	await writePartial(params, themeDir);
+	try {
+		await writePartial(params, themeDir, { force: args['--force'] === true });
+	} catch (err) {
+		if (!(err instanceof FenceError) && !(err instanceof SyncConflictError)) {
+			throw err;
+		}
+		log.error(err.message);
+		if (err.hint) {
+			log.info(err.hint);
+		}
+		return format.fail({ code: err.code, message: err.message, hint: err.hint || undefined });
+	}
 	await refreshAgents(themeDir);
 	if (format.isJson()) {
 		return format.ok({
@@ -424,40 +489,87 @@ export function validateParams(params, themeDir = null) {
 }
 
 /**
- * Render and write the partial class (and optional view template).
- * Pure execution: no prompts, no network. Given identical params + themeDir it
- * produces identical output whether called from the flag path or the wizard.
+ * Default location of a partial's class file, relative to the theme.
  **/
-/**
- * Regenerate the partial PHP class from manifest properties ($properties).
- * Overwrites the class file; custom methods in that file are not preserved.
- *
- * @param {ReturnType<typeof paramsFromManifest>} params
- * @param {string} themeDir
- * @returns {string} Absolute path written.
- */
-export function writePartialClass(params, themeDir) {
-	const partialTemplatePath = './partials/' + params.partial_template_name;
-	const classTemplate = fs.readFileSync(new URL('./templates/partial.class.mustache', import.meta.url), 'utf8');
-	const slug = classNameToSlug(params.class_name);
-	const classOutput = mustache.render(classTemplate, {
-		class_name: params.class_name,
-		is_acf_compatible: params.is_acf_compatible,
-		has_partial_template: params.has_partial_template,
-		partial_template_path: partialTemplatePath,
-		manifest_rel_path: `.wonderpress/manifest/partials/${slug}.json`,
-		sync_command: `wonderpress partial sync ${params.class_name}`,
-		properties: propertiesForClassTemplate(params.properties),
-	});
-	const classFilePath = `${themeDir}/src/partials/${classNameToFileSlug(params.class_name)}.php`;
-	fs.ensureDirSync(path.dirname(classFilePath));
-	fs.writeFileSync(classFilePath, classOutput);
-	return classFilePath;
+export function defaultClassRelPath(className) {
+	return `src/partials/${classNameToFileSlug(className)}.php`;
 }
 
-export async function writePartial(params, themeDir) {
+/**
+ * The class path an existing manifest records for this partial, or null.
+ *
+ * A user may move the class file and point manifest.artifacts.class at it.
+ * Every writer (create, block create, add-js, sync) resolves the path through
+ * here, so none of them silently re-points the manifest at the convention and
+ * leaves a second class with the same name next to the user's real one. Read
+ * quietly: a malformed or missing manifest just means "no recorded path"; the
+ * caller that owns that manifest reports it.
+ **/
+export function recordedClassRelPath(themeDir, className) {
+	const file = manifestPath(themeDir, classNameToSlug(className));
+	let manifest;
+	try {
+		manifest = JSON.parse(fs.readFileSync(file, 'utf8'));
+	} catch {
+		return null;
+	}
+	const rel = manifest && typeof manifest === 'object' && manifest.artifacts && manifest.artifacts.class;
+	if (typeof rel !== 'string' || !rel || !resolveWithin(themeDir, rel)) {
+		return null;
+	}
+	return rel;
+}
 
-	const classFilePath = writePartialClass(params, themeDir);
+/**
+ * Write the partial PHP class, honoring the fence contract (see
+ * partial-class.js): an existing fenced file has only its generated region
+ * replaced; an unfenced legacy file is migrated when it is still exactly what
+ * the old template produced and refused otherwise; `force` rewrites the whole
+ * file. Pure execution: no prompts, no network.
+ *
+ * @param {object} params
+ * @param {string} themeDir
+ * @param {{ force?: boolean, classPath?: string|null, dryRun?: boolean }} [options]
+ *   classPath is the theme-relative path (manifest.artifacts.class); it falls
+ *   back to the conventional location when absent.
+ * @returns {{ path: string, rel: string, mode: string }}
+ * @throws {FenceError} When an existing file cannot be synced without losing code.
+ */
+export function writePartialClass(params, themeDir, options = {}) {
+	const rel = options.classPath || defaultClassRelPath(params.class_name);
+	const classFilePath = resolveWithin(themeDir, rel);
+	if (!classFilePath) {
+		throw new Error(`Refusing to write the partial class at "${rel}": that path escapes the theme directory.`);
+	}
+	const existing = fs.existsSync(classFilePath) ? fs.readFileSync(classFilePath, 'utf8') : null;
+	const plan = planPartialClassWrite(existing, params, { force: !!options.force, displayPath: rel });
+	if (!options.dryRun && plan.mode !== 'unchanged') {
+		fs.ensureDirSync(path.dirname(classFilePath));
+		fs.writeFileSync(classFilePath, plan.source);
+	}
+	return { path: classFilePath, rel, mode: plan.mode };
+}
+
+export async function writePartial(params, themeDir, options = {}) {
+
+	// Re-running create on an existing partial regenerates its class region
+	// and block.json and then re-records the lock, which would erase hand
+	// edits in that output and leave check-drift reading clean afterwards.
+	// Refuse a partial in conflict, like sync does, unless forced.
+	assertNoConflict(params, themeDir, {
+		force: !!options.force,
+		command: `wonderpress partial create --name ${params.class_name}`,
+	});
+
+	// Throws (before anything else is written) when an existing class file
+	// holds code a rewrite would lose; see writePartialClass.
+	// Re-creating a partial whose manifest points its class elsewhere updates
+	// that file, not a fresh duplicate at the conventional path.
+	const classResult = writePartialClass(params, themeDir, {
+		force: !!options.force,
+		classPath: recordedClassRelPath(themeDir, params.class_name),
+	});
+	const classFilePath = classResult.path;
 	log.success(`Partial class created at: ${classFilePath}`);
 
 	// The view template (optional)
@@ -525,7 +637,47 @@ export async function writePartial(params, themeDir) {
 	// Agent-readable manifest (AI half) — the contract + the artifacts that
 	// actually exist.
 	if (emit.manifest !== false) {
-		writeManifest(params, themeDir, { style: wroteStyle, script: wroteScript });
+		writeManifest(params, themeDir, { class: classResult.rel, style: wroteStyle, script: wroteScript });
+		// Create is the partial's first sync, so it records the lock that
+		// check-drift compares against. No manifest, no lock: there is no
+		// contract to be pending or in conflict with.
+		writePartialLock(readManifest(themeDir, slug), themeDir);
+	}
+}
+
+/**
+ * Throw a SyncConflictError when an existing partial has hand edits in its
+ * machine-owned output since the last sync (see checkPartialDrift). Every
+ * writer that regenerates that output goes through here, so none of them can
+ * overwrite a conflict that sync itself would refuse.
+ *
+ * @param {{ class_name: string }} params
+ * @param {string} themeDir
+ * @param {{ force?: boolean, artifacts?: string[], command?: string }} [options]
+ *   artifacts limits the check to the outputs the caller is about to rewrite
+ *   (block create only touches block.json); command names the caller in the hint.
+ * @throws {SyncConflictError}
+ */
+export function assertNoConflict(params, themeDir, options = {}) {
+	if (options.force) {
+		return;
+	}
+	const slug = classNameToSlug(params.class_name);
+	// No lock, no conflict (a first create, or a legacy partial: pending at
+	// worst). Checked first so a first create never reads, or complains
+	// about, a manifest it is about to write.
+	if (!readPartialLock(themeDir, slug).lock) {
+		return;
+	}
+	const existing = readManifest(themeDir, slug);
+	if (!existing) {
+		return;
+	}
+	const drift = checkPartialDrift(existing, themeDir);
+	const conflicts = drift.changes.filter((c) => c.state === 'conflict'
+		&& (!options.artifacts || options.artifacts.includes(c.artifact)));
+	if (conflicts.length) {
+		throw new SyncConflictError(slug, conflicts, params.class_name, { command: options.command });
 	}
 }
 
@@ -774,8 +926,14 @@ export function writeManifest(params, themeDir, written = {}) {
 	const slug = classNameToSlug(params.class_name);
 	const emit = params.emit || {};
 
+	// A manifest may point its class somewhere other than the convention.
+	// Writers that wrote the class pass its path; the rest (block create,
+	// add-js) fall back to what the manifest on disk already records, so
+	// rewriting the manifest never re-points the class at the default path.
 	const artifacts = {
-		class: `src/partials/${classNameToFileSlug(params.class_name)}.php`,
+		class: (typeof written.class === 'string' && written.class)
+			|| recordedClassRelPath(themeDir, params.class_name)
+			|| defaultClassRelPath(params.class_name),
 	};
 	if (params.has_partial_template) {
 		artifacts.view = `partials/${params.partial_template_name}`;
@@ -938,7 +1096,10 @@ export function listPartials(themeDir) {
  *
  * @param {object} manifest Parsed partial manifest.
  * @param {string} themeDir Theme root.
- * @param {{ dryRun?: boolean, propertiesOnly?: boolean }} [options]
+ * @param {{ dryRun?: boolean, propertiesOnly?: boolean, force?: boolean }} [options]
+ *   force rewrites the whole class file even when it holds code outside (or
+ *   predates) the fence; without it such a file makes the sync throw a
+ *   FenceError before anything is written.
  */
 export function syncPartialFromManifest(manifest, themeDir, options = {}) {
 	const artifacts = manifest.artifacts || {};
@@ -949,6 +1110,14 @@ export function syncPartialFromManifest(manifest, themeDir, options = {}) {
 
 	const dryRun = !!options.dryRun;
 	const propertiesOnly = !!options.propertiesOnly;
+	const force = !!options.force;
+	const classOptions = { force, classPath: artifacts.class || null };
+
+	// Three-way state against the sync lock. A conflict (hand edits inside
+	// machine-owned output) blocks the sync unless forced, like a fence
+	// refusal: sync would otherwise destroy someone's work without a word.
+	const drift = checkPartialDrift(manifest, themeDir);
+	const blocked = drift.state === 'conflict' && !force;
 
 	if (dryRun) {
 		const slug = classNameToSlug(params.class_name);
@@ -962,10 +1131,34 @@ export function syncPartialFromManifest(manifest, themeDir, options = {}) {
 				render: params.emit.block && !propertiesOnly ? `blocks/${slug}/render.php` : null,
 				manifest: `${PARTIAL_MANIFEST_DIR}/${manifest.slug}.json`,
 			},
+			state: drift.state,
+			changes: drift.changes,
 		};
+		if (blocked) {
+			const err = new SyncConflictError(manifest.slug, drift.changes, params.class_name);
+			plan.blocked = true;
+			plan.conflictError = err.message;
+		}
+		// What the class write would do (create, update, unchanged, migrate,
+		// force) or `refuse` with the reason, so a dry run surfaces a blocked
+		// sync instead of discovering it on the real run.
+		try {
+			plan.classAction = writePartialClass(params, themeDir, { ...classOptions, dryRun: true }).mode;
+		} catch (err) {
+			if (!(err instanceof FenceError)) {
+				throw err;
+			}
+			plan.classAction = 'refuse';
+			plan.classError = err.message;
+		}
 		log.info(`Would sync partial class from manifest (${params.properties.length} properties).`);
 		if (artifacts.class) {
-			log.info(`  class: ${artifacts.class}`);
+			log.info(`  class: ${artifacts.class} (${plan.classAction})`);
+		}
+		if (plan.classError) {
+			log.warn(plan.classError);
+		} else if (plan.conflictError) {
+			log.warn(plan.conflictError);
 		}
 		if (params.emit.block) {
 			log.info(`  block: blocks/${slug}/block.json`);
@@ -977,8 +1170,30 @@ export function syncPartialFromManifest(manifest, themeDir, options = {}) {
 		return plan;
 	}
 
-	const classPath = writePartialClass(params, themeDir);
-	log.success(`Synced partial class: ${classPath}`);
+	// Refusals come before any write, so a refused sync touches nothing. A
+	// class that lost its markers or has broken ones since the last sync is a
+	// conflict (check-drift says so) and the writer refuses it too; it is
+	// reported as the conflict, carrying the writer's recovery advice, so
+	// `--all` skips it like any other conflict and callers keyed on the
+	// `conflict` code see it. Without a lock (a legacy partial) the writer's
+	// FenceError stands on its own.
+	try {
+		writePartialClass(params, themeDir, { ...classOptions, dryRun: true });
+	} catch (err) {
+		if (blocked && err instanceof FenceError) {
+			throw new SyncConflictError(manifest.slug, drift.changes, params.class_name, { detail: err.message });
+		}
+		throw err;
+	}
+	if (blocked) {
+		throw new SyncConflictError(manifest.slug, drift.changes, params.class_name);
+	}
+
+	const classResult = writePartialClass(params, themeDir, classOptions);
+	if (classResult.mode === 'migrate') {
+		log.info(`Added <wonderpress:generated> fence markers to ${classResult.rel}. Custom PHP now belongs below the closing marker.`);
+	}
+	log.success(`Synced partial class: ${classResult.path}`);
 
 	if (params.emit.block) {
 		writeBlock(params, themeDir, { skipRender: propertiesOnly });
@@ -990,11 +1205,17 @@ export function syncPartialFromManifest(manifest, themeDir, options = {}) {
 	}
 
 	writeManifest(params, themeDir, {
+		class: classResult.rel,
 		style: artifacts.style || false,
 		script: artifacts.script || false,
 	});
 	log.success(`Manifest normalized at: ${manifestPath(themeDir, manifest.slug)}`);
-	return true;
+
+	// Last, after every artifact is on disk, so the lock hashes exactly what
+	// this sync wrote (the normalized manifest, the spliced region, block.json).
+	const normalized = readManifest(themeDir, manifest.slug) || manifest;
+	writePartialLock(normalized, themeDir);
+	return { slug: manifest.slug, classMode: classResult.mode, synced: true };
 }
 
 /**
@@ -1013,6 +1234,7 @@ export async function sync(args) {
 	const dryRun = args['--dry-run'] === true;
 	const propertiesOnly = args['--properties-only'] === true;
 	const syncAll = args['--all'] === true;
+	const force = args['--force'] === true;
 	const plans = [];
 
 	if (syncAll) {
@@ -1024,22 +1246,44 @@ export async function sync(args) {
 			log.info(`No partial manifests in ${themeDir}.`);
 			return true;
 		}
+		const synced = [];
+		const skipped = [];
 		for (const manifest of manifests) {
 			log.info(`Syncing ${manifest.name} (${manifest.slug})...`);
 			try {
-				const result = syncPartialFromManifest(manifest, themeDir, { dryRun, propertiesOnly });
+				const result = syncPartialFromManifest(manifest, themeDir, { dryRun, propertiesOnly, force });
 				if (dryRun && result && result.slug) {
 					plans.push(result);
 				}
+				if (!dryRun) {
+					synced.push(manifest.slug);
+				}
 			} catch (err) {
+				// One partial with hand edits in generated output must not hold
+				// the rest of the theme hostage: skip it, say so, carry on. A
+				// legacy (lock-less) class the writer refuses is the same kind of
+				// hold-up, so it is skipped too, under its own fence code.
+				if (err instanceof SyncConflictError || err instanceof FenceError) {
+					log.warn(`Skipped ${manifest.slug}: ${err.message}`);
+					// log.* is silent under --format json; a skip is a warning the
+					// caller should still see, and stdout belongs to the envelope.
+					if (format.isJson()) {
+						process.stderr.write(`warning: Skipped ${manifest.slug}: ${err.message}\n`);
+					}
+					skipped.push({ slug: manifest.slug, code: err.code, changes: err.changes });
+					continue;
+				}
 				log.error(`${manifest.slug}: ${err.message}`);
-				return format.fail({ code: 'sync', message: `${manifest.slug}: ${err.message}` });
+				return format.fail({ code: err.code || 'sync', message: `${manifest.slug}: ${err.message}`, hint: err.hint || undefined });
 			}
 		}
 		if (format.isJson()) {
-			return format.ok(dryRun ? { dryRun: true, plans } : { dryRun: false, synced: manifests.map((m) => m.slug) });
+			return format.ok(dryRun ? { dryRun: true, plans } : { dryRun: false, synced, skipped });
 		}
-		log.info(`Synced ${manifests.length} partial${manifests.length === 1 ? '' : 's'}.`);
+		log.info(`Synced ${synced.length} partial${synced.length === 1 ? '' : 's'}.`);
+		if (skipped.length) {
+			log.warn(`Skipped ${skipped.length} that sync refused (${skipped.map((s) => s.slug).join(', ')}). Resolve in your IDE, or: wonderpress partial sync <Name> --force`);
+		}
 		if (!dryRun) {
 			await refreshAgents(themeDir);
 		}
@@ -1072,20 +1316,28 @@ export async function sync(args) {
 		});
 	}
 
+	let result;
 	try {
-		const result = syncPartialFromManifest(manifest, themeDir, { dryRun, propertiesOnly });
+		result = syncPartialFromManifest(manifest, themeDir, { dryRun, propertiesOnly, force });
 		if (dryRun && result && result.slug) {
 			plans.push(result);
 		}
 	} catch (err) {
 		log.error(err.message);
-		return format.fail({ code: 'sync', message: err.message });
+		if (err.hint) {
+			log.info(err.hint);
+		}
+		return format.fail({ code: err.code || 'sync', message: err.message, hint: err.hint || undefined });
 	}
 
+	// Custom code outside the fence now survives sync, so the old "custom code
+	// is not preserved" warning only still applies when --force actually
+	// rewrote the whole file (an unfenced or malformed class). Forcing past a
+	// conflict on an intact fence still replaces only the region.
 	if (!dryRun) {
-		log.warn(
-			'The partial class file was regenerated from the manifest template. Custom code in that class is not preserved — keep custom logic in separate helpers or the view template.',
-		);
+		if (result && result.classMode === 'force') {
+			log.warn('--force regenerated the whole partial class file; anything outside the generated region was replaced.');
+		}
 		await refreshAgents(themeDir);
 	}
 
@@ -1141,7 +1393,7 @@ export async function checkDrift(args) {
 	}
 	if (!manifests.length) {
 		if (format.isJson()) {
-			return format.ok({ results: [] });
+			return format.ok({ partials: [], results: [] });
 		}
 		log.info(`No partial manifests in ${themeDir}.`);
 		return true;
@@ -1152,35 +1404,66 @@ export async function checkDrift(args) {
 	for (const manifest of manifests) {
 		const result = checkPartialDrift(manifest, themeDir);
 		results.push(result);
-		if (result.ok) {
-			log.success(`${manifest.slug}: in sync with manifest.`);
-			continue;
-		}
-		failed = true;
-		log.error(`${manifest.slug}: drift detected.`);
-		for (const issue of result.issues) {
-			log.error(`  • ${issue.message}`);
+		failed = failed || !result.ok;
+		// Silent health: a clean partial prints nothing, anything else prints
+		// exactly one line (error for conflict, warning for pending).
+		const line = driftLine(result, manifest.name);
+		if (line) {
+			(result.state === 'conflict' ? log.error : log.warn)(line);
 		}
 	}
+	const partials = results.map(driftSummary);
 
+	// Exit 1 when sync is owed with generated files out of step with the
+	// manifest, or on any conflict (what `ok` means). A pending partial whose
+	// files still match (no lock yet, a reformatted manifest) is reported
+	// above but does not fail CI.
 	if (failed) {
 		process.exitCode = format.EXIT_FAIL;
 		if (format.isJson()) {
+			const conflicted = partials.some((p) => p.state === 'conflict');
 			return format.fail(
-				{ code: 'drift', message: 'One or more partials drifted from their manifests', hint: 'wonderpress partial sync --all' },
+				conflicted
+					? { code: 'conflict', message: 'One or more partials have hand edits in generated output', hint: 'Resolve in your IDE, or: wonderpress partial sync <Name> --force' }
+					: { code: 'drift', message: 'One or more partials drifted from their manifests', hint: 'wonderpress partial sync --all' },
 				format.EXIT_FAIL,
-				{ results },
+				{ partials, results },
 			);
 		}
 		return false;
 	}
 
 	if (format.isJson()) {
-		return format.ok({ results });
+		return format.ok({ partials, results });
 	}
 
-	log.info(`${manifests.length} partial${manifests.length === 1 ? '' : 's'} checked.`);
 	return true;
+}
+
+/**
+ * The contract shape of one partial's drift: { slug, state, changes }.
+ * Shared by check-drift's JSON and the MCP tool so they cannot diverge.
+ **/
+export function driftSummary(result) {
+	return { slug: result.slug, state: result.state, changes: result.changes };
+}
+
+/**
+ * One human line for a non-clean partial, or null when it is clean.
+ **/
+export function driftLine(result, name = result.slug) {
+	if (result.state === 'clean') {
+		return null;
+	}
+	const LOCK_KINDS = { no_lock: 'no sync lock yet', lock_invalid: 'sync lock unreadable' };
+	const what = result.changes
+		.map((c) => LOCK_KINDS[c.kind]
+			|| `${c.artifact === 'block' ? 'block.json' : c.artifact}${c.region === 'fence' ? ' generated region' : ''} ${c.kind.replace(/_/g, ' ')}`)
+		.join('; ');
+	const next = result.state === 'conflict'
+		? `resolve in your IDE, or: wonderpress partial sync ${name} --force`
+		: `run: wonderpress partial sync ${name}`;
+	return `${result.slug}: ${result.state} (${what}) — ${next}`;
 }
 
 export async function list(args) {
@@ -1287,6 +1570,9 @@ export async function removePartial(themeDir, name, options = {}) {
 
 	fs.removeSync(file);
 	log.success(`Removed manifest: ${file}`);
+	// The lock describes artifacts that no longer exist; a stale one would
+	// make a later partial of the same name look edited.
+	removePartialLock(themeDir, slug);
 	return true;
 }
 

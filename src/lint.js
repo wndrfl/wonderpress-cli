@@ -99,7 +99,7 @@ function phpcsHasFixable(phpcs) {
 	return /PHPCBF CAN FIX THE \d+ MARKED SNIFF VIOLATIONS AUTOMATICALLY/.test(text);
 }
 
-function lintHint({ phpcsOk, driftOk, templatesOk, tokensOk = true, wantedFix, didFix }) {
+function lintHint({ phpcsOk, driftOk, driftConflict = false, templatesOk, tokensOk = true, wantedFix, didFix }) {
 	const parts = [];
 	if (!phpcsOk && !wantedFix) {
 		parts.push('lint_theme with fix: true (or wonderpress lint --fix)');
@@ -108,6 +108,9 @@ function lintHint({ phpcsOk, driftOk, templatesOk, tokensOk = true, wantedFix, d
 	}
 	if (!driftOk) {
 		parts.push('partial_sync with all: true (or wonderpress partial sync --all)');
+	}
+	if (driftConflict) {
+		parts.push('partials in conflict are skipped by sync --all: resolve the hand edits in the IDE, or partial_sync with force: true');
 	}
 	if (!templatesOk) {
 		parts.push('wonderpress template validate');
@@ -153,6 +156,7 @@ export async function inspectTheme(dir, opts = {}) {
 	const hint = lintHint({
 		phpcsOk: phpcs.ok,
 		driftOk: drift.ok,
+		driftConflict: drift.states.conflict > 0,
 		templatesOk: templates.ok,
 		tokensOk: tokens.ok,
 		wantedFix: wantFix,
@@ -190,11 +194,21 @@ function runPhpcs(themeDir, { json }) {
 	};
 }
 
+/**
+ * Partial drift for lint. Severity follows checkPartialDrift's `ok`: a
+ * conflict, or generated files that no longer match the manifest, is an error
+ * (fails lint, as drift always has); a pending partial whose files still
+ * match (no sync lock yet, a reformatted manifest) is a warning. Otherwise
+ * upgrading the CLI would fail lint on every lock-less legacy partial.
+ **/
 function collectDrift(themeDir) {
 	const manifests = partial.readManifests(themeDir);
 	const results = manifests.map((manifest) => checkPartialDrift(manifest, themeDir));
+	const count = (state) => results.filter((r) => r.state === state).length;
 	return {
 		ok: results.every((r) => r.ok),
+		states: { clean: count('clean'), pending: count('pending'), conflict: count('conflict') },
+		partials: results.map(partial.driftSummary),
 		results,
 	};
 }
@@ -244,19 +258,24 @@ export async function theme(dir, opts) {
 	}
 
 	const drift = collectDrift(themeDir);
-	if (drift.ok) {
-		if (!wantJson) {
-			log.success(`Manifest drift: ${drift.results.length} partial${drift.results.length === 1 ? '' : 's'} in sync.`);
-		}
-	} else if (!wantJson) {
-		log.error('Manifest drift detected.');
-		for (const result of drift.results.filter((r) => !r.ok)) {
-			log.error(`${result.slug}:`);
-			for (const issue of result.issues) {
-				log.error(`  • ${issue.message}`);
+	if (!wantJson) {
+		// One line per non-clean partial: conflict and out-of-step pending are
+		// errors, pending whose files still match is a warning.
+		for (const result of drift.results) {
+			const line = partial.driftLine(result, result.slug);
+			if (line) {
+				(result.ok ? log.warn : log.error)(line);
 			}
 		}
-		log.info('Fix with `wonderpress partial sync --all`.');
+		if (drift.ok) {
+			const { clean, pending } = drift.states;
+			log.success(`Manifest drift: ${clean} partial${clean === 1 ? '' : 's'} clean${pending ? `, ${pending} pending (warning)` : ''}.`);
+		} else {
+			log.error(drift.states.conflict
+				? 'Manifest drift detected, including hand edits in generated output (conflict).'
+				: 'Manifest drift detected.');
+			log.info('Fix pending partials with `wonderpress partial sync --all`; resolve conflicts in your IDE, or `wonderpress partial sync <Name> --force`.');
+		}
 	}
 
 	const templates = checkPageTemplates(themeDir);
@@ -327,6 +346,7 @@ export async function theme(dir, opts) {
 		const hint = lintHint({
 			phpcsOk: phpcs.ok,
 			driftOk: drift.ok,
+			driftConflict: drift.states.conflict > 0,
 			templatesOk: templates.ok,
 			tokensOk: tokens.ok,
 			wantedFix: !!opts.fix,
