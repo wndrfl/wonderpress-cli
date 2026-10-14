@@ -220,7 +220,14 @@ export function regionsEqual(a, b) {
  *              generated (for these or earlier properties; see
  *              isPristineLegacySource): nothing custom to lose, so it is
  *              rewritten with fences.
- * - `force`    `--force`: the full fenced render, discarding the old file.
+ * - `force`    `--force` on a file that would otherwise be refused (unfenced
+ *              and hand-edited, or malformed markers): the full fenced
+ *              render, discarding the old file.
+ *
+ * `--force` never widens a write to a well-formed fenced file: it still
+ * replaces only the region. Force exists to get past a refusal (including a
+ * sync-lock conflict, decided by the caller), and code outside an intact
+ * fence is the user's no matter which refusal was overridden.
  *
  * An unfenced file that differs from the legacy render may hold hand-written
  * code, and an existing file with malformed markers cannot be spliced safely;
@@ -238,14 +245,14 @@ export function planPartialClassWrite(existing, params, options = {}) {
 	if (existing === null || existing === undefined) {
 		return { mode: 'create', source: rendered };
 	}
-	if (options.force) {
-		return { mode: 'force', source: matchEol(rendered, existing) };
-	}
 
 	let at;
 	try {
 		at = locateFence(existing);
 	} catch (err) {
+		if (options.force) {
+			return { mode: 'force', source: matchEol(rendered, existing) };
+		}
 		throw new FenceError(
 			`Refusing to sync ${display}: its fence markers are malformed (${err.message}) so the generated region cannot be found safely. Fix the markers by hand, or re-run with --force to regenerate the whole file (custom code in it will be lost).`,
 			{ code: 'class_fence', hint: `wonderpress partial sync ${params.class_name} --force` },
@@ -260,6 +267,9 @@ export function planPartialClassWrite(existing, params, options = {}) {
 
 	if (isPristineLegacySource(existing, params)) {
 		return { mode: 'migrate', source: matchEol(rendered, existing) };
+	}
+	if (options.force) {
+		return { mode: 'force', source: matchEol(rendered, existing) };
 	}
 
 	throw new FenceError(

@@ -100,7 +100,9 @@ export const handlers = {
 		}
 		const results = manifests.map((manifest) => checkPartialDrift(manifest, themeDir));
 		const ok = results.every((r) => r.ok);
-		return jsonResult({ ok, results });
+		// `partials` (slug, state, changes) is the contract, the same shape as
+		// `partial check-drift --format json`; `results` stays for older callers.
+		return jsonResult({ ok, partials: results.map(partial.driftSummary), results });
 	},
 
 	async lint_theme(input = {}) {
@@ -152,10 +154,25 @@ export const handlers = {
 			if (syncAll) {
 				const manifests = partial.readManifests(themeDir);
 				const plans = [];
+				const synced = [];
+				const skipped = [];
 				for (const manifest of manifests) {
-					const result = partial.syncPartialFromManifest(manifest, themeDir, { dryRun, force });
+					let result;
+					try {
+						result = partial.syncPartialFromManifest(manifest, themeDir, { dryRun, force });
+					} catch (err) {
+						// Same as the CLI's --all: a conflicted partial is skipped,
+						// not allowed to abort the rest.
+						if (err instanceof partial.SyncConflictError) {
+							skipped.push({ slug: manifest.slug, code: err.code, message: err.message, changes: err.changes });
+							continue;
+						}
+						throw err;
+					}
 					if (dryRun && result && result.slug) {
 						plans.push(result);
+					} else if (!dryRun) {
+						synced.push(manifest.slug);
 					}
 				}
 				if (!dryRun) {
@@ -165,7 +182,8 @@ export const handlers = {
 				return jsonResult({
 					ok: true,
 					dryRun,
-					synced: dryRun ? undefined : manifests.map((m) => m.slug),
+					synced: dryRun ? undefined : synced,
+					skipped: dryRun ? undefined : skipped,
 					plans: dryRun ? plans : undefined,
 				});
 			}
@@ -322,7 +340,7 @@ export function createWonderpressMcpServer() {
 	}, (args) => handlers.partial_get(args));
 
 	server.registerTool('partial_check_drift', {
-		description: 'Fail when class or block.json drifted from the manifest.',
+		description: 'Report each partial\'s sync state against its sync lock: partials[] of { slug, state: clean | pending | conflict, changes[] { artifact: manifest | class | block, region: fence | file | null, kind, state, message } }. pending = the manifest changed (or no lock yet) and partial_sync is safe; conflict = generated output (the class\'s fenced region or block.json) was edited by hand, and partial_sync refuses it unless force is true. ok is false on conflict or when generated files no longer match the manifest.',
 		inputSchema: { ...locShape, slug: z.string().optional() },
 	}, (args) => handlers.partial_check_drift(args));
 
@@ -340,13 +358,13 @@ export function createWonderpressMcpServer() {
 	}, (args) => handlers.partial_create(args));
 
 	server.registerTool('partial_sync', {
-		description: 'Regenerate class and block.json from manifests. Only the class region between // <wonderpress:generated> markers is rewritten; custom PHP below the closing marker survives. A legacy class without markers that was hand-edited is refused unless force is true.',
+		description: 'Regenerate class and block.json from manifests and record the sync lock. Only the class region between // <wonderpress:generated> markers is rewritten; custom PHP below the closing marker survives. A partial in conflict (hand edits inside the fence or in block.json since the last sync; see partial_check_drift) is refused with code "conflict" unless force is true; with all, conflicted partials are skipped and listed in skipped[]. A legacy class without markers that was hand-edited is refused unless force is true.',
 		inputSchema: {
 			...locShape,
 			name: z.string().optional(),
 			all: z.boolean().optional(),
 			dryRun: z.boolean().optional(),
-			force: z.boolean().optional().describe('Rewrite the whole class file even if it holds code a fenced sync would preserve or refuse to touch (CLI --force).'),
+			force: z.boolean().optional().describe('Override refusals (CLI --force): overwrite hand edits in the fenced region or block.json, and rewrite a whole class file that has no or malformed markers. Code outside an intact fence is still kept.'),
 		},
 	}, (args) => handlers.partial_sync(args));
 
