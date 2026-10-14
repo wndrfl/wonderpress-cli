@@ -44,6 +44,27 @@ import {
 	resolveCoreBundledPartialManifest,
 } from './partial-manifests.js';
 import { checkPartialDrift } from './partial-drift.js';
+import {
+	FenceError,
+	FENCE_OPEN,
+	FENCE_CLOSE,
+	extractFencedRegion,
+	planPartialClassWrite,
+	renderFencedRegion,
+	renderPartialClassSource,
+} from './partial-class.js';
+
+// Re-exported so callers that already import partial.js get the one renderer
+// and the fence helpers without a second import.
+export {
+	FenceError,
+	FENCE_OPEN,
+	FENCE_CLOSE,
+	extractFencedRegion,
+	planPartialClassWrite,
+	renderFencedRegion,
+	renderPartialClassSource,
+};
 
 /**
  * Accept and route a command.
@@ -236,7 +257,15 @@ export async function create(args) {
 	// is resolved from the project rather than gathered with the other params.
 	params.namespace = resolveNamespace(themeDir);
 
-	await writePartial(params, themeDir);
+	try {
+		await writePartial(params, themeDir, { force: args['--force'] === true });
+	} catch (err) {
+		if (!(err instanceof FenceError)) {
+			throw err;
+		}
+		log.error(err.message);
+		return format.fail({ code: err.code, message: err.message, hint: err.hint || undefined });
+	}
 	await refreshAgents(themeDir);
 	if (format.isJson()) {
 		return format.ok({
@@ -424,40 +453,47 @@ export function validateParams(params, themeDir = null) {
 }
 
 /**
- * Render and write the partial class (and optional view template).
- * Pure execution: no prompts, no network. Given identical params + themeDir it
- * produces identical output whether called from the flag path or the wizard.
+ * Default location of a partial's class file, relative to the theme.
  **/
-/**
- * Regenerate the partial PHP class from manifest properties ($properties).
- * Overwrites the class file; custom methods in that file are not preserved.
- *
- * @param {ReturnType<typeof paramsFromManifest>} params
- * @param {string} themeDir
- * @returns {string} Absolute path written.
- */
-export function writePartialClass(params, themeDir) {
-	const partialTemplatePath = './partials/' + params.partial_template_name;
-	const classTemplate = fs.readFileSync(new URL('./templates/partial.class.mustache', import.meta.url), 'utf8');
-	const slug = classNameToSlug(params.class_name);
-	const classOutput = mustache.render(classTemplate, {
-		class_name: params.class_name,
-		is_acf_compatible: params.is_acf_compatible,
-		has_partial_template: params.has_partial_template,
-		partial_template_path: partialTemplatePath,
-		manifest_rel_path: `.wonderpress/manifest/partials/${slug}.json`,
-		sync_command: `wonderpress partial sync ${params.class_name}`,
-		properties: propertiesForClassTemplate(params.properties),
-	});
-	const classFilePath = `${themeDir}/src/partials/${classNameToFileSlug(params.class_name)}.php`;
-	fs.ensureDirSync(path.dirname(classFilePath));
-	fs.writeFileSync(classFilePath, classOutput);
-	return classFilePath;
+export function defaultClassRelPath(className) {
+	return `src/partials/${classNameToFileSlug(className)}.php`;
 }
 
-export async function writePartial(params, themeDir) {
+/**
+ * Write the partial PHP class, honoring the fence contract (see
+ * partial-class.js): an existing fenced file has only its generated region
+ * replaced; an unfenced legacy file is migrated when it is still exactly what
+ * the old template produced and refused otherwise; `force` rewrites the whole
+ * file. Pure execution: no prompts, no network.
+ *
+ * @param {object} params
+ * @param {string} themeDir
+ * @param {{ force?: boolean, classPath?: string|null, dryRun?: boolean }} [options]
+ *   classPath is the theme-relative path (manifest.artifacts.class); it falls
+ *   back to the conventional location when absent.
+ * @returns {{ path: string, rel: string, mode: string }}
+ * @throws {FenceError} When an existing file cannot be synced without losing code.
+ */
+export function writePartialClass(params, themeDir, options = {}) {
+	const rel = options.classPath || defaultClassRelPath(params.class_name);
+	const classFilePath = resolveWithin(themeDir, rel);
+	if (!classFilePath) {
+		throw new Error(`Refusing to write the partial class at "${rel}": that path escapes the theme directory.`);
+	}
+	const existing = fs.existsSync(classFilePath) ? fs.readFileSync(classFilePath, 'utf8') : null;
+	const plan = planPartialClassWrite(existing, params, { force: !!options.force, displayPath: rel });
+	if (!options.dryRun && plan.mode !== 'unchanged') {
+		fs.ensureDirSync(path.dirname(classFilePath));
+		fs.writeFileSync(classFilePath, plan.source);
+	}
+	return { path: classFilePath, rel, mode: plan.mode };
+}
 
-	const classFilePath = writePartialClass(params, themeDir);
+export async function writePartial(params, themeDir, options = {}) {
+
+	// Throws (before anything else is written) when an existing class file
+	// holds code a rewrite would lose; see writePartialClass.
+	const classFilePath = writePartialClass(params, themeDir, { force: !!options.force }).path;
 	log.success(`Partial class created at: ${classFilePath}`);
 
 	// The view template (optional)
@@ -774,8 +810,10 @@ export function writeManifest(params, themeDir, written = {}) {
 	const slug = classNameToSlug(params.class_name);
 	const emit = params.emit || {};
 
+	// A manifest may point its class somewhere other than the convention;
+	// sync passes that path through so normalizing never re-points it.
 	const artifacts = {
-		class: `src/partials/${classNameToFileSlug(params.class_name)}.php`,
+		class: (typeof written.class === 'string' && written.class) || defaultClassRelPath(params.class_name),
 	};
 	if (params.has_partial_template) {
 		artifacts.view = `partials/${params.partial_template_name}`;
@@ -938,7 +976,10 @@ export function listPartials(themeDir) {
  *
  * @param {object} manifest Parsed partial manifest.
  * @param {string} themeDir Theme root.
- * @param {{ dryRun?: boolean, propertiesOnly?: boolean }} [options]
+ * @param {{ dryRun?: boolean, propertiesOnly?: boolean, force?: boolean }} [options]
+ *   force rewrites the whole class file even when it holds code outside (or
+ *   predates) the fence; without it such a file makes the sync throw a
+ *   FenceError before anything is written.
  */
 export function syncPartialFromManifest(manifest, themeDir, options = {}) {
 	const artifacts = manifest.artifacts || {};
@@ -949,6 +990,8 @@ export function syncPartialFromManifest(manifest, themeDir, options = {}) {
 
 	const dryRun = !!options.dryRun;
 	const propertiesOnly = !!options.propertiesOnly;
+	const force = !!options.force;
+	const classOptions = { force, classPath: artifacts.class || null };
 
 	if (dryRun) {
 		const slug = classNameToSlug(params.class_name);
@@ -963,9 +1006,24 @@ export function syncPartialFromManifest(manifest, themeDir, options = {}) {
 				manifest: `${PARTIAL_MANIFEST_DIR}/${manifest.slug}.json`,
 			},
 		};
+		// What the class write would do (create, update, unchanged, migrate,
+		// force) or `refuse` with the reason, so a dry run surfaces a blocked
+		// sync instead of discovering it on the real run.
+		try {
+			plan.classAction = writePartialClass(params, themeDir, { ...classOptions, dryRun: true }).mode;
+		} catch (err) {
+			if (!(err instanceof FenceError)) {
+				throw err;
+			}
+			plan.classAction = 'refuse';
+			plan.classError = err.message;
+		}
 		log.info(`Would sync partial class from manifest (${params.properties.length} properties).`);
 		if (artifacts.class) {
-			log.info(`  class: ${artifacts.class}`);
+			log.info(`  class: ${artifacts.class} (${plan.classAction})`);
+		}
+		if (plan.classError) {
+			log.warn(plan.classError);
 		}
 		if (params.emit.block) {
 			log.info(`  block: blocks/${slug}/block.json`);
@@ -977,8 +1035,13 @@ export function syncPartialFromManifest(manifest, themeDir, options = {}) {
 		return plan;
 	}
 
-	const classPath = writePartialClass(params, themeDir);
-	log.success(`Synced partial class: ${classPath}`);
+	// First, so a refused class (custom code a rewrite would lose) stops the
+	// sync before block.json or the manifest are touched.
+	const classResult = writePartialClass(params, themeDir, classOptions);
+	if (classResult.mode === 'migrate') {
+		log.info(`Added <wonderpress:generated> fence markers to ${classResult.rel}. Custom PHP now belongs below the closing marker.`);
+	}
+	log.success(`Synced partial class: ${classResult.path}`);
 
 	if (params.emit.block) {
 		writeBlock(params, themeDir, { skipRender: propertiesOnly });
@@ -990,6 +1053,7 @@ export function syncPartialFromManifest(manifest, themeDir, options = {}) {
 	}
 
 	writeManifest(params, themeDir, {
+		class: classResult.rel,
 		style: artifacts.style || false,
 		script: artifacts.script || false,
 	});
@@ -1013,6 +1077,7 @@ export async function sync(args) {
 	const dryRun = args['--dry-run'] === true;
 	const propertiesOnly = args['--properties-only'] === true;
 	const syncAll = args['--all'] === true;
+	const force = args['--force'] === true;
 	const plans = [];
 
 	if (syncAll) {
@@ -1027,13 +1092,13 @@ export async function sync(args) {
 		for (const manifest of manifests) {
 			log.info(`Syncing ${manifest.name} (${manifest.slug})...`);
 			try {
-				const result = syncPartialFromManifest(manifest, themeDir, { dryRun, propertiesOnly });
+				const result = syncPartialFromManifest(manifest, themeDir, { dryRun, propertiesOnly, force });
 				if (dryRun && result && result.slug) {
 					plans.push(result);
 				}
 			} catch (err) {
 				log.error(`${manifest.slug}: ${err.message}`);
-				return format.fail({ code: 'sync', message: `${manifest.slug}: ${err.message}` });
+				return format.fail({ code: err.code || 'sync', message: `${manifest.slug}: ${err.message}`, hint: err.hint || undefined });
 			}
 		}
 		if (format.isJson()) {
@@ -1073,19 +1138,21 @@ export async function sync(args) {
 	}
 
 	try {
-		const result = syncPartialFromManifest(manifest, themeDir, { dryRun, propertiesOnly });
+		const result = syncPartialFromManifest(manifest, themeDir, { dryRun, propertiesOnly, force });
 		if (dryRun && result && result.slug) {
 			plans.push(result);
 		}
 	} catch (err) {
 		log.error(err.message);
-		return format.fail({ code: 'sync', message: err.message });
+		return format.fail({ code: err.code || 'sync', message: err.message, hint: err.hint || undefined });
 	}
 
+	// Custom code outside the fence now survives sync, so the old "custom code
+	// is not preserved" warning only still applies to a forced rewrite.
 	if (!dryRun) {
-		log.warn(
-			'The partial class file was regenerated from the manifest template. Custom code in that class is not preserved — keep custom logic in separate helpers or the view template.',
-		);
+		if (force) {
+			log.warn('--force regenerated the whole partial class file; anything outside the generated region was replaced.');
+		}
 		await refreshAgents(themeDir);
 	}
 

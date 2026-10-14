@@ -146,13 +146,14 @@ export const handlers = {
 			return jsonError('Could not resolve the theme directory');
 		}
 		const dryRun = input.dryRun === true;
+		const force = input.force === true;
 		const syncAll = input.all === true || !input.name;
 		try {
 			if (syncAll) {
 				const manifests = partial.readManifests(themeDir);
 				const plans = [];
 				for (const manifest of manifests) {
-					const result = partial.syncPartialFromManifest(manifest, themeDir, { dryRun });
+					const result = partial.syncPartialFromManifest(manifest, themeDir, { dryRun, force });
 					if (dryRun && result && result.slug) {
 						plans.push(result);
 					}
@@ -172,14 +173,16 @@ export const handlers = {
 			if (!manifest) {
 				return jsonError(`No partial manifest for "${input.name}"`);
 			}
-			const result = partial.syncPartialFromManifest(manifest, themeDir, { dryRun });
+			const result = partial.syncPartialFromManifest(manifest, themeDir, { dryRun, force });
 			if (!dryRun) {
 				const { writeAgentFiles } = await import('./agents.js');
 				writeAgentFiles({ root: process.cwd(), themeDir });
 			}
 			return jsonResult({ ok: true, dryRun, plan: dryRun ? result : undefined, synced: dryRun ? undefined : [manifest.slug] });
 		} catch (err) {
-			return jsonError(err.message);
+			// A fence refusal carries a code + hint (e.g. class_unfenced, re-run
+			// with force) so an agent can tell it apart from a broken manifest.
+			return jsonError(err.message, err.code ? { code: err.code, hint: err.hint } : {});
 		}
 	},
 
@@ -337,12 +340,13 @@ export function createWonderpressMcpServer() {
 	}, (args) => handlers.partial_create(args));
 
 	server.registerTool('partial_sync', {
-		description: 'Regenerate class and block.json from manifests.',
+		description: 'Regenerate class and block.json from manifests. Only the class region between // <wonderpress:generated> markers is rewritten; custom PHP below the closing marker survives. A legacy class without markers that was hand-edited is refused unless force is true.',
 		inputSchema: {
 			...locShape,
 			name: z.string().optional(),
 			all: z.boolean().optional(),
 			dryRun: z.boolean().optional(),
+			force: z.boolean().optional().describe('Rewrite the whole class file even if it holds code a fenced sync would preserve or refuse to touch (CLI --force).'),
 		},
 	}, (args) => handlers.partial_sync(args));
 

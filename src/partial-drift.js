@@ -3,17 +3,19 @@
  */
 
 import fs from 'fs-extra';
-import mustache from 'mustache';
 import path from 'path';
-import { fileURLToPath } from 'url';
 import {
-	classNameToSlug,
 	defaultTemplateName,
 	normalizeProperty,
-	propertiesForClassTemplate,
 	PROP_TYPE_TO_BLOCK,
 	resolveWithin,
 } from './validate.js';
+import {
+	locateFence,
+	regionsEqual,
+	renderFencedRegion,
+	renderLegacyPartialClassSource,
+} from './partial-class.js';
 
 /** @param {object} manifest */
 function paramsFromManifest(manifest) {
@@ -37,8 +39,6 @@ function paramsFromManifest(manifest) {
 	};
 }
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-
 /**
  * Property names declared in a generated partial class $properties block.
  * Also matches classes that still declare the legacy $_properties name.
@@ -54,29 +54,6 @@ export function parseClassPropertyNames(source) {
 		names.push(match[1]);
 	}
 	return names;
-}
-
-/**
- * Render the partial class file as sync would write it (for byte comparison).
- *
- * @param {ReturnType<typeof paramsFromManifest>} params
- * @returns {string}
- */
-export function renderPartialClassSource(params) {
-	const classTemplate = fs.readFileSync(
-		new URL('./templates/partial.class.mustache', import.meta.url),
-		'utf8',
-	);
-	const slug = classNameToSlug(params.class_name);
-	return mustache.render(classTemplate, {
-		class_name: params.class_name,
-		is_acf_compatible: params.is_acf_compatible,
-		has_partial_template: params.has_partial_template,
-		partial_template_path: './partials/' + params.partial_template_name,
-		manifest_rel_path: `.wonderpress/manifest/partials/${slug}.json`,
-		sync_command: `wonderpress partial sync ${params.class_name}`,
-		properties: propertiesForClassTemplate(params.properties),
-	});
 }
 
 function sortedUnique(list) {
@@ -126,14 +103,42 @@ export function checkPartialDrift(manifest, themeDir) {
 			});
 		} else {
 			const onDisk = fs.readFileSync(classFile, 'utf8');
-			const expectedSource = renderPartialClassSource(params);
-			if (onDisk !== expectedSource) {
-				const onDiskKeys = sortedUnique(parseClassPropertyNames(onDisk));
+			// Fence contract: only the generated region is machine-owned, so a
+			// fenced file is compared region to region and edits outside it
+			// (custom methods) are never drift. An unfenced legacy file keeps
+			// the whole-file comparison against what the pre-fence template
+			// generated; sync migrates it to fences.
+			let fence = null;
+			let fenceError = null;
+			try {
+				fence = locateFence(onDisk);
+			} catch (err) {
+				fenceError = err;
+			}
+			let compared = onDisk;
+			let inSync;
+			if (fenceError) {
+				inSync = false;
+			} else if (fence) {
+				compared = onDisk.slice(fence.start, fence.end);
+				inSync = regionsEqual(compared, renderFencedRegion(params));
+			} else {
+				inSync = regionsEqual(onDisk, renderLegacyPartialClassSource(params));
+			}
+			if (fenceError) {
+				issues.push({
+					code: 'class_drift',
+					message: `Partial class ${artifacts.class} has malformed <wonderpress:generated> markers (${fenceError.message}). Fix the markers, or regenerate: wonderpress partial sync ${params.class_name} --force`,
+				});
+			} else if (!inSync) {
+				const onDiskKeys = sortedUnique(parseClassPropertyNames(compared));
 				const keyDiff = setDiff(
 					expectedProps.filter((k) => !onDiskKeys.includes(k)),
 					onDiskKeys.filter((k) => !expectedProps.includes(k)),
 				);
-				let detail = 'Partial class differs from manifest (hand-edited or sync needed).';
+				let detail = fence
+					? 'Generated region of the partial class differs from manifest (edited inside the fence, or sync needed).'
+					: 'Partial class differs from manifest (hand-edited or sync needed).';
 				if (keyDiff.missing.length || keyDiff.extra.length) {
 					const parts = [];
 					if (keyDiff.missing.length) {
