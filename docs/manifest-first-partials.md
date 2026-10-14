@@ -7,10 +7,10 @@ WonderPress partial **fields** are defined in JSON, not in the PHP class. ACF an
 | Safe to edit (PHP-first OK) | Edit manifest, then sync |
 | --- | --- |
 | `partials/*.php` view templates | `.wonderpress/manifest/partials/<slug>.json` |
-| SCSS / JS behavior stubs (`partial add-js` scaffolds JS later; sync does not) | `src/partials/class-*.php` (`$properties`) |
-| Helpers, services, custom PHP outside generated class | `blocks/<slug>/block.json` attributes |
+| SCSS / JS behavior stubs (`partial add-js` scaffolds JS later; sync does not) | `src/partials/class-*.php` inside `// <wonderpress:generated>` (`$properties`) |
+| Custom PHP in the partial class, below `// </wonderpress:generated>`; helpers, services | `blocks/<slug>/block.json` attributes |
 
-Do **not** add new fields by editing `$properties` or `block.json` by hand — they will drift and `partial sync` will overwrite the class.
+Do **not** add new fields by editing `$properties` or `block.json` by hand — they will drift and `partial sync` will overwrite the generated region. Everything outside the fence survives sync byte for byte (see the Fence contract in ARCHITECTURE.md).
 
 ## Workflow
 

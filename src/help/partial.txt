@@ -22,8 +22,9 @@ COMMANDS
                            partial. With no name, pick from those that have a
                            view and no script yet.
   partial list             List every partial, and whether a block wraps it
-  partial sync [<Name>]    Regenerate class $properties and block.json from
-                           the manifest (after you edit properties in JSON)
+  partial sync [<Name>]    Regenerate the class's generated region and
+                           block.json from the manifest (after you edit
+                           properties in JSON). Custom PHP is kept; see FENCES
   partial check-drift [<Name>]
                            Fail if class or block.json drift from manifest
                            (use in CI; fix with partial sync)
@@ -69,7 +70,29 @@ SYNC OPTIONS
   --all                    Sync every partial manifest in the theme
   --slug <slug>            Partial slug (alternative to positional name)
   --dry-run                Print what would be written, without changing files
+                           (JSON plans include classAction: create, update,
+                           unchanged, migrate, force, or refuse)
   --properties-only        Update class + block.json only (skip render.php)
+  --force                  Rewrite the whole class file, even one sync would
+                           refuse. Anything outside the fence is replaced.
+
+FENCES
+  The partial class has one machine-owned region:
+
+      // <wonderpress:generated>
+      ...$acf_compatible, $partial_template, $properties...
+      // </wonderpress:generated>
+
+  Sync rewrites only that region, from the manifest. Everything else in the
+  file is yours and is kept byte for byte: put custom methods inside the class
+  below the closing marker. Editing inside the fence is drift (check-drift
+  reports it); change the manifest and sync instead.
+
+  A class from before fences is upgraded on its next sync when it is still
+  exactly what sync generated. If it was edited, sync refuses rather than lose
+  your code: move the custom code aside, run sync with --force, then put it
+  back below the closing marker. The class path comes from the manifest's
+  artifacts.class.
 
 REMOVE OPTIONS
   --with-block             Also remove the block wrapping this partial.
@@ -82,6 +105,7 @@ EXAMPLES
   wonderpress partial create --name Testimonials --acf --prop items:repeater --sub items:quote:string:required
   wonderpress partial sync Scalar_Demo
   wonderpress partial sync --all
+  wonderpress partial sync Hero --force
   wonderpress partial check-drift --all
   wonderpress partial create
       No flags runs the interactive wizard, which asks the same questions.

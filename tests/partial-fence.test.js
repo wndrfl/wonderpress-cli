@@ -40,8 +40,8 @@ const USER_METHOD = `
 	/**
 	 * Custom, hand-written: must survive every sync.
 	 */
-	public function headline_upper() {
-		return strtoupper( $this->get_property( 'title' ) );
+	public function variant_class() {
+		return 'hero--wide';
 	}
 `;
 

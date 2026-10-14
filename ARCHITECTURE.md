@@ -229,3 +229,65 @@ The `@wndrfl/static-kit-cli` version range in [`package.json`](package.json) is
 the single point of coordination between the two projects. A caret range is
 intentional — these are first-party packages released in lockstep. Pin an exact
 version only if you need to freeze against a specific Static Kit layout.
+
+## Fence contract
+
+A generated partial class has two owners, separated by marker lines:
+
+```php
+class Hero extends Abstract_Partial {
+
+	// <wonderpress:generated>
+	protected $acf_compatible = true;          // when acf_compatible
+	protected $partial_template = './partials/hero.php';
+	protected static $properties = array( /* … from the manifest … */ );
+	// </wonderpress:generated>
+
+	public function variant_class() {          // yours: survives every sync
+		return 'hero--wide';
+	}
+}
+```
+
+- **Inside the fence is machine-owned.** `partial sync` rewrites the region
+  between `// <wonderpress:generated>` and `// </wonderpress:generated>` from
+  the manifest every time. Editing it is drift; edit the manifest and re-sync.
+- **Everything outside the fence is the user's, byte for byte** — the header
+  docblock, `namespace`/`use` lines, the class declaration, and any methods,
+  constants, or overrides added inside the class below the closing marker. That
+  is the sanctioned home for custom PHP on a partial. Sync splices only the
+  region; a CRLF file keeps CRLF, including in the regenerated region.
+- **block.json stays wholly machine-owned** (no fences).
+
+One renderer ([`src/partial-class.js`](src/partial-class.js)) serves both the
+writer (`writePartialClass` in [`src/partial.js`](src/partial.js)) and drift
+([`src/partial-drift.js`](src/partial-drift.js)), so they can never disagree
+about what sync would write. The class path comes from `manifest.artifacts.class`
+(falling back to `src/partials/class-<slug>.php`), and sync keeps that path when
+it normalizes the manifest.
+
+What a class write does to an existing file:
+
+| On disk | `partial sync` | `--force` |
+|---|---|---|
+| no file | write the full fenced render | same |
+| fenced file | replace only the fenced region | rewrite the whole file |
+| unfenced, pristine legacy output | rewrite with fences, silently | same |
+| unfenced, hand-edited | **refuse** (`class_unfenced`), nothing written | rewrite the whole file |
+| malformed markers | **refuse** (`class_fence`), nothing written | rewrite the whole file |
+
+"Pristine legacy" means the file is exactly what the pre-fence template
+(`src/templates/partial.class.legacy.mustache`, frozen) produced for *some*
+properties: the generated values are read back out of the file and re-rendered,
+so a file synced from an older manifest still migrates, while any hand-written
+line fails the comparison. Refusals happen before block.json or the manifest is
+touched, and `--format json` reports them as `error.code` `class_unfenced` /
+`class_fence` with a `--force` hint (MCP `partial_sync` mirrors this and takes
+`force: true`). `partial sync --dry-run` reports each plan's `classAction`
+(`create | update | unchanged | migrate | force | refuse`).
+
+Drift (`partial check-drift`, `lint`): a fenced class is compared region to
+region, so edits outside the fence are never drift; an unfenced legacy class
+keeps the whole-file comparison against the legacy render. Malformed markers
+report `class_drift`. Checksums and the `clean | pending | conflict` states
+build on this contract separately.
