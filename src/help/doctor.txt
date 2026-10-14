@@ -1,0 +1,27 @@
+wonderpress doctor — check this machine's prerequisites
+
+Runs the checks `init` runs before building anything — WP-CLI for the host
+backend; Docker, Compose v2, a live Docker daemon, WP-CLI and a free port for
+wp-env — and reports them in one place. Prints failures only, each with how to
+fix it, then a one-line summary. Exits 1 when anything fails.
+
+Which checks run:
+  inside a project         that project's backend (from .wonderpressrc)
+  --env <backend>          that backend
+  outside a project        every backend
+
+The host backend is not supported on Windows; there it reports one failing
+check saying to use wp-env instead.
+
+OPTIONS
+  --env <host|wp-env>      Check one backend
+  --dir <path>             Project root
+  --format json            data: { backend, platform, ok, checks: [{ check,
+                           label, ok, backend, platform, hint, detail }] }.
+                           `backend` is null when every backend was checked.
+                           A failing run is ok:false with the same data.
+
+EXAMPLES
+  wonderpress doctor
+  wonderpress doctor --env wp-env
+  wonderpress doctor --format json

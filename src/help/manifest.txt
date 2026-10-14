@@ -1,0 +1,19 @@
+wonderpress manifest — the manifest contract
+
+Partial and page-template manifests under .wonderpress/manifest/ are validated
+against JSON Schemas this CLI builds. `manifest schema` prints them, so other
+tools validate against the schema of the CLI version a project pins rather
+than carrying their own copy.
+
+COMMANDS
+  manifest schema              Both schemas: { partial, template }
+  manifest schema partial      The partial manifest schema
+  manifest schema template     The page-template manifest schema
+
+OPTIONS
+  --format json            Wrap in the { ok, data, error } envelope. Without
+                           it, the schema is printed as plain JSON.
+
+EXAMPLES
+  wonderpress manifest schema partial > partial.schema.json
+  wonderpress manifest schema --format json

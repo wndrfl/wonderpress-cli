@@ -37,8 +37,22 @@ export function isPortFree(port) {
  * loopback connection. "Is the site up" is a question about connecting, so
  * that is what this asks. The short timeout keeps `server status` snappy when
  * a firewall drops packets rather than refusing them.
+ *
+ * `localhost` is tried over IPv4 and then IPv6. Which one a server binds
+ * depends on the machine: macOS resolves localhost to ::1 first, so PHP's
+ * `wp server` listens there, while Docker publishes on 0.0.0.0.
  **/
-export function isPortListening(port, host = '127.0.0.1', timeoutMs = 750) {
+export async function isPortListening(port, host = 'localhost', timeoutMs = 750) {
+	const hosts = host === 'localhost' ? ['127.0.0.1', '::1'] : [host];
+	for (const address of hosts) {
+		if (await connects(port, address, timeoutMs)) {
+			return true;
+		}
+	}
+	return false;
+}
+
+function connects(port, host, timeoutMs) {
 	return new Promise((resolve) => {
 		const socket = net.connect({ port, host });
 		const done = (answer) => {
@@ -67,11 +81,7 @@ export function readWpEnvPort(root) {
 }
 
 /**
- * Split a site URL into what a probe needs.
- *
- * `localhost` is probed as 127.0.0.1: where localhost resolves to ::1 first, a
- * connect by name can miss a server bound on IPv4 only, which is what both
- * `wp server` and Docker do by default.
+ * Split a site URL into what a probe needs. Brackets come off an IPv6 host.
  **/
 export function urlTarget(url) {
 	if (!url) {
@@ -80,8 +90,7 @@ export function urlTarget(url) {
 	try {
 		const u = new URL(/^https?:\/\//.test(url) ? url : `http://${url}`);
 		const port = Number(u.port) || (u.protocol === 'https:' ? 443 : 80);
-		const host = u.hostname === 'localhost' ? '127.0.0.1' : u.hostname.replace(/^\[|\]$/g, '');
-		return { host, port };
+		return { host: u.hostname.replace(/^\[|\]$/g, ''), port };
 	} catch (e) {
 		return null;
 	}

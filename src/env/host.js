@@ -197,12 +197,12 @@ export function create() {
  **/
 async function startObserved(url, onReady) {
 
-	const target = urlTarget(url) || { host: '127.0.0.1', port: 8080 };
+	const target = urlTarget(url) || { host: 'localhost', port: 8080 };
 
 	// Readiness is "the port answers", so a port that already answers would
 	// make a server that is about to fail look ready. Refuse up front.
 	if (await isPortListening(target.port, target.host)) {
-		return { ok: false, url, detached: false, pid: null, errors: [`Something is already listening on port ${target.port}. Is the server already running? Check with: wonderpress server status`] };
+		return { ok: false, running: null, url, detached: false, pid: null, errors: [`Something is already listening on port ${target.port}. Is the server already running? Check with: wonderpress server status`] };
 	}
 
 	return new Promise((resolve) => {

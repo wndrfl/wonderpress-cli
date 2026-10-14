@@ -271,13 +271,13 @@ test('server status --format json from the CLI is one envelope for the host back
 	}
 });
 
-test('an unknown server subcommand is a usage error, not a start', () => {
+test('an unknown server subcommand is an error, not a start', () => {
 	const dir = project();
 	try {
 		const result = cli(['server', 'stauts', '--dir', dir, '--format', 'json']);
 		const body = onlyEnvelope(result.stdout);
-		assert.equal(result.status, 2);
-		assert.equal(body.error.code, 'usage');
+		assert.equal(result.status, 1);
+		assert.equal(body.error.code, 'unknown_command');
 	} finally {
 		fs.removeSync(dir);
 	}
@@ -285,9 +285,10 @@ test('an unknown server subcommand is a usage error, not a start', () => {
 
 // --- probes ---
 
-test('urlTarget splits a site URL and probes localhost over IPv4', () => {
-	assert.deepEqual(urlTarget('http://localhost:8888'), { host: '127.0.0.1', port: 8888 });
-	assert.deepEqual(urlTarget('localhost:8080'), { host: '127.0.0.1', port: 8080 });
+test('urlTarget splits a site URL', () => {
+	assert.deepEqual(urlTarget('http://localhost:8888'), { host: 'localhost', port: 8888 });
+	assert.deepEqual(urlTarget('localhost:8080'), { host: 'localhost', port: 8080 });
+	assert.deepEqual(urlTarget('http://[::1]:8080'), { host: '::1', port: 8080 });
 	assert.deepEqual(urlTarget('https://example.test'), { host: 'example.test', port: 443 });
 	assert.equal(urlTarget(null), null);
 });
@@ -299,6 +300,25 @@ test('isPortListening answers by connecting', async () => {
 	assert.equal(await isPortListening(port), true);
 	await new Promise((resolve) => listener.close(resolve));
 	assert.equal(await isPortListening(port), false);
+});
+
+test('localhost is probed over IPv6 too, where macOS binds `wp server`', async (t) => {
+	const listener = net.createServer();
+	try {
+		await new Promise((resolve, reject) => {
+			listener.once('error', reject);
+			listener.listen(0, '::1', resolve);
+		});
+	} catch (e) {
+		t.skip('no IPv6 loopback on this machine');
+		return;
+	}
+	const { port } = listener.address();
+	try {
+		assert.equal(await isPortListening(port, 'localhost'), true);
+	} finally {
+		await new Promise((resolve) => listener.close(resolve));
+	}
 });
 
 test('wp-env status --json is read, and an older wp-env without it falls through', () => {
@@ -438,6 +458,16 @@ test('manifest schema in human mode prints the JSON itself', () => {
 	const result = cli(['manifest', 'schema', 'partial']);
 	assert.equal(result.status, 0);
 	assert.deepEqual(JSON.parse(result.stdout), buildPartialManifestSchema());
+});
+
+test('manifest with no subcommand shows its help; an unknown one fails', () => {
+	const bare = cli(['manifest']);
+	assert.equal(bare.status, 0);
+	assert.match(bare.stdout, /manifest schema partial/);
+
+	const unknown = cli(['manifest', 'bogus', '--format', 'json']);
+	assert.equal(unknown.status, 1);
+	assert.equal(onlyEnvelope(unknown.stdout).error.code, 'unknown_command');
 });
 
 test('an unknown manifest kind is a usage error', () => {

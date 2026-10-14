@@ -1,8 +1,15 @@
 wonderpress version — print the installed CLI version
 
+Inside a project whose .wonderpressrc pins a different `cliVersion`, every
+command warns once on stderr: "This project pins wonderpress-cli <pinned>; you
+are running <current>." The warning never reaches stdout, so JSON output stays
+parseable.
+
 OPTIONS
-  --format json            Machine-readable envelope
+  --format json            Machine-readable envelope. data: { name, version,
+                           cliVersionMismatch: { pinned, current } | null }
 
 EXAMPLES
   wonderpress version
   wonderpress --version
+  wonderpress version --format json

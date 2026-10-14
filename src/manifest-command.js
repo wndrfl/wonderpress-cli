@@ -1,4 +1,5 @@
 import * as format from './format.js';
+import * as help from './help.js';
 import * as log from './log.js';
 import { buildPageTemplateManifestSchema, buildPartialManifestSchema } from './manifest-schema.js';
 
@@ -21,13 +22,19 @@ export async function command(subcommand, args) {
 	switch (subcommand) {
 		case 'schema':
 			return schema(args._[2]);
-		default: {
-			const message = subcommand
-				? `Unknown manifest subcommand: ${subcommand}`
-				: 'Missing manifest subcommand';
-			log.error(`${message} (expected schema)`);
-			return format.fail({ code: 'usage', message, hint: 'Use `wonderpress manifest schema [partial|template]`.' }, format.EXIT_USAGE);
-		}
+		default:
+			// Same convention as `partial`: no subcommand shows the group, an
+			// unknown one says so first.
+			if (subcommand) {
+				log.error(`Unknown manifest subcommand: ${subcommand}`);
+				format.fail({
+					code: 'unknown_command',
+					message: `Unknown manifest subcommand: ${subcommand}`,
+					hint: 'Run `wonderpress manifest help`.',
+				});
+			}
+			help.show('manifest');
+			return !subcommand;
 	}
 }
 

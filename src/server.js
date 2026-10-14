@@ -26,10 +26,10 @@ export async function command(subcommand, args) {
 			// environment up. A typo should not have side effects.
 			log.error(`Unknown server subcommand: ${subcommand} (expected start, stop or status)`);
 			return format.fail({
-				code: 'usage',
+				code: 'unknown_command',
 				message: `Unknown server subcommand: ${subcommand}`,
-				hint: 'Use `wonderpress server start|stop|status`.',
-			}, format.EXIT_USAGE);
+				hint: 'Run `wonderpress server help`.',
+			});
 	}
 
 	return true;
@@ -176,7 +176,13 @@ async function startJson(backend, detached, url) {
 			code: 'server',
 			message: errors[0] || 'The development server could not be started.',
 			hint: 'Run `wonderpress doctor` to check prerequisites.',
-		}, format.EXIT_FAIL, describe(backend, { running: false, url: (result && result.url) || url, pid: result && result.pid }));
+		}, format.EXIT_FAIL, describe(backend, {
+			// A backend may know better than "not running" — the host refuses to
+			// start over a port something already answers on, which is unknown.
+			running: result && result.running !== undefined ? result.running : false,
+			url: (result && result.url) || url,
+			pid: result && result.pid,
+		}));
 	}
 
 	return format.ok(describe(backend, {

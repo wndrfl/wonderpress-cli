@@ -9,11 +9,26 @@ the Docker environment up and returns.
 COMMANDS
   server                   Start the environment (same as `server start`)
   server start             Start
-  server stop              Stop
+  server stop              Stop (wp-env). The host server is stopped with
+                           Ctrl-C in the terminal that started it.
+  server status            Is it running, and where? Works from any terminal:
+                           wp-env is asked directly, the host is probed by
+                           connecting to its port.
 
 OPTIONS
   --dir <path>             Environment root
+  --format json            One { ok, data, error } envelope on stdout. data:
+                           { backend, detached, running, url, adminUrl, port,
+                           pid }. `running` is true, false, or null when it
+                           could not be told; url/adminUrl/port are where the
+                           site is served whether or not it is up.
+
+  On host, `start --format json` prints the envelope once the site answers,
+  then keeps serving; `wp server`'s own output goes to stderr, so stdout holds
+  the envelope and nothing else. `pid` is that server's process id.
 
 EXAMPLES
   wonderpress server
+  wonderpress server status
+  wonderpress server status --format json
   wonderpress server stop
