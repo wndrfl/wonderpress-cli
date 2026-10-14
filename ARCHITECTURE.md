@@ -257,6 +257,15 @@ can say which CLI it was built with.
   (with the child's `pid`), and keeps serving. stdout carries the envelope and
   nothing else; a server that dies before it is ready is an `ok: false`
   envelope instead. Human mode is unchanged (`execSync('wp server')`).
+  `wp server` is WP-CLI running `php -S` as its own child, and the grandchild
+  holds the port, so JSON mode spawns it as the leader of a new process group
+  (POSIX), forwards SIGINT/SIGTERM/SIGHUP to the group, and sweeps the group
+  whenever the leader exits — signalling only the CLI or only the `wp` pid used
+  to orphan a still-listening `php -S`. The reported `pid` is the group id. A
+  server that ends after the envelope went out exits the CLI 0 if it was asked
+  to stop (a forwarded signal, or a stop signal sent to it directly) and 1,
+  with a line on stderr, if it crashed — the exit code is the only channel a
+  supervisor has left by then.
 - **stop** on the host cannot stop anything — it reports the probed state
   rather than claiming success, with a note on stderr.
 - An unknown subcommand is an error. It used to fall through to start.

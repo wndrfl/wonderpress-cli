@@ -27,7 +27,12 @@ OPTIONS
 
   On host, `start --format json` prints the envelope once the site answers,
   then keeps serving; `wp server`'s own output goes to stderr, so stdout holds
-  the envelope and nothing else. `pid` is that server's process id.
+  the envelope and nothing else. `pid` is that server's process id, and it
+  leads a process group holding `wp server` and the `php -S` it runs. To stop
+  it, send SIGINT/SIGTERM/SIGHUP to the `wonderpress server start` process
+  (it forwards them to the group and exits 0), or `kill -TERM -<pid>`. If the
+  server dies on its own after the envelope went out, that process says so on
+  stderr and exits 1.
 
 EXAMPLES
   wonderpress server

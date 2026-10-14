@@ -167,6 +167,56 @@ test('server start --format json on a foreground backend announces once, from on
 	assert.equal(body.data.port, 8080);
 });
 
+/** Run a foreground start whose server ends with `ending`, capturing stderr. */
+async function foregroundEnding(ending) {
+	const backend = foregroundBackend();
+	backend.start = async (opts = {}) => {
+		opts.onReady({ url: 'http://localhost:8080', port: 8080, pid: 4242 });
+		return { ok: true, url: 'http://localhost:8080', detached: false, pid: 4242, exitCode: null, signal: null, stopSignal: null, ...ending };
+	};
+	const written = [];
+	const realStderr = process.stderr.write;
+	process.stderr.write = (chunk, ...rest) => {
+		written.push(String(chunk));
+		return typeof rest[rest.length - 1] === 'function' ? (rest[rest.length - 1](), true) : true;
+	};
+	try {
+		const { printed, exitCode } = await inJson(backend, (dir) => server.command('start', { '--dir': dir }));
+		return { printed, exitCode, stderr: written.join('') };
+	} finally {
+		process.stderr.write = realStderr;
+	}
+}
+
+test('a host server that crashes after it was announced exits non-zero', async () => {
+	// The envelope is already out, so the exit code is the only thing a
+	// supervisor has left to tell a crash from a stop.
+	const crashed = await foregroundEnding({ exitCode: 255 });
+	assert.equal(crashed.printed.length, 1, 'still exactly one envelope');
+	assert.equal(JSON.parse(crashed.printed[0]).data.running, true);
+	assert.equal(crashed.exitCode, 1);
+	assert.match(crashed.stderr, /stopped unexpectedly \(exit code 255\)/);
+
+	const killed = await foregroundEnding({ signal: 'SIGKILL' });
+	assert.equal(killed.exitCode, 1);
+	assert.match(killed.stderr, /SIGKILL/);
+});
+
+test('a host server that was asked to stop exits 0', async () => {
+	// Forwarded by this process (Ctrl-C, a supervisor's SIGTERM): clean,
+	// whatever code the server exits with on the way down.
+	for (const ending of [
+		{ signal: 'SIGTERM', stopSignal: 'SIGTERM' },
+		{ exitCode: 143, stopSignal: 'SIGTERM' },
+		{ signal: 'SIGINT' },
+		{ exitCode: 0 },
+	]) {
+		const { exitCode, stderr } = await foregroundEnding(ending);
+		assert.equal(exitCode, 0, JSON.stringify(ending));
+		assert.equal(stderr, '', JSON.stringify(ending));
+	}
+});
+
 test('a failed start is an ok:false envelope with a non-zero exit', async () => {
 	const backend = detachedBackend({ start: { ok: false, errors: ['wp-env could not start the environment.'], url: 'http://localhost:9911', detached: true } });
 	const { printed, exitCode } = await inJson(backend, (dir) => server.command('start', { '--dir': dir }));
@@ -402,6 +452,137 @@ test('an own-environment answer of "unknown" does not pass the port check', asyn
 	const busy = { ...allPresent, isPortFree: async () => false };
 	const report = await doctor.run('wp-env', { platform: 'darwin', port: 8888, deps: busy, ownEnvironmentRunning: async () => null });
 	assert.equal(report.checks.find((c) => c.check === 'wp-env-port').ok, false);
+});
+
+// --- host start: the server's process group ---
+
+/**
+ * `wp server` is WP-CLI, which runs `php -S` as its own child; the grandchild
+ * holds the port. The fake below has the same shape: a `wp` that spawns a
+ * listener and then just waits, dying on SIGTERM without passing it on — as
+ * PHP does.
+ **/
+const FAKE_WP = `
+import fs from 'node:fs';
+import { spawn } from 'node:child_process';
+const port = Number(process.argv[2]);
+// stdio ignored: a leaked listener holding the test runner's stderr would hang
+// the run instead of failing it.
+const php = spawn(process.execPath, ['-e', "require('net').createServer().listen(" + port + ", '127.0.0.1'); setInterval(() => {}, 1e6);"], { stdio: 'ignore' });
+// For the test's cleanup, which must reach the grandchild even when the code
+// under test failed to.
+fs.writeFileSync(process.argv[1] + '.pids', process.pid + ' ' + php.pid);
+setInterval(() => {}, 1e6);
+`;
+
+/** Stands in for the CLI: one line at readiness, one when the server ends. */
+function harnessSource(hostModule) {
+	return `
+import { startObserved } from ${JSON.stringify(hostModule)};
+const [fakeWp, port] = process.argv.slice(2);
+const result = await startObserved('http://127.0.0.1:' + port, (ready) => {
+	process.stdout.write(JSON.stringify({ ready }) + '\\n');
+}, { command: process.execPath, args: [fakeWp, port] });
+process.stdout.write(JSON.stringify({ result }) + '\\n');
+`;
+}
+
+async function freePort() {
+	const probe = net.createServer();
+	await new Promise((resolve) => probe.listen(0, '127.0.0.1', resolve));
+	const { port } = probe.address();
+	await new Promise((resolve) => probe.close(resolve));
+	return port;
+}
+
+async function waitFor(predicate, timeoutMs = 8000) {
+	const deadline = Date.now() + timeoutMs;
+	while (Date.now() < deadline) {
+		if (await predicate()) {
+			return true;
+		}
+		await new Promise((resolve) => setTimeout(resolve, 100));
+	}
+	return false;
+}
+
+/** Start the harness and resolve once the server is announced. */
+async function startHarness() {
+	const dir = tmp('wp-group-');
+	const fakeWp = path.join(dir, 'wp.mjs');
+	const harness = path.join(dir, 'harness.mjs');
+	fs.writeFileSync(fakeWp, FAKE_WP);
+	fs.writeFileSync(harness, harnessSource(new URL('../src/env/host.js', import.meta.url).href));
+	const port = await freePort();
+	const child = spawn(process.execPath, [harness, fakeWp, String(port)], { stdio: ['ignore', 'pipe', 'inherit'] });
+	const lines = [];
+	let buffer = '';
+	child.stdout.on('data', (d) => {
+		buffer += d;
+		let i;
+		while ((i = buffer.indexOf('\n')) !== -1) {
+			lines.push(JSON.parse(buffer.slice(0, i)));
+			buffer = buffer.slice(i + 1);
+		}
+	});
+	const exited = new Promise((resolve) => child.on('exit', (code, signal) => resolve({ code, signal })));
+	assert.ok(await waitFor(() => lines.some((l) => l.ready)), 'the fake server never became ready');
+	const { pid } = lines.find((l) => l.ready).ready;
+	const cleanup = () => {
+		let spawned = [];
+		try {
+			spawned = fs.readFileSync(`${fakeWp}.pids`, 'utf8').trim().split(' ').map(Number);
+		} catch (e) {
+			spawned = [];
+		}
+		for (const target of [-pid, child.pid, ...spawned]) {
+			try { process.kill(target, 'SIGKILL'); } catch (e) { /* gone */ }
+		}
+		fs.removeSync(dir);
+	};
+	return { child, port, pid, lines, exited, cleanup };
+}
+
+const posixOnly = { skip: process.platform === 'win32' && 'process groups are POSIX' };
+
+test('SIGTERM to the CLI stops the whole server, not just wp', posixOnly, async () => {
+	const run = await startHarness();
+	try {
+		assert.equal(await isPortListening(run.port, '127.0.0.1'), true);
+		run.child.kill('SIGTERM');
+		const { code } = await run.exited;
+		assert.equal(code, 0, 'the CLI waits for the server to stop, then exits cleanly');
+		assert.ok(await waitFor(async () => !(await isPortListening(run.port, '127.0.0.1'))), 'php -S (the grandchild) was left listening');
+		const { result } = run.lines.find((l) => l.result);
+		assert.equal(result.stopSignal, 'SIGTERM');
+	} finally {
+		run.cleanup();
+	}
+});
+
+test('killing the reported pid stops the server it started, too', posixOnly, async () => {
+	const run = await startHarness();
+	try {
+		process.kill(run.pid, 'SIGTERM');
+		await run.exited;
+		assert.ok(await waitFor(async () => !(await isPortListening(run.port, '127.0.0.1'))), 'php -S outlived wp');
+		const { result } = run.lines.find((l) => l.result);
+		assert.equal(result.signal, 'SIGTERM');
+		assert.equal(result.stopSignal, null, 'nothing was forwarded; the server was signalled directly');
+	} finally {
+		run.cleanup();
+	}
+});
+
+test('signalling the reported pid as a group stops everything', posixOnly, async () => {
+	const run = await startHarness();
+	try {
+		process.kill(-run.pid, 'SIGTERM');
+		await run.exited;
+		assert.ok(await waitFor(async () => !(await isPortListening(run.port, '127.0.0.1'))));
+	} finally {
+		run.cleanup();
+	}
 });
 
 // --- doctor ---

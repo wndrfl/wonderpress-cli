@@ -165,8 +165,18 @@ async function startJson(backend, detached, url) {
 	});
 
 	if (announced) {
-		// The foreground server has since exited (Ctrl-C, or the supervisor
-		// killed it). The envelope already went out; nothing more on stdout.
+		// The foreground server has since exited. The envelope already went
+		// out, so nothing more goes on stdout — but a supervisor watching this
+		// process has to be able to tell a crash from a stop, and the exit
+		// code is all it has left. A stop is one this process forwarded
+		// (Ctrl-C, a supervisor's SIGTERM) or a stop signal sent to the server
+		// directly; anything else that ends non-zero is a crash.
+		const crash = serverCrash(result);
+		if (crash) {
+			process.stderr.write(`The development server stopped unexpectedly (${crash}).\n`);
+			process.exitCode = format.EXIT_FAIL;
+			return false;
+		}
 		return true;
 	}
 
@@ -193,6 +203,31 @@ async function startJson(backend, detached, url) {
 		url: result.url || url,
 		pid: result.pid,
 	}));
+}
+
+const STOP_SIGNALS = ['SIGINT', 'SIGTERM', 'SIGHUP'];
+
+/**
+ * Why a server that had been running ended badly, or null if it was stopped
+ * or exited cleanly. Exported for tests.
+ **/
+export function serverCrash(result) {
+	if (!result) {
+		return null;
+	}
+	if (result.stopSignal) {
+		return null;
+	}
+	if (result.ok === false) {
+		return (result.errors && result.errors[0]) || 'it reported a failure';
+	}
+	if (result.signal && !STOP_SIGNALS.includes(result.signal)) {
+		return result.signal;
+	}
+	if (typeof result.exitCode === 'number' && result.exitCode !== 0) {
+		return `exit code ${result.exitCode}`;
+	}
+	return null;
 }
 
 /**
@@ -247,7 +282,9 @@ export async function stop(dir) {
 
 	if (!detached) {
 		// log.* is silent in JSON mode, and this is worth saying.
-		process.stderr.write('The host development server runs in the foreground; stop it with Ctrl-C, or signal the process that started it.\n');
+		// Both of these now stop `php -S` too: a JSON-mode start forwards stop
+		// signals to the server's process group, and the reported pid leads it.
+		process.stderr.write('The host development server runs in the foreground; stop it with Ctrl-C, by sending SIGTERM to the `wonderpress server start` process, or with `kill -TERM -<pid>` using the pid its JSON envelope reported.\n');
 	}
 
 	// A detached backend that stopped cleanly is down. The host has nothing
