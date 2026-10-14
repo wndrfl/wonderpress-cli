@@ -2,18 +2,23 @@ import arg from 'arg';
 import * as acf from './acf.js';
 import * as agents from './agents.js';
 import * as block from './block.js';
+import * as config from './config.js';
 import * as core from './core.js';
+import * as doctor from './doctor.js';
 import * as env from './env/index.js';
 import * as format from './format.js';
 import * as help from './help.js';
 import * as lint from './lint.js';
 import * as log from './log.js';
+import * as manifestCommand from './manifest-command.js';
 import * as mcp from './mcp.js';
 import * as partial from './partial.js';
 import * as readme from './readme.js';
 import * as server from './server.js';
 import * as staticAssets from './static.js';
 import * as template from './template.js';
+import { DEFAULT_WP_ENV_PORT, readWpEnvPort } from './env/probe.js';
+import pkg from '../package.json' with { type: 'json' };
 
 export async function cli() {
   const options = {
@@ -50,7 +55,7 @@ export async function cli() {
     '--with-block': Boolean,
     '--confirm': Boolean,
 
-    // agents write
+    // agents write, partial sync/create (fence override)
     '--force': Boolean,
 
     // lint
@@ -152,9 +157,16 @@ export async function cli() {
   // what the target was built with. (setCwdToEnvironmentRoot() rebinds again
   // once the root is definitively known, which also covers MCP calls that
   // carry a `dir` of their own.)
+  //
+  // `projectRoot` is the environment this invocation is inside, or null. It is
+  // found once, here, and reused for the version pin below.
+  const projectRoot = cmd === 'init'
+    ? ((await config.exists(args['--dir'] || process.cwd())) ? (args['--dir'] || process.cwd()) : null)
+    : ((await core.getRootDir(args['--dir'] || undefined)) || null);
+
   const envRoot = cmd === 'init'
     ? (args['--dir'] || process.cwd())
-    : ((await core.getRootDir(args['--dir'] || undefined)) || args['--dir'] || process.cwd());
+    : (projectRoot || args['--dir'] || process.cwd());
 
   const resolution = env.resolve({
     flag: args['--env'],
@@ -170,6 +182,15 @@ export async function cli() {
       message: `Unknown environment backend: ${resolution.unknown}`,
       hint: `Expected one of: ${env.names().join(', ')}`,
     });
+  }
+
+  // The version pin. Said once per invocation, here, on stderr in every mode:
+  // stdout belongs to the JSON envelope or the MCP protocol, and a warning in
+  // either would break the reader. Outside a project there is no pin to
+  // compare against, so nothing is said.
+  const cliVersionMismatch = config.cliVersionMismatch(projectRoot, pkg.version);
+  if (cliVersionMismatch) {
+    process.stderr.write(`  ! This project pins wonderpress-cli ${cliVersionMismatch.pinned}; you are running ${cliVersionMismatch.current}.\n`);
   }
 
   if (resolution.mismatch) {
@@ -247,7 +268,13 @@ export async function cli() {
       await template.command(args._[1], args);
       break;
     case 'version':
-      await core.command('version', args);
+      core.version(args, { cliVersionMismatch });
+      break;
+    case 'doctor':
+      await doctor.command(args, doctorContext(resolution, projectRoot));
+      break;
+    case 'manifest':
+      await manifestCommand.command(args._[1], args);
       break;
     case 'agents':
       await agents.command(args._[1], args);
@@ -270,4 +297,34 @@ export async function cli() {
       });
       break;
   }
+}
+
+/**
+ * What `doctor` checks: the backend asked for (--env / WONDERPRESS_ENV), else
+ * the project's, else — outside a project, where nothing has decided yet —
+ * every backend.
+ *
+ * Inside a wp-env project the port check asks the backend whether the port is
+ * held by this project's own running environment, which is healthy rather
+ * than a conflict.
+ **/
+function doctorContext(resolution, projectRoot) {
+
+  const explicit = resolution.source === 'flag' || resolution.source === 'env';
+  const backend = (explicit || projectRoot) ? resolution.name : null;
+
+  return {
+    backend,
+    port: projectRoot ? readWpEnvPort(projectRoot) : DEFAULT_WP_ENV_PORT,
+    ownEnvironmentRunning: projectRoot
+      ? async () => {
+        const current = env.getCurrent();
+        if (current.name !== 'wp-env' || typeof current.status !== 'function') {
+          return false;
+        }
+        process.chdir(projectRoot);
+        return (await current.status()).running === true;
+      }
+      : null,
+  };
 }

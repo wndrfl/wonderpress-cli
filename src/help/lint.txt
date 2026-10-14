@@ -8,6 +8,12 @@ on disk).
 manifest drift — use `wonderpress partial sync` for that — and it does not
 edit page-template manifests or PHP.
 
+Partial drift uses the sync states of `partial check-drift`: a partial in
+conflict (hand edits inside generated output) or whose generated files no
+longer match its manifest is an error; a pending partial whose files still
+match (for example, no sync lock yet) is a warning and does not fail lint.
+See `wonderpress partial help` (SYNC STATES).
+
 --axe and --budget are reserved and currently skipped.
 
 OPTIONS
@@ -20,7 +26,8 @@ OPTIONS
 
 EXIT CODES
   0                        Clean
-  1                        phpcs, partial drift, or page-template failure
+  1                        phpcs, partial drift (conflict, or files out of
+                           step with the manifest), or page-template failure
   2                        Usage (for example, which theme is ambiguous)
 
 EXAMPLES

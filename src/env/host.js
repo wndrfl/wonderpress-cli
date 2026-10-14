@@ -1,7 +1,13 @@
 import sh from 'shelljs';
-import { execSync } from 'child_process';
+import { execSync, spawn } from 'child_process';
+import * as doctor from '../doctor.js';
 import * as log from '../log.js';
 import { buildWpCliCommand, toResult } from './command.js';
+import { isPortListening, urlTarget } from './probe.js';
+
+// How long a JSON-mode start waits for `wp server` to accept connections
+// before giving up on it.
+const READY_TIMEOUT_MS = 15000;
 
 /**
  * The host environment backend.
@@ -56,18 +62,10 @@ export function create() {
 
 		/**
 		 * WP-CLI does everything here, so its absence is fatal before we write
-		 * anything to disk.
+		 * anything to disk. The check itself is doctor's; see src/doctor.js.
 		 **/
 		async preflight() {
-
-			if (!sh.which('wp')) {
-				return {
-					ok: false,
-					errors: [`Wonderpress leans heavily on the WP CLI. Please visit https://wp-cli.org/ and follow installation instructions before trying again.`],
-				};
-			}
-
-			return { ok: true, errors: [] };
+			return doctor.preflight('host');
 		},
 
 		/**
@@ -118,8 +116,18 @@ export function create() {
 
 		/**
 		 * Serve with `wp server`. Blocks until Ctrl-C — it does not return.
+		 *
+		 * With `opts.onReady` (how `server start --format json` calls it) the
+		 * child's output goes to stderr instead of inheriting stdout, and
+		 * onReady({ pid }) fires once the port accepts connections — so the JSON
+		 * envelope is printed, alone, before the long wait for Ctrl-C begins. If
+		 * the server dies before it is ready, the result says so instead.
 		 **/
-		async start() {
+		async start(opts = {}) {
+
+			if (typeof opts.onReady === 'function') {
+				return startObserved(this.siteUrl(), opts.onReady);
+			}
 
 			log.info('Starting development server...');
 
@@ -128,6 +136,23 @@ export function create() {
 			});
 
 			return { url: null, detached: false };
+		},
+
+		/**
+		 * Is `wp server` up? It runs in someone else's foreground, so the only
+		 * way to know from here is to try connecting to where it would listen.
+		 * The pid is not knowable from another process without `lsof`, which is
+		 * exactly what this avoids.
+		 **/
+		async status() {
+			const url = this.siteUrl();
+			const target = urlTarget(url);
+			return {
+				url,
+				port: target ? target.port : null,
+				running: target ? await isPortListening(target.port, target.host) : null,
+				pid: null,
+			};
 		},
 
 		/**
@@ -161,4 +186,142 @@ export function create() {
 			return { ok: true, errors: [] };
 		},
 	};
+}
+
+// The signals that mean "stop the server" when they reach the CLI: Ctrl-C,
+// a supervisor's stop, a closed terminal. Each is passed on to the server's
+// whole process group.
+const STOP_SIGNALS = ['SIGINT', 'SIGTERM', 'SIGHUP'];
+
+/**
+ * `wp server` as a child we can watch, for JSON mode.
+ *
+ * stdout of the child is wired to OUR stderr (fd 2): the JSON envelope must be
+ * the only thing on stdout.
+ *
+ * `wp server` is WP-CLI, in PHP, and it does not serve anything itself: it
+ * runs `php -S` as a child of its own, and that grandchild holds the port.
+ * Signalling the CLI, or the `wp` process, used to leave `php -S` orphaned
+ * and still listening — the next start then refused the port, and nothing
+ * the user could see owned it. So the server is spawned as the leader of its
+ * own process group (POSIX), the stop signals this process receives are
+ * forwarded to the whole group, and when the leader exits for any reason the
+ * group is swept so nothing it started outlives it. The reported pid is the
+ * group leader, so `kill -TERM -<pid>` stops all of it from outside too.
+ *
+ * A new group also means the terminal's Ctrl-C no longer reaches the server
+ * directly — it reaches this process, which forwards it. Same effect.
+ *
+ * `command`/`args` are injectable for tests, which stand a fake `wp` in for
+ * WP-CLI.
+ **/
+export async function startObserved(url, onReady, { command = 'wp', args = ['server'] } = {}) {
+
+	const target = urlTarget(url) || { host: 'localhost', port: 8080 };
+
+	// Readiness is "the port answers", so a port that already answers would
+	// make a server that is about to fail look ready. Refuse up front.
+	if (await isPortListening(target.port, target.host)) {
+		return { ok: false, running: null, url, detached: false, pid: null, errors: [`Something is already listening on port ${target.port}. Is the server already running? Check with: wonderpress server status`] };
+	}
+
+	// Process groups are POSIX. On Windows `wp` is a .bat shim that only a
+	// shell can run, and there is no group to signal; the host backend is
+	// unsupported there, but failing with a clear message beats ENOENT.
+	const posix = process.platform !== 'win32';
+
+	return new Promise((resolve) => {
+
+		const child = spawn(command, args, {
+			// No stdin: a process outside the terminal's foreground group that
+			// reads from it is stopped by the kernel, and the server needs none.
+			stdio: [posix ? 'ignore' : 'inherit', 2, 2],
+			shell: !posix,
+			detached: posix,
+		});
+
+		let ready = false;
+		let exited = false;
+		let timedOut = false;
+		// The signal this process forwarded, if any: an exit that follows one
+		// is a requested stop, not a crash, whatever code it exits with.
+		let stopSignal = null;
+
+		const signalServer = (signal) => {
+			if (!child.pid) {
+				return;
+			}
+			try {
+				if (posix) {
+					process.kill(-child.pid, signal);
+				} else {
+					child.kill(signal);
+				}
+			} catch (e) {
+				// ESRCH: the group is already gone, which is what was wanted.
+			}
+		};
+
+		const forwarders = STOP_SIGNALS.map((signal) => {
+			const forward = () => {
+				stopSignal = signal;
+				signalServer(signal);
+			};
+			process.on(signal, forward);
+			return [signal, forward];
+		});
+
+		const finish = (result) => {
+			for (const [signal, forward] of forwarders) {
+				process.removeListener(signal, forward);
+			}
+			resolve(result);
+		};
+
+		child.once('error', (error) => {
+			exited = true;
+			finish({ ok: false, url, detached: false, pid: null, errors: [`Could not start wp server: ${error.message}`] });
+		});
+
+		child.once('exit', (code, signal) => {
+			exited = true;
+
+			// The leader is gone, however that happened (Ctrl-C, a forwarded
+			// stop, a crash, someone killing the reported pid). Sweep the rest
+			// of its group: this is what stops `php -S` when only `wp` died.
+			if (posix) {
+				signalServer('SIGTERM');
+			}
+
+			if (!ready) {
+				const why = timedOut
+					? `wp server did not answer on port ${target.port} within ${READY_TIMEOUT_MS / 1000}s.`
+					: `wp server exited before it was ready (${signal || `code ${code}`}).`;
+				finish({ ok: false, url, detached: false, pid: child.pid ?? null, errors: [why] });
+				return;
+			}
+			finish({ ok: true, url, detached: false, pid: child.pid ?? null, exitCode: code, signal, stopSignal });
+		});
+
+		const deadline = Date.now() + READY_TIMEOUT_MS;
+		const poll = async () => {
+			if (exited) {
+				return;
+			}
+			if (await isPortListening(target.port, target.host, 250)) {
+				ready = true;
+				onReady({ url, port: target.port, pid: child.pid ?? null });
+				return;
+			}
+			if (Date.now() > deadline) {
+				// The group, not just `wp`: a `php -S` that is slow to bind
+				// would otherwise be left behind to bind later, orphaned.
+				timedOut = true;
+				signalServer('SIGTERM');
+				return;
+			}
+			setTimeout(poll, 200);
+		};
+		poll();
+	});
 }

@@ -15,6 +15,13 @@ ENVIRONMENT BACKENDS
   building. Both still need wp-cli, php and composer on PATH: wp-env replaces
   MySQL, not the PHP toolchain. Set WONDERPRESS_ENV to override per-invocation.
 
+  `wonderpress doctor` runs init's prerequisite checks on their own, before
+  anything is built.
+
+  init pins the running CLI version as `cliVersion` in .wonderpressrc (unless
+  the project already pins one). Commit it: any other CLI version warns when
+  run in this project.
+
   --namespace is written into page content as <namespace>/<slug>. Change it
   later and existing blocks become unrecognized. Pin it at init; it is stored
   in .wonderpressrc and does not drift.

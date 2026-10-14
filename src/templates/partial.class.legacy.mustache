@@ -1,0 +1,67 @@
+<?php
+/**
+ * An {{ class_name }} partial class.
+ *
+ * GENERATED FILE — do not edit property definitions here.
+ * Source of truth: {{{ manifest_rel_path }}}
+ * Regenerate: {{{ sync_command }}}
+ *
+ * Edit the view template for markup. Keep custom PHP in helpers, not this class.
+ *
+ * @package Wonderpress Theme
+ * @license GPL-2.0-or-later
+ */
+
+namespace Wonderpress\Partials;
+
+use Wonderpress_Core\Partials\Abstract_Partial;
+
+defined( 'ABSPATH' ) || exit;
+
+// The base class ships with the wndrfl/wonderpress-core package; without it
+// there is nothing to extend. Returning here leaves the class undefined,
+// which surfaces at the point of use — where a caller can handle it — rather
+// than fataling the whole request at autoload time on `extends`.
+if ( ! class_exists( 'Wonderpress_Core\Partials\Abstract_Partial' ) ) {
+	return;
+}
+
+/**
+ * {{ class_name }}
+ * Wonderpress\Partials\{{ class_name }}
+ */
+class {{ class_name }} extends Abstract_Partial {
+	{{# is_acf_compatible }}
+
+	/**
+	 * Whether this partial accepts an ACF parameter for easy hydration.
+	 *
+	 * @var Boolean $acf_compatible
+	 */
+	protected $acf_compatible = true;
+	{{/ is_acf_compatible }}
+	{{# has_partial_template }}
+
+	/**
+	 * A relative path to a partial template to use as the view for this partial.
+	 *
+	 * @var String|Boolean $partial_template
+	 */
+	protected $partial_template = '{{{ partial_template_path }}}';
+	{{/ has_partial_template }}
+
+	/**
+	 * A definition of all available properties.
+	 *
+	 * @var Array $properties
+	 */
+	protected static $properties = array(
+		{{# properties }}
+		'{{name}}'{{arrow_pad}}=> array(
+			'description' => '{{description}}',
+			'format'      => '{{format}}',
+			'required'    => {{required}},
+		),
+		{{/ properties }}
+	);
+}

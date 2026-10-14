@@ -100,7 +100,9 @@ export const handlers = {
 		}
 		const results = manifests.map((manifest) => checkPartialDrift(manifest, themeDir));
 		const ok = results.every((r) => r.ok);
-		return jsonResult({ ok, results });
+		// `partials` (slug, state, changes) is the contract, the same shape as
+		// `partial check-drift --format json`; `results` stays for older callers.
+		return jsonResult({ ok, partials: results.map(partial.driftSummary), results });
 	},
 
 	async lint_theme(input = {}) {
@@ -127,7 +129,7 @@ export const handlers = {
 			const params = partial.paramsFromJson(spec);
 			partial.validateParams(params, themeDir);
 			params.namespace = partial.resolveNamespace(themeDir);
-			await partial.writePartial(params, themeDir);
+			await partial.writePartial(params, themeDir, { force: input.force === true });
 			const { writeAgentFiles } = await import('./agents.js');
 			writeAgentFiles({ root: process.cwd(), themeDir });
 			return jsonResult({
@@ -136,7 +138,9 @@ export const handlers = {
 				slug: classNameToSlug(params.class_name),
 			});
 		} catch (err) {
-			return jsonError(err.message);
+			// A re-create refused over a conflict (or a fence refusal) keeps its
+			// code + hint, the same as partial_sync.
+			return jsonError(err.message, err.code ? { code: err.code, hint: err.hint } : {});
 		}
 	},
 
@@ -146,15 +150,33 @@ export const handlers = {
 			return jsonError('Could not resolve the theme directory');
 		}
 		const dryRun = input.dryRun === true;
+		const force = input.force === true;
 		const syncAll = input.all === true || !input.name;
 		try {
 			if (syncAll) {
 				const manifests = partial.readManifests(themeDir);
 				const plans = [];
+				const synced = [];
+				const skipped = [];
 				for (const manifest of manifests) {
-					const result = partial.syncPartialFromManifest(manifest, themeDir, { dryRun });
+					let result;
+					try {
+						result = partial.syncPartialFromManifest(manifest, themeDir, { dryRun, force });
+					} catch (err) {
+						// Same as the CLI's --all: a conflicted partial is skipped,
+						// not allowed to abort the rest.
+						// A lock-less class the writer refuses (FenceError) is
+						// skipped the same way, under its own code.
+						if (err instanceof partial.SyncConflictError || err instanceof partial.FenceError) {
+							skipped.push({ slug: manifest.slug, code: err.code, message: err.message, changes: err.changes });
+							continue;
+						}
+						throw err;
+					}
 					if (dryRun && result && result.slug) {
 						plans.push(result);
+					} else if (!dryRun) {
+						synced.push(manifest.slug);
 					}
 				}
 				if (!dryRun) {
@@ -164,7 +186,8 @@ export const handlers = {
 				return jsonResult({
 					ok: true,
 					dryRun,
-					synced: dryRun ? undefined : manifests.map((m) => m.slug),
+					synced: dryRun ? undefined : synced,
+					skipped: dryRun ? undefined : skipped,
 					plans: dryRun ? plans : undefined,
 				});
 			}
@@ -172,14 +195,16 @@ export const handlers = {
 			if (!manifest) {
 				return jsonError(`No partial manifest for "${input.name}"`);
 			}
-			const result = partial.syncPartialFromManifest(manifest, themeDir, { dryRun });
+			const result = partial.syncPartialFromManifest(manifest, themeDir, { dryRun, force });
 			if (!dryRun) {
 				const { writeAgentFiles } = await import('./agents.js');
 				writeAgentFiles({ root: process.cwd(), themeDir });
 			}
 			return jsonResult({ ok: true, dryRun, plan: dryRun ? result : undefined, synced: dryRun ? undefined : [manifest.slug] });
 		} catch (err) {
-			return jsonError(err.message);
+			// A fence refusal carries a code + hint (e.g. class_unfenced, re-run
+			// with force) so an agent can tell it apart from a broken manifest.
+			return jsonError(err.message, err.code ? { code: err.code, hint: err.hint } : {});
 		}
 	},
 
@@ -191,7 +216,16 @@ export const handlers = {
 		if (!input.name) {
 			return jsonError('name is required');
 		}
-		if (!block.addBlock(themeDir, input.name)) {
+		let added;
+		try {
+			added = block.addBlock(themeDir, input.name, { force: input.force === true });
+		} catch (err) {
+			if (!(err instanceof partial.SyncConflictError)) {
+				throw err;
+			}
+			return jsonError(err.message, { code: err.code, hint: err.hint });
+		}
+		if (!added) {
 			return jsonError(`Could not wrap "${input.name}" in a block`);
 		}
 		const { writeAgentFiles } = await import('./agents.js');
@@ -319,7 +353,7 @@ export function createWonderpressMcpServer() {
 	}, (args) => handlers.partial_get(args));
 
 	server.registerTool('partial_check_drift', {
-		description: 'Fail when class or block.json drifted from the manifest.',
+		description: 'Report each partial\'s sync state against its sync lock: partials[] of { slug, state: clean | pending | conflict, changes[] { artifact: manifest | class | block, region: fence | file | null, kind, state, message } }. pending = the manifest changed (or no lock yet) and partial_sync is safe; conflict = generated output (the class\'s fenced region or block.json) was edited by hand, and partial_sync refuses it unless force is true. ok is false on conflict or when generated files no longer match the manifest.',
 		inputSchema: { ...locShape, slug: z.string().optional() },
 	}, (args) => handlers.partial_check_drift(args));
 
@@ -332,23 +366,32 @@ export function createWonderpressMcpServer() {
 	}, (args) => handlers.lint_theme(args));
 
 	server.registerTool('partial_create', {
-		description: 'Create a partial from a JSON spec (same as CLI --json).',
-		inputSchema: { ...locShape, spec: z.unknown() },
+		description: 'Create a partial from a JSON spec (same as CLI --json). Re-creating an existing partial that is in conflict (hand edits inside the class fence or in block.json since the last sync) is refused with code "conflict" unless force is true.',
+		inputSchema: {
+			...locShape,
+			spec: z.unknown(),
+			force: z.boolean().optional().describe('Overwrite hand edits in the generated output of an existing partial (CLI --force).'),
+		},
 	}, (args) => handlers.partial_create(args));
 
 	server.registerTool('partial_sync', {
-		description: 'Regenerate class and block.json from manifests.',
+		description: 'Regenerate class and block.json from manifests and record the sync lock. Only the class region between // <wonderpress:generated> markers is rewritten; custom PHP below the closing marker survives. A partial in conflict (hand edits inside the fence or in block.json since the last sync; see partial_check_drift) is refused with code "conflict" unless force is true; with all, conflicted partials are skipped and listed in skipped[]. A legacy class without markers that was hand-edited is refused unless force is true.',
 		inputSchema: {
 			...locShape,
 			name: z.string().optional(),
 			all: z.boolean().optional(),
 			dryRun: z.boolean().optional(),
+			force: z.boolean().optional().describe('Override refusals (CLI --force): overwrite hand edits in the fenced region or block.json, and rewrite a whole class file that has no or malformed markers. Code outside an intact fence is still kept.'),
 		},
 	}, (args) => handlers.partial_sync(args));
 
 	server.registerTool('block_create', {
-		description: 'Wrap an existing partial in a Gutenberg block.',
-		inputSchema: { ...locShape, name: z.string() },
+		description: 'Wrap an existing partial in a Gutenberg block. If block.json was edited by hand since the last sync, it is refused with code "conflict" unless force is true.',
+		inputSchema: {
+			...locShape,
+			name: z.string(),
+			force: z.boolean().optional().describe('Overwrite a hand-edited block.json (CLI --force).'),
+		},
 	}, (args) => handlers.block_create(args));
 
 	server.registerTool('partial_add_js', {

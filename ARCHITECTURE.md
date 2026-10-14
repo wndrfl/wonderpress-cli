@@ -229,3 +229,230 @@ The `@wndrfl/static-kit-cli` version range in [`package.json`](package.json) is
 the single point of coordination between the two projects. A caret range is
 intentional — these are first-party packages released in lockstep. Pin an exact
 version only if you need to freeze against a specific Static Kit layout.
+
+## Fence contract
+
+A generated partial class has two owners, separated by marker lines:
+
+```php
+class Hero extends Abstract_Partial {
+
+	// <wonderpress:generated>
+	protected $acf_compatible = true;          // when acf_compatible
+	protected $partial_template = './partials/hero.php';
+	protected static $properties = array( /* … from the manifest … */ );
+	// </wonderpress:generated>
+
+	public function variant_class() {          // yours: survives every sync
+		return 'hero--wide';
+	}
+}
+```
+
+- **Inside the fence is machine-owned.** `partial sync` rewrites the region
+  between `// <wonderpress:generated>` and `// </wonderpress:generated>` from
+  the manifest every time. Editing it is drift; edit the manifest and re-sync.
+- **Everything outside the fence is the user's, byte for byte** — the header
+  docblock, `namespace`/`use` lines, the class declaration, and any methods,
+  constants, or overrides added inside the class below the closing marker. That
+  is the sanctioned home for custom PHP on a partial. Sync splices only the
+  region; a CRLF file keeps CRLF, including in the regenerated region.
+- **block.json stays wholly machine-owned** (no fences).
+
+One renderer ([`src/partial-class.js`](src/partial-class.js)) serves both the
+writer (`writePartialClass` in [`src/partial.js`](src/partial.js)) and drift
+([`src/partial-drift.js`](src/partial-drift.js)), so they can never disagree
+about what sync would write. The class path comes from `manifest.artifacts.class`
+(falling back to `src/partials/class-<slug>.php`). Every writer that rewrites
+the manifest (`partial create`, `partial sync`, `block create`, `partial add-js`)
+keeps a recorded path (`recordedClassRelPath`), so none re-points the class at
+the default location and leaves a duplicate class beside the user's file.
+
+What a class write does to an existing file:
+
+| On disk | `partial sync` | `--force` |
+|---|---|---|
+| no file | write the full fenced render | same |
+| fenced file | replace only the fenced region | same (force only overrides a conflict; see Sync lock) |
+| unfenced, pristine legacy output | rewrite with fences, silently | same |
+| unfenced, hand-edited | **refuse** (`class_unfenced`), nothing written | rewrite the whole file |
+| malformed markers | **refuse** (`class_fence`), nothing written | rewrite the whole file |
+
+"Pristine legacy" means the file is exactly what the pre-fence template
+(`src/templates/partial.class.legacy.mustache`, frozen) produced for *some*
+properties: the generated values are read back out of the file and re-rendered,
+so a file synced from an older manifest still migrates, while any hand-written
+line fails the comparison. Refusals happen before block.json or the manifest is
+touched, and `--format json` reports them as `error.code` `class_unfenced` /
+`class_fence` with a `--force` hint (MCP `partial_sync` mirrors this and takes
+`force: true`). `partial sync --dry-run` reports each plan's `classAction`
+(`create | update | unchanged | migrate | force | refuse`).
+
+Drift (`partial check-drift`, `lint`): a fenced class is compared region to
+region, so edits outside the fence are never drift; an unfenced legacy class
+keeps the whole-file comparison against the legacy render. Malformed markers
+report `class_drift`. Checksums and the `clean | pending | conflict` states
+build on this contract separately.
+
+## Sync lock and drift states
+
+`partial sync` (and `partial create`, which is a partial's first sync) records
+what it wrote in a per-partial lock, committed with the theme:
+
+```
+.wonderpress/lock/partials/<slug>.json
+{
+  "manifest":   "<sha256 of the manifest file as sync left it>",
+  "classFence": "<sha256 of the class's fenced region as written>",
+  "block":      "<sha256 of block.json as written>",   // only when the partial is a block
+  "cliVersion": "<CLI version that wrote the lock>"
+}
+```
+
+- **One file per partial, outside the manifest.** Two branches that touch
+  different partials never conflict on a lock, and the hand-edited manifest does
+  not churn when a hash moves. Commit the lock directory; it is the "last sync"
+  leg of the three-way comparison, and a teammate without it sees `pending`.
+- **Hashes are of exact content**, with one exception: CRLF counts as LF, so a
+  Windows autocrlf checkout of committed files is not mistaken for a hand edit.
+  The class hash covers only the fenced region (markers included) as
+  `extractFencedRegion()` returns it; everything outside the fence may change
+  freely. Code: [`src/partial-lock.js`](src/partial-lock.js).
+- The lock is written last, after every artifact is on disk. `partial remove`
+  deletes it. `block create` and `add-js` rewrite the manifest without writing a
+  lock, so the partial reads `pending` until the next sync.
+
+`checkPartialDrift()` ([`src/partial-drift.js`](src/partial-drift.js)) compares
+disk, manifest, and lock, and reports one state per partial with the changes
+behind it:
+
+| State | Meaning | Sync |
+|---|---|---|
+| `clean` | manifest, generated files, and lock agree | nothing to do |
+| `pending` | the manifest changed since the last sync, a generated file is missing or unrecorded, the generator changed (`stale`), or there is no lock yet | safe; applies it |
+| `conflict` | the class's fenced region or block.json changed since the last sync (hand edit inside machine-owned output) | **refused** unless `--force` |
+
+Conflict wins when both apply. A partial with **no lock** (legacy, or created by
+an older CLI) is always `pending`, never `clean`, and its change carries the
+binary comparison ("generated files match / differ from the manifest"); the
+first sync writes the lock. A legacy unfenced class that is still pristine
+generator output is `pending` (`legacy`): sync migrates it. Each change is
+`{ artifact: manifest | class | block, region: fence | file | null, kind, state, message }`;
+kinds are `edited`, `missing`, `unrecorded`, `stale`, `unfenced`, `malformed`,
+`legacy`, `no_lock`, `lock_invalid`, `invalid`.
+
+Where it surfaces:
+
+- `partial check-drift --format json` → `data.partials[]` of
+  `{ slug, state, changes }` (plus the older `data.results[]`, which keeps the
+  binary `ok`/`issues`). MCP `partial_check_drift` returns the same `partials`.
+  Human output is silent for clean partials and one line for every other.
+- **Exit codes and `ok`.** A partial is not `ok` (exit 1, `error.code` `drift`,
+  or `conflict` when any partial is in conflict) when it is in conflict or its
+  generated files no longer match the manifest, which is when drift has always
+  failed. A pending partial whose files still match (no lock yet, a reformatted
+  manifest) is reported but passes, so upgrading the CLI does not fail CI on
+  every lock-less partial.
+- `lint` uses the same split: conflict and out-of-step pending are errors
+  (fail lint); pending with matching files is a warning. `data.drift` gains
+  `states` (counts) and `partials`.
+- `partial sync <Name>` refuses a partial in conflict before writing anything
+  (`error.code` `conflict`, naming the partial and artifact/region; the hint
+  says resolve in the IDE or use `--force`). A class that lost its markers or
+  has broken ones since the last sync (`unfenced`, `malformed`) is a conflict
+  too, refused with code `conflict` and the class writer's recovery advice
+  appended. Without a lock, the writer's own refusals stand (`class_unfenced`,
+  `class_fence`). `sync --dry-run` plans carry `state`, `changes`, and
+  `blocked`. `sync --all` (and MCP `partial_sync` with `all`) skips every
+  refused partial (conflicts and lock-less fence refusals) with a warning and
+  reports it in `data.skipped[]` (`{ slug, code, ... }`) rather than aborting
+  the run.
+- **Every writer of generated output honours a conflict, not just sync.**
+  Re-running `partial create` for an existing partial regenerates its class
+  region and block.json and re-records the lock, and `block create` on a
+  partial that is already a block regenerates block.json; either would erase a
+  hand edit and leave the partial reading `clean`. Both refuse a conflict the
+  same way (code `conflict`, hint naming their own `--force`); `block create`
+  only checks block.json, the one file it rewrites. MCP `partial_create` and
+  `block_create` take `force` for the same override. The shared check is
+  `assertNoConflict()` in [`src/partial.js`](src/partial.js).
+- **`--force` overrides refusals; it does not widen the write.** Forcing past a
+  conflict on an intact fence still replaces only the region and keeps every
+  byte outside it. Only a class with no or malformed markers is rewritten
+  whole.
+
+## App-facing commands and the version pin
+
+The desktop app drives the CLI through `wonderpress mcp` and through one-shot
+commands run with `--format json`, reading exactly one `{ ok, data, error }`
+envelope off stdout. These commands exist so that contract covers the
+environment lifecycle, prerequisites, and the manifest schema, and so a project
+can say which CLI it was built with.
+
+### `server` in JSON
+
+`server start|stop|status --format json` all return
+`data: { backend, detached, running, url, adminUrl, port, pid }`.
+
+- **status** asks the backend. wp-env answers with `wp-env status --json`
+  (Docker's own view, including the real port); when that command is missing
+  (it arrived after 11.12) or there is no wp-env binary, the configured port is
+  probed — and a probe can only prove a negative. Nothing answering is
+  `running: false`; something answering is `running: null`, because it is as
+  likely another project's wp-env (the usual 8888 conflict) as this one. The host's `wp server` is someone else's foreground job, so status
+  connects to its port from Node ([`src/env/probe.js`](src/env/probe.js)). Never
+  `lsof`/`netstat`: they do not exist on Windows.
+- **start** on wp-env prints the envelope after `wp-env start` returns. On the
+  host, `wp server` blocks, so JSON mode spawns it with its stdout and stderr
+  wired to the CLI's stderr, waits until the port answers, prints the envelope
+  (with the child's `pid`), and keeps serving. stdout carries the envelope and
+  nothing else; a server that dies before it is ready is an `ok: false`
+  envelope instead. Human mode is unchanged (`execSync('wp server')`).
+  `wp server` is WP-CLI running `php -S` as its own child, and the grandchild
+  holds the port, so JSON mode spawns it as the leader of a new process group
+  (POSIX), forwards SIGINT/SIGTERM/SIGHUP to the group, and sweeps the group
+  whenever the leader exits — signalling only the CLI or only the `wp` pid used
+  to orphan a still-listening `php -S`. The reported `pid` is the group id. A
+  server that ends after the envelope went out exits the CLI 0 if it was asked
+  to stop (a forwarded signal, or a stop signal sent to it directly) and 1,
+  with a line on stderr, if it crashed — the exit code is the only channel a
+  supervisor has left by then.
+- **stop** on the host cannot stop anything — it reports the probed state
+  rather than claiming success, with a note on stderr.
+- An unknown subcommand is an error. It used to fall through to start.
+
+### `doctor`
+
+[`src/doctor.js`](src/doctor.js) owns every prerequisite check; each backend's
+`preflight()` is `doctor.preflight(<backend>)`, and `init` still calls
+`backend.preflight()`, so a failed init and `wonderpress doctor` report the
+same things in the same words (a check's `hint` is the message init has always
+printed). A check is `{ check, label, ok, backend, platform, hint, detail }`;
+`backend`/`platform` say where it applies. Scope: `--env`/`WONDERPRESS_ENV`,
+else the project's backend, else every backend. The wp-env port check is
+doctor-only (preflight runs before `.wp-env.json` exists; provision checks the
+port itself with the same message) and passes when the port is held by the
+project's own running environment — confirmed by wp-env, not inferred from
+something answering on the port. Composer is checked for both backends (it
+installs the theme's packages on the host either way); before it was, a
+missing Composer surfaced mid-init, after the clone and npm install. On Windows the host backend is a single
+failing `host-platform` check pointing at wp-env, and every-backend mode skips
+the host there.
+
+### `manifest schema`
+
+`manifest schema [partial|template]` prints `buildPartialManifestSchema()` /
+`buildPageTemplateManifestSchema()` from
+[`src/manifest-schema.js`](src/manifest-schema.js) — both as
+`{ partial, template }` when no kind is given. Consumers validate against the
+schema of the CLI version the project pins instead of carrying a copy.
+
+### The `cliVersion` pin
+
+`init` writes `"cliVersion": "<running version>"` into `.wonderpressrc` when the
+project has no pin yet; an existing pin is never bumped silently. `cli.js`
+resolves the project root once before dispatch and, when the pin differs from
+the running version, writes one warning to **stderr** — in every mode, since
+stdout belongs to the JSON envelope or the MCP protocol. No pin, or no project,
+means no warning. `version --format json` carries
+`cliVersionMismatch: { pinned, current } | null`.

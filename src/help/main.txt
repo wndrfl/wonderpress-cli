@@ -12,11 +12,12 @@ GLOBAL OPTIONS
 
 ENVIRONMENT
   init          Build a new environment: WordPress, the theme, and Static Kit
-  server        Start (or `server stop`) the local development environment
+  server        Start, stop, or check (`server status`) the local environment
   static        Compile (or `--watch`) the theme's Static Kit assets
   destroy       Tear the environment down, keeping the theme and its files
   lint          Run phpcs, partial drift, and page-template checks
   acf           Install ACF or ACF PRO from the official distribution
+  doctor        Check prerequisites (WP-CLI, Docker) for this project's backend
   version       Print the installed version
   agents        Write AGENTS.md from conventions and manifests
   mcp           MCP stdio server (same operations, agent client)
@@ -26,6 +27,7 @@ AUTHORING
   block         Editor wrappers that expose a partial in Gutenberg
   template      Page templates — create, list, validate, and remove
   readme        Generate a project README
+  manifest      Print the manifest JSON Schemas (`manifest schema`)
 
 Run `wonderpress <command> help` for detail. Start with
 `wonderpress partial help` if you are new; almost everything begins there.
