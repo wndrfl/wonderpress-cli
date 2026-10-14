@@ -1192,6 +1192,11 @@ export async function sync(args) {
 				// the rest of the theme hostage: skip it, say so, carry on.
 				if (err instanceof SyncConflictError) {
 					log.warn(`Skipped ${manifest.slug}: ${err.message}`);
+					// log.* is silent under --format json; a skip is a warning the
+					// caller should still see, and stdout belongs to the envelope.
+					if (format.isJson()) {
+						process.stderr.write(`warning: Skipped ${manifest.slug}: ${err.message}\n`);
+					}
 					skipped.push({ slug: manifest.slug, code: err.code, changes: err.changes });
 					continue;
 				}
