@@ -1,7 +1,13 @@
 import sh from 'shelljs';
-import { execSync } from 'child_process';
+import { execSync, spawn } from 'child_process';
+import * as doctor from '../doctor.js';
 import * as log from '../log.js';
 import { buildWpCliCommand, toResult } from './command.js';
+import { isPortListening, urlTarget } from './probe.js';
+
+// How long a JSON-mode start waits for `wp server` to accept connections
+// before giving up on it.
+const READY_TIMEOUT_MS = 15000;
 
 /**
  * The host environment backend.
@@ -56,18 +62,10 @@ export function create() {
 
 		/**
 		 * WP-CLI does everything here, so its absence is fatal before we write
-		 * anything to disk.
+		 * anything to disk. The check itself is doctor's; see src/doctor.js.
 		 **/
 		async preflight() {
-
-			if (!sh.which('wp')) {
-				return {
-					ok: false,
-					errors: [`Wonderpress leans heavily on the WP CLI. Please visit https://wp-cli.org/ and follow installation instructions before trying again.`],
-				};
-			}
-
-			return { ok: true, errors: [] };
+			return doctor.preflight('host');
 		},
 
 		/**
@@ -118,8 +116,18 @@ export function create() {
 
 		/**
 		 * Serve with `wp server`. Blocks until Ctrl-C — it does not return.
+		 *
+		 * With `opts.onReady` (how `server start --format json` calls it) the
+		 * child's output goes to stderr instead of inheriting stdout, and
+		 * onReady({ pid }) fires once the port accepts connections — so the JSON
+		 * envelope is printed, alone, before the long wait for Ctrl-C begins. If
+		 * the server dies before it is ready, the result says so instead.
 		 **/
-		async start() {
+		async start(opts = {}) {
+
+			if (typeof opts.onReady === 'function') {
+				return startObserved(this.siteUrl(), opts.onReady);
+			}
 
 			log.info('Starting development server...');
 
@@ -128,6 +136,23 @@ export function create() {
 			});
 
 			return { url: null, detached: false };
+		},
+
+		/**
+		 * Is `wp server` up? It runs in someone else's foreground, so the only
+		 * way to know from here is to try connecting to where it would listen.
+		 * The pid is not knowable from another process without `lsof`, which is
+		 * exactly what this avoids.
+		 **/
+		async status() {
+			const url = this.siteUrl();
+			const target = urlTarget(url);
+			return {
+				url,
+				port: target ? target.port : null,
+				running: target ? await isPortListening(target.port, target.host) : null,
+				pid: null,
+			};
 		},
 
 		/**
@@ -161,4 +186,68 @@ export function create() {
 			return { ok: true, errors: [] };
 		},
 	};
+}
+
+/**
+ * `wp server` as a child we can watch, for JSON mode.
+ *
+ * stdout of the child is wired to OUR stderr (fd 2): the JSON envelope must be
+ * the only thing on stdout. The terminal stays attached otherwise, so Ctrl-C
+ * still reaches the child the way it does in human mode.
+ **/
+async function startObserved(url, onReady) {
+
+	const target = urlTarget(url) || { host: '127.0.0.1', port: 8080 };
+
+	// Readiness is "the port answers", so a port that already answers would
+	// make a server that is about to fail look ready. Refuse up front.
+	if (await isPortListening(target.port, target.host)) {
+		return { ok: false, url, detached: false, pid: null, errors: [`Something is already listening on port ${target.port}. Is the server already running? Check with: wonderpress server status`] };
+	}
+
+	return new Promise((resolve) => {
+
+		// `shell` on Windows only, where `wp` is a .bat shim spawn cannot run
+		// directly. The host backend is unsupported there, but failing with a
+		// clear message beats ENOENT.
+		const child = spawn('wp', ['server'], {
+			stdio: ['inherit', 2, 2],
+			shell: process.platform === 'win32',
+		});
+
+		let ready = false;
+		let exited = false;
+
+		child.once('error', (error) => {
+			exited = true;
+			resolve({ ok: false, url, detached: false, pid: null, errors: [`Could not start wp server: ${error.message}`] });
+		});
+
+		child.once('exit', (code, signal) => {
+			exited = true;
+			if (!ready) {
+				resolve({ ok: false, url, detached: false, pid: child.pid ?? null, errors: [`wp server exited before it was ready (${signal || `code ${code}`}).`] });
+				return;
+			}
+			resolve({ ok: true, url, detached: false, pid: child.pid ?? null, exitCode: code, signal });
+		});
+
+		const deadline = Date.now() + READY_TIMEOUT_MS;
+		const poll = async () => {
+			if (exited) {
+				return;
+			}
+			if (await isPortListening(target.port, target.host, 250)) {
+				ready = true;
+				onReady({ url, port: target.port, pid: child.pid ?? null });
+				return;
+			}
+			if (Date.now() > deadline) {
+				child.kill();
+				return;
+			}
+			setTimeout(poll, 200);
+		};
+		poll();
+	});
 }
