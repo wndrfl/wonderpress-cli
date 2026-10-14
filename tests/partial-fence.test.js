@@ -36,6 +36,10 @@ function tmpTheme() {
 
 const MANIFEST = '.wonderpress/manifest/partials/hero.json';
 const CLASS = 'src/partials/class-hero.php';
+// Create writes a sync lock; a lock-less partial is the legacy case (an
+// older CLI wrote it), where the writer's fence refusal stands on its own.
+// With a lock the same file is a sync conflict (see partial-lock.test.js).
+const LOCK = '.wonderpress/lock/partials/hero.json';
 
 const USER_METHOD = `
 	/**
@@ -182,6 +186,7 @@ test('a hand-edited legacy class is refused without --force and rewritten with i
 	const dir = tmpTheme();
 	try {
 		const manifest = await createHero(dir);
+		fs.removeSync(path.join(dir, LOCK));
 		const classFile = path.join(dir, CLASS);
 		const legacy = renderLegacyPartialClassSource(heroParams()).replace(/\n\}\n$/, `\n${USER_METHOD}}\n`);
 		fs.writeFileSync(classFile, legacy);
@@ -359,6 +364,7 @@ test('CLI: partial sync refuses a hand-edited legacy class with a JSON error, --
 		fs.ensureDirSync(path.join(themeDir, 'src/partials'));
 		fs.ensureDirSync(path.join(themeDir, 'partials'));
 		run(['partial', 'create', '--name', 'Hero', '--prop', 'title:string:required', '--no-style']);
+		fs.removeSync(path.join(themeDir, LOCK));
 		const classFile = path.join(themeDir, CLASS);
 		fs.writeFileSync(classFile, renderLegacyPartialClassSource(heroParams()).replace(/\n\}\n$/, `\n${USER_METHOD}}\n`));
 
@@ -391,6 +397,7 @@ test('MCP: partial_sync refuses with a code and accepts force', async () => {
 	try {
 		process.chdir(root);
 		await createHero(themeDir);
+		fs.removeSync(path.join(themeDir, LOCK));
 		const classFile = path.join(themeDir, CLASS);
 		fs.writeFileSync(classFile, renderLegacyPartialClassSource(heroParams()).replace(/\n\}\n$/, `\n${USER_METHOD}}\n`));
 

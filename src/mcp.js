@@ -129,7 +129,7 @@ export const handlers = {
 			const params = partial.paramsFromJson(spec);
 			partial.validateParams(params, themeDir);
 			params.namespace = partial.resolveNamespace(themeDir);
-			await partial.writePartial(params, themeDir);
+			await partial.writePartial(params, themeDir, { force: input.force === true });
 			const { writeAgentFiles } = await import('./agents.js');
 			writeAgentFiles({ root: process.cwd(), themeDir });
 			return jsonResult({
@@ -138,7 +138,9 @@ export const handlers = {
 				slug: classNameToSlug(params.class_name),
 			});
 		} catch (err) {
-			return jsonError(err.message);
+			// A re-create refused over a conflict (or a fence refusal) keeps its
+			// code + hint, the same as partial_sync.
+			return jsonError(err.message, err.code ? { code: err.code, hint: err.hint } : {});
 		}
 	},
 
@@ -163,7 +165,9 @@ export const handlers = {
 					} catch (err) {
 						// Same as the CLI's --all: a conflicted partial is skipped,
 						// not allowed to abort the rest.
-						if (err instanceof partial.SyncConflictError) {
+						// A lock-less class the writer refuses (FenceError) is
+						// skipped the same way, under its own code.
+						if (err instanceof partial.SyncConflictError || err instanceof partial.FenceError) {
 							skipped.push({ slug: manifest.slug, code: err.code, message: err.message, changes: err.changes });
 							continue;
 						}
@@ -212,7 +216,16 @@ export const handlers = {
 		if (!input.name) {
 			return jsonError('name is required');
 		}
-		if (!block.addBlock(themeDir, input.name)) {
+		let added;
+		try {
+			added = block.addBlock(themeDir, input.name, { force: input.force === true });
+		} catch (err) {
+			if (!(err instanceof partial.SyncConflictError)) {
+				throw err;
+			}
+			return jsonError(err.message, { code: err.code, hint: err.hint });
+		}
+		if (!added) {
 			return jsonError(`Could not wrap "${input.name}" in a block`);
 		}
 		const { writeAgentFiles } = await import('./agents.js');
@@ -353,8 +366,12 @@ export function createWonderpressMcpServer() {
 	}, (args) => handlers.lint_theme(args));
 
 	server.registerTool('partial_create', {
-		description: 'Create a partial from a JSON spec (same as CLI --json).',
-		inputSchema: { ...locShape, spec: z.unknown() },
+		description: 'Create a partial from a JSON spec (same as CLI --json). Re-creating an existing partial that is in conflict (hand edits inside the class fence or in block.json since the last sync) is refused with code "conflict" unless force is true.',
+		inputSchema: {
+			...locShape,
+			spec: z.unknown(),
+			force: z.boolean().optional().describe('Overwrite hand edits in the generated output of an existing partial (CLI --force).'),
+		},
 	}, (args) => handlers.partial_create(args));
 
 	server.registerTool('partial_sync', {
@@ -369,8 +386,12 @@ export function createWonderpressMcpServer() {
 	}, (args) => handlers.partial_sync(args));
 
 	server.registerTool('block_create', {
-		description: 'Wrap an existing partial in a Gutenberg block.',
-		inputSchema: { ...locShape, name: z.string() },
+		description: 'Wrap an existing partial in a Gutenberg block. If block.json was edited by hand since the last sync, it is refused with code "conflict" unless force is true.',
+		inputSchema: {
+			...locShape,
+			name: z.string(),
+			force: z.boolean().optional().describe('Overwrite a hand-edited block.json (CLI --force).'),
+		},
 	}, (args) => handlers.block_create(args));
 
 	server.registerTool('partial_add_js', {

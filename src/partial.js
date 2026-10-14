@@ -44,7 +44,7 @@ import {
 	resolveCoreBundledPartialManifest,
 } from './partial-manifests.js';
 import { checkPartialDrift } from './partial-drift.js';
-import { removePartialLock, writePartialLock } from './partial-lock.js';
+import { readPartialLock, removePartialLock, writePartialLock } from './partial-lock.js';
 import {
 	FenceError,
 	FENCE_OPEN,
@@ -73,15 +73,27 @@ export {
  * (code + hint) so every caller reports it the same way.
  */
 export class SyncConflictError extends Error {
-	constructor(slug, changes, className) {
+	/**
+	 * @param {string} slug
+	 * @param {Array<{ state: string, artifact: string, region: string|null, kind: string, message: string }>} changes
+	 * @param {string} className
+	 * @param {{ detail?: string, command?: string }} [options] detail is the
+	 *   writer's own refusal (an unfenced or malformed class), appended because
+	 *   it says exactly how to recover that file; command is the command whose
+	 *   --force overrides the refusal (partial sync unless a create re-run or
+	 *   block create names itself).
+	 */
+	constructor(slug, changes, className, options = {}) {
 		const conflicts = changes.filter((c) => c.state === 'conflict');
 		const what = conflicts
 			.map((c) => (c.artifact === 'class' ? `class ${c.region === 'fence' ? 'generated region' : 'file'} (${c.kind})` : `block.json (${c.kind})`))
 			.join(', ');
-		super(`Refusing to sync ${slug}: hand edits to generated output since the last sync would be overwritten — ${what}. ${conflicts.map((c) => c.message).join(' ')}`);
+		const command = options.command || `wonderpress partial sync ${className}`;
+		const verb = options.command ? 'regenerate' : 'sync';
+		super(`Refusing to ${verb} ${slug}: hand edits to generated output since the last sync would be overwritten — ${what}. ${conflicts.map((c) => c.message).join(' ')}${options.detail ? ` ${options.detail}` : ''}`);
 		this.name = 'SyncConflictError';
 		this.code = 'conflict';
-		this.hint = `Resolve it in your IDE (move custom code below the closing // </wonderpress:generated> line, or put the change in the manifest), then re-run; or overwrite with: wonderpress partial sync ${className} --force`;
+		this.hint = `Resolve it in your IDE (move custom code below the closing // </wonderpress:generated> line, or put the change in the manifest), then re-run; or overwrite with: ${command} --force`;
 		this.slug = slug;
 		this.changes = conflicts;
 	}
@@ -281,10 +293,13 @@ export async function create(args) {
 	try {
 		await writePartial(params, themeDir, { force: args['--force'] === true });
 	} catch (err) {
-		if (!(err instanceof FenceError)) {
+		if (!(err instanceof FenceError) && !(err instanceof SyncConflictError)) {
 			throw err;
 		}
 		log.error(err.message);
+		if (err.hint) {
+			log.info(err.hint);
+		}
 		return format.fail({ code: err.code, message: err.message, hint: err.hint || undefined });
 	}
 	await refreshAgents(themeDir);
@@ -537,6 +552,15 @@ export function writePartialClass(params, themeDir, options = {}) {
 
 export async function writePartial(params, themeDir, options = {}) {
 
+	// Re-running create on an existing partial regenerates its class region
+	// and block.json and then re-records the lock, which would erase hand
+	// edits in that output and leave check-drift reading clean afterwards.
+	// Refuse a partial in conflict, like sync does, unless forced.
+	assertNoConflict(params, themeDir, {
+		force: !!options.force,
+		command: `wonderpress partial create --name ${params.class_name}`,
+	});
+
 	// Throws (before anything else is written) when an existing class file
 	// holds code a rewrite would lose; see writePartialClass.
 	// Re-creating a partial whose manifest points its class elsewhere updates
@@ -618,6 +642,42 @@ export async function writePartial(params, themeDir, options = {}) {
 		// check-drift compares against. No manifest, no lock: there is no
 		// contract to be pending or in conflict with.
 		writePartialLock(readManifest(themeDir, slug), themeDir);
+	}
+}
+
+/**
+ * Throw a SyncConflictError when an existing partial has hand edits in its
+ * machine-owned output since the last sync (see checkPartialDrift). Every
+ * writer that regenerates that output goes through here, so none of them can
+ * overwrite a conflict that sync itself would refuse.
+ *
+ * @param {{ class_name: string }} params
+ * @param {string} themeDir
+ * @param {{ force?: boolean, artifacts?: string[], command?: string }} [options]
+ *   artifacts limits the check to the outputs the caller is about to rewrite
+ *   (block create only touches block.json); command names the caller in the hint.
+ * @throws {SyncConflictError}
+ */
+export function assertNoConflict(params, themeDir, options = {}) {
+	if (options.force) {
+		return;
+	}
+	const slug = classNameToSlug(params.class_name);
+	// No lock, no conflict (a first create, or a legacy partial: pending at
+	// worst). Checked first so a first create never reads, or complains
+	// about, a manifest it is about to write.
+	if (!readPartialLock(themeDir, slug).lock) {
+		return;
+	}
+	const existing = readManifest(themeDir, slug);
+	if (!existing) {
+		return;
+	}
+	const drift = checkPartialDrift(existing, themeDir);
+	const conflicts = drift.changes.filter((c) => c.state === 'conflict'
+		&& (!options.artifacts || options.artifacts.includes(c.artifact)));
+	if (conflicts.length) {
+		throw new SyncConflictError(slug, conflicts, params.class_name, { command: options.command });
 	}
 }
 
@@ -1110,10 +1170,21 @@ export function syncPartialFromManifest(manifest, themeDir, options = {}) {
 		return plan;
 	}
 
-	// Refusals come before any write, so a refused sync touches nothing. The
-	// writer's own refusal (an unfenced hand-edited or malformed class) goes
-	// first: its message says exactly how to recover that file.
-	writePartialClass(params, themeDir, { ...classOptions, dryRun: true });
+	// Refusals come before any write, so a refused sync touches nothing. A
+	// class that lost its markers or has broken ones since the last sync is a
+	// conflict (check-drift says so) and the writer refuses it too; it is
+	// reported as the conflict, carrying the writer's recovery advice, so
+	// `--all` skips it like any other conflict and callers keyed on the
+	// `conflict` code see it. Without a lock (a legacy partial) the writer's
+	// FenceError stands on its own.
+	try {
+		writePartialClass(params, themeDir, { ...classOptions, dryRun: true });
+	} catch (err) {
+		if (blocked && err instanceof FenceError) {
+			throw new SyncConflictError(manifest.slug, drift.changes, params.class_name, { detail: err.message });
+		}
+		throw err;
+	}
 	if (blocked) {
 		throw new SyncConflictError(manifest.slug, drift.changes, params.class_name);
 	}
@@ -1189,8 +1260,10 @@ export async function sync(args) {
 				}
 			} catch (err) {
 				// One partial with hand edits in generated output must not hold
-				// the rest of the theme hostage: skip it, say so, carry on.
-				if (err instanceof SyncConflictError) {
+				// the rest of the theme hostage: skip it, say so, carry on. A
+				// legacy (lock-less) class the writer refuses is the same kind of
+				// hold-up, so it is skipped too, under its own fence code.
+				if (err instanceof SyncConflictError || err instanceof FenceError) {
 					log.warn(`Skipped ${manifest.slug}: ${err.message}`);
 					// log.* is silent under --format json; a skip is a warning the
 					// caller should still see, and stdout belongs to the envelope.
@@ -1209,7 +1282,7 @@ export async function sync(args) {
 		}
 		log.info(`Synced ${synced.length} partial${synced.length === 1 ? '' : 's'}.`);
 		if (skipped.length) {
-			log.warn(`Skipped ${skipped.length} in conflict (${skipped.map((s) => s.slug).join(', ')}). Resolve in your IDE, or: wonderpress partial sync <Name> --force`);
+			log.warn(`Skipped ${skipped.length} that sync refused (${skipped.map((s) => s.slug).join(', ')}). Resolve in your IDE, or: wonderpress partial sync <Name> --force`);
 		}
 		if (!dryRun) {
 			await refreshAgents(themeDir);

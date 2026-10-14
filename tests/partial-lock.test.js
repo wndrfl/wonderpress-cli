@@ -516,3 +516,222 @@ test('MCP: partial_check_drift returns partials with state and changes; partial_
 		fs.removeSync(root);
 	}
 });
+
+// --- refusals the fence writer and other writers share with sync ---------
+
+const unfence = (dir) => write(dir, CLASS, read(dir, CLASS).replace(`\t${FENCE_OPEN}\n`, '').replace(`\t${FENCE_CLOSE}\n`, ''));
+const breakFence = (dir) => write(dir, CLASS, read(dir, CLASS).replace(`\t${FENCE_CLOSE}\n`, ''));
+
+for (const [kind, damage, fenceCode] of [['unfenced', unfence, 'class_unfenced'], ['malformed', breakFence, 'class_fence']]) {
+	test(`a ${kind} class since the last sync is refused as a conflict (code conflict), carrying the fence advice`, withTheme(async (dir) => {
+		const manifest = await createHero(dir);
+		damage(dir);
+		const before = read(dir, CLASS);
+		assert.equal(checkPartialDrift(manifest, dir).changes[0].kind, kind);
+		assert.throws(() => syncPartialFromManifest(manifest, dir), (err) => {
+			assert.ok(err instanceof SyncConflictError, `${err.name}: ${err.message}`);
+			assert.equal(err.code, 'conflict', `not ${fenceCode}`);
+			assert.match(err.message, new RegExp(`class generated region \\(${kind}\\)`));
+			assert.match(err.message, /--force/);
+			return true;
+		});
+		assert.equal(read(dir, CLASS), before, 'nothing written on refusal');
+		syncPartialFromManifest(manifest, dir, { force: true });
+		assert.equal(checkPartialDrift(readManifest(dir), dir).state, 'clean');
+	}));
+}
+
+test('CLI: sync --all skips unfenced and malformed conflicts and lock-less fence refusals instead of aborting', () => {
+	const { root, themeDir, run } = cliEnv();
+	try {
+		// Sorted: alpha (fine) < hero (damaged) < zulu (fine). An abort at hero
+		// would leave zulu unsynced.
+		for (const name of ['Alpha', 'Hero', 'Zulu']) {
+			run(['partial', 'create', '--name', name, '--prop', 'title:string:required', '--no-style']);
+		}
+		const pend = (slug) => {
+			const file = path.join(themeDir, `.wonderpress/manifest/partials/${slug}.json`);
+			const m = JSON.parse(fs.readFileSync(file, 'utf8'));
+			m.properties.push({ name: `dek${m.properties.length}`, type: 'string', required: false, description: '' });
+			fs.writeFileSync(file, JSON.stringify(m, null, 2) + '\n');
+		};
+		const cases = [
+			['unfenced', unfence, 'conflict'],
+			['malformed', breakFence, 'conflict'],
+			// No lock: not a conflict, but the writer still refuses the
+			// hand-edited unfenced file. Same outcome for --all: skip it.
+			['lock-less unfenced', (dir) => { unfence(dir); fs.removeSync(path.join(dir, LOCK)); }, 'class_unfenced'],
+		];
+		for (const [label, damage, code] of cases) {
+			pend('alpha');
+			pend('zulu');
+			damage(themeDir);
+			const drift = oneEnvelope(run(['partial', 'check-drift', '--all', '--format', 'json']));
+			assert.equal(drift.data.partials.find((p) => p.slug === 'hero').state, code === 'conflict' ? 'conflict' : 'pending', label);
+
+			const all = run(['partial', 'sync', '--all', '--format', 'json']);
+			assert.equal(all.status, 0, `${label}: ${all.stdout}${all.stderr}`);
+			const body = oneEnvelope(all);
+			assert.deepEqual(body.data.synced, ['alpha', 'zulu'], label);
+			assert.deepEqual(body.data.skipped.map((s) => [s.slug, s.code]), [['hero', code]], label);
+			assert.match(all.stderr, /Skipped hero/);
+
+			const human = run(['partial', 'sync', '--all']);
+			assert.equal(human.status, 0, `${label} (human): ${human.stdout}${human.stderr}`);
+			assert.match(human.stdout + human.stderr, /Skipped 1 that sync refused \(hero\)/);
+
+			assert.equal(oneEnvelope(run(['partial', 'sync', 'Hero', '--force', '--format', 'json'])).ok, true, label);
+		}
+	} finally {
+		fs.removeSync(root);
+	}
+});
+
+test('MCP: partial_sync with all skips an unfenced conflict instead of failing the run', async () => {
+	const { root, themeDir } = mcpEnv();
+	const cwd = process.cwd();
+	const parse = (r) => JSON.parse(r.content[0].text);
+	try {
+		process.chdir(root);
+		await createHero(themeDir);
+		await writePartial(paramsFromFlags({ '--name': 'Zulu', '--no-style': true }), themeDir);
+		unfence(themeDir);
+		const all = parse(await handlers.partial_sync({ dir: root, theme: 'acme', all: true }));
+		assert.equal(all.ok, true, JSON.stringify(all));
+		assert.deepEqual(all.synced, ['zulu']);
+		assert.deepEqual(all.skipped.map((s) => [s.slug, s.code]), [['hero', 'conflict']]);
+	} finally {
+		process.chdir(cwd);
+		fs.removeSync(root);
+	}
+});
+
+test('block create refuses to overwrite a hand-edited block.json; --force does, and the state is honest', withTheme(async (dir) => {
+	await createHero(dir, { '--block': true });
+	editBlock(dir);
+	const before = read(dir, BLOCK);
+	assert.throws(() => addBlock(dir, 'Hero'), (err) => {
+		assert.ok(err instanceof SyncConflictError);
+		assert.equal(err.code, 'conflict');
+		assert.match(err.message, /block\.json \(edited\)/);
+		assert.match(err.hint, /wonderpress block create Hero --force/);
+		return true;
+	});
+	assert.equal(read(dir, BLOCK), before, 'hand edits kept');
+	assert.equal(checkPartialDrift(readManifest(dir), dir).state, 'conflict', 'still reported, not hidden');
+
+	assert.equal(addBlock(dir, 'Hero', { force: true }), true);
+	assert.notEqual(JSON.parse(read(dir, BLOCK)).title, 'Hand-edited title');
+}));
+
+test('block create ignores a class conflict: it only rewrites block.json', withTheme(async (dir) => {
+	await createHero(dir, { '--block': true });
+	editFence(dir);
+	const classBefore = read(dir, CLASS);
+	assert.equal(addBlock(dir, 'Hero'), true);
+	assert.equal(read(dir, CLASS), classBefore);
+	assert.equal(checkPartialDrift(readManifest(dir), dir).state, 'conflict');
+}));
+
+test('re-running partial create refuses a partial in conflict; --force regenerates it', withTheme(async (dir) => {
+	await createHero(dir, { '--block': true });
+	const flags = { '--name': 'Hero', '--prop': ['title:string:required'], '--no-style': true, '--block': true };
+
+	editBlock(dir);
+	const blockBefore = read(dir, BLOCK);
+	const lockBefore = read(dir, LOCK);
+	await assert.rejects(writePartial(paramsFromFlags(flags), dir), (err) => {
+		assert.ok(err instanceof SyncConflictError);
+		assert.equal(err.code, 'conflict');
+		assert.match(err.message, /block\.json \(edited\)/);
+		assert.match(err.hint, /wonderpress partial create --name Hero --force/);
+		return true;
+	});
+	assert.equal(read(dir, BLOCK), blockBefore, 'block.json untouched');
+	assert.equal(read(dir, LOCK), lockBefore, 'lock not re-recorded over the edit');
+	assert.equal(checkPartialDrift(readManifest(dir), dir).state, 'conflict');
+
+	// A hand edit inside the fence is protected the same way.
+	await writePartial(paramsFromFlags(flags), dir, { force: true });
+	assert.equal(checkPartialDrift(readManifest(dir), dir).state, 'clean');
+	editFence(dir);
+	const classBefore = read(dir, CLASS);
+	await assert.rejects(writePartial(paramsFromFlags(flags), dir), (err) => err.code === 'conflict' && /class generated region \(edited\)/.test(err.message));
+	assert.equal(read(dir, CLASS), classBefore, 'class untouched');
+
+	// Pending (a manifest edit) is not a conflict: re-create proceeds.
+	await writePartial(paramsFromFlags(flags), dir, { force: true });
+	addProp(dir, readManifest(dir), 'dek');
+	await writePartial(paramsFromFlags(flags), dir);
+	assert.equal(checkPartialDrift(readManifest(dir), dir).state, 'clean');
+}));
+
+test('CLI: block create and a partial create re-run refuse a block.json conflict with one JSON envelope', () => {
+	const { root, themeDir, run } = cliEnv();
+	try {
+		run(['partial', 'create', '--name', 'Card', '--prop', 'title:string', '--no-style', '--block']);
+		const blockFile = path.join(themeDir, 'blocks/card/block.json');
+		const handEdit = () => {
+			const b = JSON.parse(fs.readFileSync(blockFile, 'utf8'));
+			b.title = 'Hand title';
+			b.supports = { align: true };
+			fs.writeFileSync(blockFile, JSON.stringify(b, null, 2) + '\n');
+			return fs.readFileSync(blockFile, 'utf8');
+		};
+		const state = () => oneEnvelope(run(['partial', 'check-drift', 'Card', '--format', 'json'])).data.partials[0].state;
+
+		const edited = handEdit();
+		for (const argv of [
+			['block', 'create', '--name', 'Card'],
+			['partial', 'create', '--name', 'Card', '--prop', 'title:string', '--no-style', '--block'],
+		]) {
+			const refused = run([...argv, '--format', 'json']);
+			assert.equal(refused.status, 1, `${argv.join(' ')}: ${refused.stdout}`);
+			const body = oneEnvelope(refused);
+			assert.equal(body.error.code, 'conflict');
+			assert.match(body.error.message, /card/);
+			assert.match(body.error.hint, /--force/);
+			assert.equal(fs.readFileSync(blockFile, 'utf8'), edited, 'hand edits kept');
+			assert.equal(state(), 'conflict');
+		}
+
+		const forced = run(['block', 'create', '--name', 'Card', '--force', '--format', 'json']);
+		assert.equal(forced.status, 0, forced.stderr);
+		assert.notEqual(JSON.parse(fs.readFileSync(blockFile, 'utf8')).title, 'Hand title');
+
+		handEdit();
+		const reforced = run(['partial', 'create', '--name', 'Card', '--prop', 'title:string', '--no-style', '--block', '--force', '--format', 'json']);
+		assert.equal(reforced.status, 0, reforced.stderr);
+		assert.equal(state(), 'clean');
+	} finally {
+		fs.removeSync(root);
+	}
+});
+
+test('MCP: block_create and partial_create refuse a conflict with code "conflict" and accept force', async () => {
+	const { root, themeDir } = mcpEnv();
+	const cwd = process.cwd();
+	const parse = (r) => JSON.parse(r.content[0].text);
+	try {
+		process.chdir(root);
+		await createHero(themeDir, { '--block': true });
+		editBlock(themeDir);
+		const spec = { name: 'Hero', properties: [{ name: 'title', type: 'string', required: true }], block: true, style: false };
+
+		const block = parse(await handlers.block_create({ dir: root, theme: 'acme', name: 'Hero' }));
+		assert.equal(block.ok, false);
+		assert.equal(block.error.code, 'conflict');
+		const created = parse(await handlers.partial_create({ dir: root, theme: 'acme', spec }));
+		assert.equal(created.ok, false);
+		assert.equal(created.error.code, 'conflict');
+		assert.match(read(themeDir, BLOCK), /Hand-edited title/);
+
+		assert.equal(parse(await handlers.block_create({ dir: root, theme: 'acme', name: 'Hero', force: true })).ok, true);
+		editBlock(themeDir);
+		assert.equal(parse(await handlers.partial_create({ dir: root, theme: 'acme', spec, force: true })).ok, true);
+		assert.doesNotMatch(read(themeDir, BLOCK), /Hand-edited title/);
+	} finally {
+		process.chdir(cwd);
+		fs.removeSync(root);
+	}
+});
