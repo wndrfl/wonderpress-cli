@@ -5,7 +5,7 @@ import net from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { spawnSync } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import * as config from '../src/config.js';
 import * as core from '../src/core.js';
 import * as doctor from '../src/doctor.js';
@@ -13,7 +13,7 @@ import * as env from '../src/env/index.js';
 import * as format from '../src/format.js';
 import * as server from '../src/server.js';
 import { isPortListening, urlTarget } from '../src/env/probe.js';
-import { parseWpEnvStatus } from '../src/env/wp-env.js';
+import { create as createWpEnv, parseWpEnvStatus } from '../src/env/wp-env.js';
 import { buildPageTemplateManifestSchema, buildPartialManifestSchema } from '../src/manifest-schema.js';
 import pkg from '../package.json' with { type: 'json' };
 
@@ -328,6 +328,80 @@ test('wp-env status --json is read, and an older wp-env without it falls through
 	assert.equal(parseWpEnvStatus({ code: 0, stdout: JSON.stringify({ status: 'uninitialized' }) }).running, false);
 	assert.equal(parseWpEnvStatus({ code: 1, stdout: '', stderr: 'Unknown command: status' }), null);
 	assert.equal(parseWpEnvStatus({ code: 0, stdout: 'not json' }), null);
+});
+
+/** A wp-env project whose .wp-env.json names `port`, with no wp-env installed. */
+function wpEnvProject(port) {
+	const dir = project({ environment: { backend: 'wp-env' } });
+	fs.writeFileSync(path.join(dir, '.wp-env.json'), JSON.stringify({ port }));
+	return dir;
+}
+
+async function listenOnFreePort() {
+	const listener = net.createServer();
+	await new Promise((resolve) => listener.listen(0, '0.0.0.0', resolve)); // every interface, as Docker publishes
+	return listener;
+}
+
+test('wp-env status without wp-env to ask: a listener it cannot vouch for is unknown, silence is not running', async () => {
+	// The usual 8888 conflict: another project's containers hold the port. A
+	// port probe cannot tell them from ours, so it must not claim either.
+	const listener = await listenOnFreePort();
+	const { port } = listener.address();
+	const dir = wpEnvProject(port);
+	const cwd = process.cwd();
+	const PATH = process.env.PATH;
+	try {
+		process.chdir(dir);
+		process.env.PATH = dir; // no global wp-env, and no node_modules here
+		const backend = createWpEnv();
+		assert.equal((await backend.status()).running, null, 'held by something wp-env did not confirm');
+
+		await new Promise((resolve) => listener.close(resolve));
+		const after = await backend.status();
+		assert.equal(after.running, false, 'nothing answering is a certain no');
+		assert.equal(after.port, port);
+	} finally {
+		process.env.PATH = PATH;
+		process.chdir(cwd);
+		if (listener.listening) listener.close();
+		fs.removeSync(dir);
+	}
+});
+
+test('server status and doctor do not count another process on the port as this project', async () => {
+	const listener = await listenOnFreePort();
+	const { port } = listener.address();
+	const dir = wpEnvProject(port);
+	// Async spawn: the listener lives in this process's event loop, which a
+	// spawnSync would block.
+	const run = (argv) => new Promise((resolve) => {
+		const child = spawn(process.execPath, [BIN, ...argv], { cwd: dir, env: { ...process.env, WONDERPRESS_ENV: '', PATH: dir } });
+		let stdout = '';
+		child.stdout.on('data', (d) => { stdout += d; });
+		child.on('close', (status) => resolve({ stdout, status }));
+	});
+	try {
+		const status = onlyEnvelope((await run(['server', 'status', '--format', 'json'])).stdout);
+		assert.equal(status.ok, true);
+		assert.equal(status.data.running, null);
+		assert.equal(status.data.port, port);
+
+		const doctorRun = onlyEnvelope((await run(['doctor', '--format', 'json'])).stdout);
+		const portCheck = doctorRun.data.checks.find((c) => c.check === 'wp-env-port');
+		assert.equal(portCheck.ok, false, 'a real conflict is a failure, not "this project\'s own environment"');
+		assert.equal(portCheck.hint, doctor.portInUseHint(port));
+		assert.doesNotMatch(portCheck.detail, /own environment/);
+	} finally {
+		await new Promise((resolve) => listener.close(resolve));
+		fs.removeSync(dir);
+	}
+});
+
+test('an own-environment answer of "unknown" does not pass the port check', async () => {
+	const busy = { ...allPresent, isPortFree: async () => false };
+	const report = await doctor.run('wp-env', { platform: 'darwin', port: 8888, deps: busy, ownEnvironmentRunning: async () => null });
+	assert.equal(report.checks.find((c) => c.check === 'wp-env-port').ok, false);
 });
 
 // --- doctor ---

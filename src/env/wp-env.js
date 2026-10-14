@@ -373,6 +373,13 @@ export function create() {
 		 * URL and port. It arrived after 11.12, the oldest version projects pin,
 		 * so when it is missing (or there is no wp-env binary at all) this falls
 		 * back to connecting to the configured port from Node.
+		 *
+		 * That fallback can only ever prove a negative. Nothing answering means
+		 * this environment is not serving; something answering means only that
+		 * SOMETHING holds the port — most often another project's wp-env, the
+		 * usual 8888 conflict. Reporting that as running told the app a
+		 * never-started project was up, and turned doctor's port conflict into a
+		 * pass. So a listener wp-env did not vouch for is `null`: unknown.
 		 **/
 		async status() {
 
@@ -393,7 +400,7 @@ export function create() {
 				}
 			}
 
-			return { ...fallback, running: await isPortListening(port) };
+			return { ...fallback, running: (await isPortListening(port)) ? null : false };
 		},
 
 		/**

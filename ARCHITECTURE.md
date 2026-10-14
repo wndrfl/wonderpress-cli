@@ -246,7 +246,9 @@ can say which CLI it was built with.
 - **status** asks the backend. wp-env answers with `wp-env status --json`
   (Docker's own view, including the real port); when that command is missing
   (it arrived after 11.12) or there is no wp-env binary, the configured port is
-  probed. The host's `wp server` is someone else's foreground job, so status
+  probed — and a probe can only prove a negative. Nothing answering is
+  `running: false`; something answering is `running: null`, because it is as
+  likely another project's wp-env (the usual 8888 conflict) as this one. The host's `wp server` is someone else's foreground job, so status
   connects to its port from Node ([`src/env/probe.js`](src/env/probe.js)). Never
   `lsof`/`netstat`: they do not exist on Windows.
 - **start** on wp-env prints the envelope after `wp-env start` returns. On the

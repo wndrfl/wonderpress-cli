@@ -20,7 +20,9 @@ OPTIONS
   --format json            One { ok, data, error } envelope on stdout. data:
                            { backend, detached, running, url, adminUrl, port,
                            pid }. `running` is true, false, or null when it
-                           could not be told; url/adminUrl/port are where the
+                           could not be told (on wp-env, something holds the
+                           port but wp-env could not confirm it is this
+                           project's); url/adminUrl/port are where the
                            site is served whether or not it is up.
 
   On host, `start --format json` prints the envelope once the site answers,

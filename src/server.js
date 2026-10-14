@@ -283,6 +283,10 @@ export async function status(dir) {
 		reportUrls(data.url);
 	} else if (data.running === false) {
 		log.info(`The ${data.backend} server is not running${data.url ? ` (it serves ${data.url})` : ''}. Start it with: wonderpress server`);
+	} else if (data.port) {
+		// wp-env could not answer, and something holds the port anyway. It may
+		// be this environment; it is as likely another project's.
+		log.warn(`Could not tell whether the ${data.backend} server is running: something is listening on port ${data.port}, but nothing confirmed it is this project's.`);
 	} else {
 		log.warn(`Could not tell whether the ${data.backend} server is running.`);
 	}
