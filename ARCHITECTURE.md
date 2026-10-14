@@ -273,7 +273,7 @@ What a class write does to an existing file:
 | On disk | `partial sync` | `--force` |
 |---|---|---|
 | no file | write the full fenced render | same |
-| fenced file | replace only the fenced region | rewrite the whole file |
+| fenced file | replace only the fenced region | same (force only overrides a conflict; see Sync lock) |
 | unfenced, pristine legacy output | rewrite with fences, silently | same |
 | unfenced, hand-edited | **refuse** (`class_unfenced`), nothing written | rewrite the whole file |
 | malformed markers | **refuse** (`class_fence`), nothing written | rewrite the whole file |
@@ -293,3 +293,77 @@ region, so edits outside the fence are never drift; an unfenced legacy class
 keeps the whole-file comparison against the legacy render. Malformed markers
 report `class_drift`. Checksums and the `clean | pending | conflict` states
 build on this contract separately.
+
+## Sync lock and drift states
+
+`partial sync` (and `partial create`, which is a partial's first sync) records
+what it wrote in a per-partial lock, committed with the theme:
+
+```
+.wonderpress/lock/partials/<slug>.json
+{
+  "manifest":   "<sha256 of the manifest file as sync left it>",
+  "classFence": "<sha256 of the class's fenced region as written>",
+  "block":      "<sha256 of block.json as written>",   // only when the partial is a block
+  "cliVersion": "<CLI version that wrote the lock>"
+}
+```
+
+- **One file per partial, outside the manifest.** Two branches that touch
+  different partials never conflict on a lock, and the hand-edited manifest does
+  not churn when a hash moves. Commit the lock directory; it is the "last sync"
+  leg of the three-way comparison, and a teammate without it sees `pending`.
+- **Hashes are of exact content**, with one exception: CRLF counts as LF, so a
+  Windows autocrlf checkout of committed files is not mistaken for a hand edit.
+  The class hash covers only the fenced region (markers included) as
+  `extractFencedRegion()` returns it; everything outside the fence may change
+  freely. Code: [`src/partial-lock.js`](src/partial-lock.js).
+- The lock is written last, after every artifact is on disk. `partial remove`
+  deletes it. `block create` and `add-js` rewrite the manifest without writing a
+  lock, so the partial reads `pending` until the next sync.
+
+`checkPartialDrift()` ([`src/partial-drift.js`](src/partial-drift.js)) compares
+disk, manifest, and lock, and reports one state per partial with the changes
+behind it:
+
+| State | Meaning | Sync |
+|---|---|---|
+| `clean` | manifest, generated files, and lock agree | nothing to do |
+| `pending` | the manifest changed since the last sync, a generated file is missing or unrecorded, the generator changed (`stale`), or there is no lock yet | safe; applies it |
+| `conflict` | the class's fenced region or block.json changed since the last sync (hand edit inside machine-owned output) | **refused** unless `--force` |
+
+Conflict wins when both apply. A partial with **no lock** (legacy, or created by
+an older CLI) is always `pending`, never `clean`, and its change carries the
+binary comparison ("generated files match / differ from the manifest"); the
+first sync writes the lock. A legacy unfenced class that is still pristine
+generator output is `pending` (`legacy`): sync migrates it. Each change is
+`{ artifact: manifest | class | block, region: fence | file | null, kind, state, message }`;
+kinds are `edited`, `missing`, `unrecorded`, `stale`, `unfenced`, `malformed`,
+`legacy`, `no_lock`, `lock_invalid`, `invalid`.
+
+Where it surfaces:
+
+- `partial check-drift --format json` → `data.partials[]` of
+  `{ slug, state, changes }` (plus the older `data.results[]`, which keeps the
+  binary `ok`/`issues`). MCP `partial_check_drift` returns the same `partials`.
+  Human output is silent for clean partials and one line for every other.
+- **Exit codes and `ok`.** A partial is not `ok` (exit 1, `error.code` `drift`,
+  or `conflict` when any partial is in conflict) when it is in conflict or its
+  generated files no longer match the manifest, which is when drift has always
+  failed. A pending partial whose files still match (no lock yet, a reformatted
+  manifest) is reported but passes, so upgrading the CLI does not fail CI on
+  every lock-less partial.
+- `lint` uses the same split: conflict and out-of-step pending are errors
+  (fail lint); pending with matching files is a warning. `data.drift` gains
+  `states` (counts) and `partials`.
+- `partial sync <Name>` refuses a partial in conflict before writing anything
+  (`error.code` `conflict`, naming the partial and artifact/region; the hint
+  says resolve in the IDE or use `--force`). The class writer's own refusals
+  (`class_unfenced`, `class_fence`) are checked first. `sync --dry-run` plans
+  carry `state`, `changes`, and `blocked`. `sync --all` (and MCP `partial_sync`
+  with `all`) skips conflicted partials with a warning and reports them in
+  `data.skipped[]` rather than aborting the run.
+- **`--force` overrides refusals; it does not widen the write.** Forcing past a
+  conflict on an intact fence still replaces only the region and keeps every
+  byte outside it. Only a class with no or malformed markers is rewritten
+  whole.
