@@ -1,3 +1,4 @@
+import './shell-exec-path.js';
 import arg from 'arg';
 import * as acf from './acf.js';
 import * as agents from './agents.js';

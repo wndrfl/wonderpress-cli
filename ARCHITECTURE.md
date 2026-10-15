@@ -456,3 +456,20 @@ the running version, writes one warning to **stderr** — in every mode, since
 stdout belongs to the JSON envelope or the MCP protocol. No pin, or no project,
 means no warning. `version --format json` carries
 `cliVersionMismatch: { pinned, current } | null`.
+
+### Running on Electron's Node
+
+The desktop app runs the CLI on Electron's bundled Node (`ELECTRON_RUN_AS_NODE=1`),
+not a system `node`. shelljs checks `process.versions.electron` at load and,
+when it is set, leaves `config.execPath` null, so every synchronous `sh.exec()`
+returns `undefined` and anything exec-backed — `lint` (phpcs), doctor's docker
+checks, Composer, the host backend — throws. Under `ELECTRON_RUN_AS_NODE`
+`process.execPath` *is* a working node, so
+[`src/shell-exec-path.js`](src/shell-exec-path.js) sets
+`sh.config.execPath = process.execPath` whenever it is null or Electron is
+detected. It is the first import of `bin/wonderpress.js` and `src/cli.js`. On
+plain Node shelljs has already set the same value, so the module is a no-op
+there; the CLI takes no Electron dependency and has no Electron-only path.
+[`tests/electron-execpath.test.js`](tests/electron-execpath.test.js) fakes the
+Electron signal with a `node -r` preload and pins that `version` and `doctor`
+still answer in JSON.
