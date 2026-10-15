@@ -132,9 +132,9 @@ export function create() {
 			log.info('Starting development server...');
 
 			// Inherited stdio, stdin included: this is the user's foreground job.
-			run('wp', ['server'], { stdio: 'inherit' });
+			const result = run('wp', ['server'], { stdio: 'inherit' });
 
-			return { url: null, detached: false };
+			return foregroundOutcome(result);
 		},
 
 		/**
@@ -329,4 +329,24 @@ export async function startObserved(url, onReady, { command = 'wp', args = ['ser
 		};
 		poll();
 	});
+}
+
+/**
+ * What a foreground `wp server` run amounts to, once it has returned.
+ *
+ * A stop by signal (Ctrl-C) is the normal way out and is success. A missing
+ * `wp` (run() has already printed why) or a non-zero exit — no wp-config, the
+ * port taken — is a failure, and the process exit code must say so: `execSync`
+ * used to throw here, and an argv spawn does not.
+ **/
+export function foregroundOutcome(result) {
+	if (!result || result.signal || result.code === 0) {
+		return { url: null, detached: false };
+	}
+	const reason = result.code === 127
+		? 'WP-CLI (`wp`) was not found on PATH.'
+		: `The development server exited with code ${result.code}.`;
+	log.error(reason);
+	process.exitCode = 1;
+	return { ok: false, errors: [reason], url: null, detached: false };
 }

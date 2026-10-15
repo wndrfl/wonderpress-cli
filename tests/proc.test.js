@@ -109,3 +109,19 @@ test('in --format json, a child\'s output goes to stderr and the envelope owns s
 	assert.equal(result.stdout, '{"ok":true,"data":null,"error":null}\n');
 	assert.match(result.stderr, /composer chatter/);
 });
+
+test('run prints why a program is missing unless silent', () => {
+	// The shell used to print `wp: command not found`; an argv spawn has no
+	// shell, so run() has to say it, or `composer` failing reads as nothing.
+	const src = (file) => JSON.stringify(pathToFileURL(path.join(import.meta.dirname, '..', 'src', file)).href);
+	const script = `
+		import { run } from ${src('proc.js')};
+		const loud = run('wonderpress-no-such-program-xyz', []);
+		const quiet = run('wonderpress-no-such-program-abc', [], { silent: true });
+		process.stdout.write(JSON.stringify([loud.code, quiet.code]));
+	`;
+	const result = spawnSync(process.execPath, ['--input-type=module', '-e', script], { encoding: 'utf8' });
+	assert.equal(result.stdout, '[127,127]');
+	assert.match(result.stderr, /wonderpress-no-such-program-xyz: command not found/);
+	assert.doesNotMatch(result.stderr, /abc/);
+});

@@ -930,3 +930,42 @@ test('no warning when the pin matches, or outside a project', () => {
 		fs.removeSync(outside);
 	}
 });
+
+// --- host start in the foreground: failure has to reach the exit code ---
+
+test('foreground host start exits non-zero, with the reason, when wp is missing', () => {
+	// execSync('wp server') used to throw on failure; an argv spawn does not,
+	// so this pins that the failure is still printed and still exits 1. PATH
+	// is an empty directory, so there is no `wp` to find on any OS.
+	const dir = tmp('fg-start-');
+	const emptyPath = tmp('fg-path-');
+	try {
+		fs.writeJsonSync(path.join(dir, '.wonderpressrc'), { namespace: 'acme' });
+		const result = spawnSync(process.execPath, [BIN, 'server', 'start'], {
+			cwd: dir,
+			encoding: 'utf8',
+			env: { ...process.env, PATH: emptyPath, Path: emptyPath },
+		});
+		assert.equal(result.status, 1, result.stdout + result.stderr);
+		assert.match(result.stderr, /wp: command not found/);
+		assert.match(result.stderr + result.stdout, /WP-CLI \(`wp`\) was not found/);
+	} finally {
+		fs.removeSync(dir);
+		fs.removeSync(emptyPath);
+	}
+});
+
+test('foregroundOutcome: a signal stop is success, a non-zero exit is not', async () => {
+	const { foregroundOutcome } = await import('../src/env/host.js');
+	const before = process.exitCode;
+	try {
+		assert.deepEqual(foregroundOutcome({ code: 1, signal: 'SIGINT' }), { url: null, detached: false });
+		assert.deepEqual(foregroundOutcome({ code: 0, signal: null }), { url: null, detached: false });
+		const failed = foregroundOutcome({ code: 255, signal: null });
+		assert.equal(failed.ok, false);
+		assert.match(failed.errors[0], /exited with code 255/);
+		assert.equal(process.exitCode, 1);
+	} finally {
+		process.exitCode = before;
+	}
+});

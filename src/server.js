@@ -141,6 +141,13 @@ export async function start(dir) {
 
 	const result = await backend.start();
 
+	// A backend that could not start (no `wp`, `wp server` exiting non-zero,
+	// wp-env failing) has said why; the exit code has to agree.
+	if (result && result.ok === false) {
+		process.exitCode = format.EXIT_FAIL;
+		return false;
+	}
+
 	// A detached backend has returned with the site still up, so say where it
 	// is. A foreground one never reaches this line.
 	if (result && result.detached) {

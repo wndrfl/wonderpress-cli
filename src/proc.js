@@ -108,7 +108,13 @@ export function resolveBin(bin, platform = process.platform) {
  * - `input` is written to stdin.
  *
  * A program that cannot be found is `code: 127` with the reason in stderr,
- * rather than a throw: the callers all branch on `code`.
+ * rather than a throw: the callers all branch on `code`. Unless `silent`, that
+ * reason is also printed to stderr, the way the shell used to print
+ * `wp: command not found` before these calls were argv spawns — otherwise a
+ * missing program fails with no word as to why.
+ *
+ * A child ended by a signal (Ctrl-C on a foreground server) has `signal` set,
+ * so a caller can tell a stop from a failure.
  **/
 export function run(bin, args = [], opts = {}) {
 	const platform = opts.platform || process.platform;
@@ -130,14 +136,17 @@ export function run(bin, args = [], opts = {}) {
 	});
 
 	if (result.error) {
-		const stderr = `${bin}: ${result.error.message}`;
-		return { code: result.error.code === 'ENOENT' ? 127 : 1, stdout: '', stderr, toString() { return ''; } };
+		const stderr = `${bin}: ${result.error.code === 'ENOENT' ? 'command not found' : result.error.message}`;
+		if (!opts.silent) {
+			process.stderr.write(`${stderr}\n`);
+		}
+		return { code: result.error.code === 'ENOENT' ? 127 : 1, stdout: '', stderr, signal: null, error: result.error, toString() { return ''; } };
 	}
 
 	const stdout = result.stdout || '';
 	const stderr = result.stderr || '';
 	const code = result.status ?? 1;
-	return { code, stdout, stderr, toString() { return stdout; } };
+	return { code, stdout, stderr, signal: result.signal || null, toString() { return stdout; } };
 }
 
 /**

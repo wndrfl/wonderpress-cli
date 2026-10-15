@@ -497,8 +497,13 @@ run as an **argv array**, never as a string handed to a shell.
 [`src/proc.js`](src/proc.js)'s `run(bin, args, opts)` is the one way to do it:
 it returns shelljs's `{ code, stdout, stderr }` shape (with `toString()` →
 stdout) so converted call sites read results unchanged, reports a missing
-program as `code: 127`, never inherits stdin (MCP's protocol channel), and
-while `--format json` or MCP owns stdout routes the child's stdout to stderr.
+program as `code: 127` (and, unless `silent`, prints `<bin>: command not
+found` to stderr, as the shell used to), never inherits stdin (MCP's protocol
+channel), and while `--format json` or MCP owns stdout routes the child's
+stdout to stderr. `run()` never throws, so a caller that used to rely on
+`execSync` throwing must check `code` itself: the foreground `server start`
+(`foregroundOutcome` in [`src/env/host.js`](src/env/host.js)) treats a signal
+stop as success and anything else non-zero as a failure with exit code 1.
 
 The string form was wrong twice over: sh and cmd.exe disagree about quoting,
 `$`, `%`, `&` and spaces, so `wp core install --title="My $HOME"` meant
