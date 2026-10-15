@@ -54,6 +54,7 @@ import {
 	renderFencedRegion,
 	renderPartialClassSource,
 } from './partial-class.js';
+import { toPosixPath } from './proc.js';
 
 // Re-exported so callers that already import partial.js get the one renderer
 // and the fence helpers without a second import.
@@ -685,7 +686,9 @@ function themeRel(themeDir, abs) {
 	if (!abs) {
 		return false;
 	}
-	return path.relative(themeDir, abs).split(path.sep).join('/');
+	// Written into the manifest: forward slashes on every OS (the
+	// forward-slash rule, ARCHITECTURE.md "Cross-platform support").
+	return toPosixPath(path.relative(themeDir, abs));
 }
 
 function wroteRel(themeDir, result, kind) {
