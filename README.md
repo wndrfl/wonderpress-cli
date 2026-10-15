@@ -53,6 +53,8 @@ wonderpress init help        # environment backends and flags
 
 `wp-env` replaces local MySQL, not the PHP toolchain. Both backends still need `wp`, `php`, and `composer`.
 
+**Platforms.** macOS and Linux support both backends. On **Windows**, use `--env wp-env` (Docker Desktop with the WSL2 engine): the host backend is not supported there — `wonderpress doctor` fails it, and `init` warns and carries on, since it may work but nothing tests it. The unit suite runs on macOS, Ubuntu and Windows in CI. See [ARCHITECTURE.md](ARCHITECTURE.md#cross-platform-support).
+
 ---
 
 ## Installation

@@ -771,7 +771,7 @@ test('preflight leaves the port to provision; doctor checks it', async () => {
 	const report = await doctor.run('wp-env', { platform: 'darwin', port: 8888, deps: busy });
 	const port = report.checks.find((c) => c.check === 'wp-env-port');
 	assert.equal(port.ok, false);
-	assert.equal(port.hint, doctor.portInUseHint(8888));
+	assert.equal(port.hint, doctor.portInUseHint(8888, 'darwin'));
 });
 
 test('a port held by the project\'s own running environment passes', async () => {

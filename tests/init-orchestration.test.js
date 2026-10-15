@@ -174,18 +174,34 @@ test('--clean-slate tears the environment down before deleting its directory', a
 	fs.ensureDirSync(target);
 	fs.writeFileSync(path.join(target, '.wonderpressrc'), '{}');
 
+	fs.writeFileSync(path.join(target, '.env'), 'X=1');
+
 	const cwd = process.cwd();
 	const exitCode = process.exitCode;
+	// The wipe removes .wonderpressrc, so init goes on to clone the scaffold.
+	// Point that clone at nothing: it fails at once, offline, and init stops —
+	// after the teardown and the wipe, which are what this is about. (It used
+	// to clone the real scaffold from GitHub and install Static Kit.)
+	const envRepo = process.env.WONDERPRESS_ENV_REPO;
+	process.env.WONDERPRESS_ENV_REPO = path.join(parent, 'no-such-scaffold');
 	env.activate(backend);
 	try {
-		await core.init(target, { interactive: false, yes: true, cleanSlate: true, wp: {}, db: {} });
+		assert.equal(await core.init(target, { interactive: false, yes: true, cleanSlate: true, wp: {}, db: {} }), false);
 
-		const order = backend.calls.filter((c) => c === 'destroy' || c === 'provision');
-		assert.equal(order[0], 'destroy', 'teardown must come before anything rebuilds');
+		assert.equal(backend.calls[0], 'preflight');
+		assert.equal(backend.calls[1], 'destroy', 'teardown must come before anything rebuilds');
+		assert.ok(!backend.calls.includes('provision'), 'the failed clone stops init');
+		assert.ok(!fs.existsSync(path.join(target, '.env')), 'the wipe reached dotfiles');
+		assert.ok(fs.existsSync(target), 'the directory itself stays');
 	} finally {
 		env.reset();
 		process.chdir(cwd);
 		process.exitCode = exitCode;
+		if (envRepo === undefined) {
+			delete process.env.WONDERPRESS_ENV_REPO;
+		} else {
+			process.env.WONDERPRESS_ENV_REPO = envRepo;
+		}
 		fs.removeSync(parent);
 	}
 });
