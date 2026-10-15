@@ -126,9 +126,19 @@ function runWpEnv(bin, args, opts = {}) {
 		// stderr is CAPTURED rather than inherited in that case: the message is
 		// the only way to tell "already gone" from "could not be removed", and
 		// an inherited stream reaches the terminal without reaching us.
-		stdio: opts.input !== undefined
-			? ['pipe', 'pipe', 'pipe']
-			: (opts.silent === false ? ['ignore', 'pipe', 'inherit'] : ['ignore', 'pipe', 'pipe']),
+		//
+		// `silent: false` leaves the wiring to run(): wp-env prints its
+		// progress ("Pulling…", "Starting WordPress…") on stdout, and a start
+		// can take minutes after a Docker restart. A captured pipe would hold
+		// every line until exit, so whoever is watching (a terminal, or the
+		// desktop app's console) sees nothing and then everything. run()
+		// streams it live: to stdout for a human, to stderr under --format
+		// json and MCP so stdout stays a single envelope.
+		...(opts.input !== undefined
+			? { stdio: ['pipe', 'pipe', 'pipe'] }
+			: opts.silent === false
+				? {}
+				: { stdio: ['ignore', 'pipe', 'pipe'] }),
 		input: opts.input,
 	});
 }
