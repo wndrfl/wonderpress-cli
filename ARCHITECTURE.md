@@ -543,8 +543,8 @@ the OS, which is exactly what Composer and WP-CLI install. Dynamic imports in
 spawned `-e` scripts use `pathToFileURL(...).href` (a bare `D:\...` is not an
 ESM specifier). Tests that are inherently POSIX — process-group signalling in
 `server start --format json` — are skipped on win32 with the reason, not
-deleted; the readiness half of that path runs everywhere. CI checks out with
-`core.autocrlf false` on Windows so byte-exact fixtures (fences, checksums)
-compare as they do elsewhere; the code itself already reads CRLF as LF where it
-hashes (see "Sync lock and drift states").
+deleted; the readiness half of that path runs everywhere. `.gitattributes`
+(`* text=auto eol=lf`) keeps a Windows checkout LF, so byte-exact fixtures
+(fences, checksums) compare as they do elsewhere; the code itself already reads
+CRLF as LF where it hashes (see "Sync lock and drift states").
 

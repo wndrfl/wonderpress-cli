@@ -20,12 +20,7 @@ jobs:
         os: [ubuntu-latest, macos-latest, windows-latest]
     runs-on: ${{ matrix.os }}
     steps:
-      # Check out with the repository's own line endings on every OS. Without
-      # this, Windows runners convert to CRLF and fixture comparisons that are
-      # byte-for-byte (checksums, fences) fail for a reason no user would hit.
-      - name: Keep LF line endings
-        if: runner.os == 'Windows'
-        run: git config --global core.autocrlf false
+      # LF on Windows too comes from .gitattributes, not runner config.
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v5
         with:
