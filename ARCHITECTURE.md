@@ -525,6 +525,10 @@ unchanged. The reporter is [`src/init-progress.js`](src/init-progress.js).
   nothing further runs, and the envelope is `ok: false` with that step's error.
   Codes: `scaffold`, `assets`, `prepare`, `provision`, `core`, `theme`, and
   `usage` when the theme step needs `--theme` (several themes, none named).
+  A step that throws fails with its own id as the code and the exception's
+  message. Anything that throws outside every step (creating `--dir`, the
+  clean-slate teardown) still ends in exactly one envelope, `ok: false`,
+  `error.code: "init"`, with no further step events.
 - **Envelope**: `data: { root, backend, theme, namespace, cliVersion, url,
   steps: [{ id, state, ms }] }` on success and failure alike. `cliVersion` is
   the project's pin; `url` is set only on success; `theme` is the theme
@@ -544,6 +548,10 @@ unchanged. The reporter is [`src/init-progress.js`](src/init-progress.js).
   envelope follows with the same error, and the process exits 130 (SIGINT) or
   143 (SIGTERM). Nothing is deleted: the folder is left exactly as the
   interrupted step left it, and running `init` again carries on from it.
+  A signal outside every step (during preflight, or while `--clean-slate`
+  tears the old environment down) is the `cancelled` envelope alone, with no
+  step events; init checks for it, after yielding to the event loop, before
+  it wipes anything, so a cancelled clean-slate run never empties the folder.
   The long-running children (`git clone`, `npm install`, `wp core download`,
   `wp-env start`, `composer`) run through `runAsync()` in
   [`src/proc.js`](src/proc.js), which leaves the event loop free to handle the

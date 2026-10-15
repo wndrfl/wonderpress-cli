@@ -69,7 +69,9 @@ JSON PROGRESS (--yes --format json)
   "preflight". It never prompts: without --yes it is a "usage" error, and
   several themes with no --theme is a "usage" error naming the flag.
   SIGINT/SIGTERM stops the current step and its child processes, prints the
-  envelope with error code "cancelled", exits non-zero, and deletes nothing.
+  envelope with error code "cancelled", exits non-zero, and deletes nothing
+  (a cancel during the --clean-slate teardown stops before the wipe). An
+  error outside every step is still one envelope, error code "init".
 
 EXAMPLES
   wonderpress init --yes --db-user root --db-name my_site \

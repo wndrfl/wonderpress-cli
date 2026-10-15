@@ -57,7 +57,7 @@ function fixture(rc = {}) {
  * Run init in JSON mode in-process, collecting stdout lines (console.log,
  * where the reporter and format.* write) and stderr separately.
  **/
-async function initJson(backend, initConfig, { rc = {}, keep = false } = {}) {
+async function initJson(backend, initConfig, { rc = {}, keep = false, target = (dir) => dir } = {}) {
 	const cwd = process.cwd();
 	const exitCode = process.exitCode;
 	const dir = fixture(rc);
@@ -76,7 +76,7 @@ async function initJson(backend, initConfig, { rc = {}, keep = false } = {}) {
 	env.activate(backend);
 	try {
 		process.exitCode = 0;
-		const result = await core.init(dir, { interactive: false, yes: true, wp: {}, db: {}, ...initConfig });
+		const result = await core.init(target(dir), { interactive: false, yes: true, wp: {}, db: {}, ...initConfig });
 		return { result, dir, stdout, stderr: stderr.join(''), exitCode: process.exitCode, json: stdout.map((l) => JSON.parse(l)) };
 	} finally {
 		console.log = originalLog;
@@ -245,6 +245,50 @@ test('human mode prints no protocol lines', async () => {
 	assert.ok(!printed.some((l) => l.trimStart().startsWith('{')), 'and nothing else is');
 });
 
+test('a throw outside every step (a --dir that cannot be created) still ends in one envelope', async () => {
+	const backend = fakeBackend();
+	const { result, stdout, stderr, exitCode, json } = await initJson(backend, {}, {
+		target: (dir) => path.join(dir, '.wonderpressrc', 'site'),
+	});
+	assert.equal(result, false);
+	assert.equal(exitCode, format.EXIT_FAIL);
+	assert.equal(stdout.length, 1, `exactly one line on stdout, the envelope:\n${stdout.join('\n')}`);
+	assert.equal(json[0].ok, false);
+	assert.equal(json[0].error.code, 'init');
+	assert.match(json[0].error.message, /ENOTDIR|EEXIST/);
+	assert.deepEqual(json[0].data.steps.map((s) => s.state), ['queued', 'queued', 'queued', 'queued', 'queued']);
+	assert.match(stderr, /ENOTDIR|EEXIST/, 'and the console tail says why');
+});
+
+test('human mode: a step that throws still throws, message and all, as before the reporter', async () => {
+	const cwd = process.cwd();
+	const exitCode = process.exitCode;
+	const dir = fixture();
+	const original = console.log;
+	console.log = () => {};
+	env.activate(fakeBackend({ provision: null }));
+	env.getCurrent().provision = async () => { throw new Error('KABOOM provision'); };
+	try {
+		await assert.rejects(core.init(dir, { interactive: false, yes: true, wp: {}, db: {} }), /KABOOM provision/);
+	} finally {
+		console.log = original;
+		env.reset();
+		process.chdir(cwd);
+		process.exitCode = exitCode;
+		fs.removeSync(dir);
+	}
+});
+
+test('JSON mode: a step that throws says so on stderr as well as in the envelope', async () => {
+	const backend = fakeBackend();
+	backend.provision = async () => { throw new Error('KABOOM provision'); };
+	const { stderr, json } = await initJson(backend, {});
+	const envelope = json[json.length - 1];
+	assert.equal(envelope.error.code, 'wordpress');
+	assert.equal(envelope.error.message, 'KABOOM provision');
+	assert.match(stderr, /KABOOM provision/);
+});
+
 test('the reporter: a thrown step fails with the step id as its code', async () => {
 	const lines = [];
 	const reporter = createReporter({ json: true, write: (line, cb) => { lines.push(JSON.parse(line)); cb && cb(); } });
@@ -368,3 +412,81 @@ test('through the binary: --format json without --yes is one envelope on stdout 
 		fs.removeSync(dir);
 	}
 });
+
+// A cancel while --clean-slate tears the old environment down. The real wp-env
+// teardown is `wp-env destroy` through spawnSync, which holds the process: the
+// signal is only handled once it returns, with no step running. Either way the
+// folder must survive: a cancel never deletes anything.
+for (const mode of ['sync', 'async']) {
+	test(`SIGTERM during the --clean-slate teardown (${mode} child): cancelled, and nothing is wiped`, { skip: process.platform === 'win32' }, async () => {
+		const dir = fixture({ namespace: 'acme' });
+		fs.writeFileSync(path.join(dir, 'precious.txt'), 'keep me');
+		const marker = path.join(os.tmpdir(), `wp-init-teardown-${process.pid}-${Date.now()}-${mode}`);
+
+		const destroy = mode === 'sync'
+			? `async destroy() {
+				require('fs').writeFileSync(${JSON.stringify(marker)}, 'x');
+				spawnSync(process.execPath, ['-e', 'setTimeout(() => {}, 1500)']);
+				return { ok: true, errors: [] };
+			}`
+			: `async destroy() {
+				require('fs').writeFileSync(${JSON.stringify(marker)}, 'x');
+				const child = await runAsync(process.execPath, ['-e', 'setInterval(() => {}, 1000)']);
+				return { ok: child.code === 0, errors: ['the teardown was stopped'] };
+			}`;
+
+		const script = `
+			import { createRequire } from 'node:module';
+			import { spawnSync } from 'node:child_process';
+			import * as core from ${src('core.js')};
+			import * as env from ${src('env/index.js')};
+			import * as format from ${src('format.js')};
+			import { runAsync } from ${src('proc.js')};
+			const require = createRequire(import.meta.url);
+			format.configure({ '--format': 'json' });
+			format.setLogsToStderr(true);
+			env.activate({
+				name: 'fake',
+				capabilities: {},
+				async preflight() { return { ok: true, errors: [] }; },
+				${destroy},
+				async prepare() { return { ok: true, errors: [] }; },
+				async provision() { return { ok: true, errors: [] }; },
+				wpCli() { return { code: 0, stdout: '[]', stderr: '' }; },
+			});
+			await core.init(${JSON.stringify(dir)}, { interactive: false, yes: true, cleanSlate: true, wp: {}, db: {} });
+		`;
+
+		const child = spawn(process.execPath, ['--input-type=module', '-e', script], { stdio: ['ignore', 'pipe', 'pipe'] });
+		let stdout = '';
+		let stderr = '';
+		child.stdout.on('data', (chunk) => { stdout += chunk; });
+		child.stderr.on('data', (chunk) => { stderr += chunk; });
+		const exited = new Promise((resolve) => child.on('exit', (code, signal) => resolve({ code, signal })));
+
+		try {
+			const deadline = Date.now() + 20000;
+			while (!fs.existsSync(marker)) {
+				assert.ok(Date.now() < deadline, `the teardown never started.\nstdout:\n${stdout}\nstderr:\n${stderr}`);
+				await new Promise((resolve) => setTimeout(resolve, 50));
+			}
+			await new Promise((resolve) => setTimeout(resolve, 200));
+			child.kill('SIGTERM');
+			const { code } = await exited;
+
+			assert.equal(code, 143, `init exits non-zero on SIGTERM.\nstderr:\n${stderr}`);
+			const lines = stdout.split('\n').filter(Boolean).map((l) => JSON.parse(l));
+			assert.equal(lines.length, 1, `no step had started: just the envelope.\n${stdout}`);
+			assert.equal(lines[0].ok, false);
+			assert.equal(lines[0].error.code, 'cancelled');
+			assert.doesNotMatch(stderr, /clean slate/i, 'the wipe never began');
+
+			assert.equal(fs.readFileSync(path.join(dir, 'precious.txt'), 'utf8'), 'keep me');
+			assert.ok(fs.existsSync(path.join(dir, '.wonderpressrc')));
+		} finally {
+			child.kill('SIGKILL');
+			fs.removeSync(dir);
+			fs.removeSync(marker);
+		}
+	});
+}

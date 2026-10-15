@@ -8,7 +8,7 @@ import * as log from './log.js';
 import os from 'os';
 import path from 'path';
 import * as readme from './readme.js';
-import { run, runAsync } from './proc.js';
+import { run, runAsync, cancelled as runCancelled } from './proc.js';
 import * as progress from './init-progress.js';
 import * as wordpress from './wordpress.js';
 import { resolveInitConfig } from './init-config.js';
@@ -295,7 +295,12 @@ export async function init(dir, initConfig) {
   const outcome = { theme: null, url: null };
 
   report.describe(() => {
-    const rc = config.read(root).data;
+    let rc = {};
+    try {
+      rc = config.read(root).data || {};
+    } catch {
+      rc = {};
+    }
     return {
       root,
       backend: backend.name,
@@ -318,6 +323,21 @@ export async function init(dir, initConfig) {
 
   try {
     return await runInit(targetDir, initConfig, { backend, interactive, report, outcome });
+  } catch (e) {
+    // A throw inside a step is the step's failure; this is one outside every
+    // step (creating --dir, the clean-slate teardown, ...). Human mode keeps
+    // the uncaught error it always had. JSON mode owes the app exactly one
+    // envelope, so it gets one.
+    if (!report.json) {
+      throw e;
+    }
+    if (runCancelled()) {
+      await report.cancelled(runCancelled());
+      return false;
+    }
+    const message = e && e.message ? e.message : String(e);
+    log.error(message);
+    return report.finish(false, { code: 'init', message, hint: null });
   } finally {
     report.releaseSignals();
   }
@@ -348,6 +368,11 @@ async function runInit(targetDir, initConfig, { backend, interactive, report, ou
         : 'A prerequisite check failed. Run `wonderpress doctor` for the full list.',
       hint: errors.length ? errors.join('\n') : null,
     });
+  }
+
+  // A signal during preflight: stop before anything is touched.
+  if (await report.checkCancelled()) {
+    return false;
   }
 
   // DO NOT set process.cwd() to targetDir yet.
@@ -386,6 +411,12 @@ async function runInit(targetDir, initConfig, { backend, interactive, report, ou
         process.chdir(targetDir);
         await teardown(backend, initConfig);
         process.chdir(saveCwd);
+      }
+
+      // A cancel during the teardown (a SIGTERM while `wp-env destroy` ran)
+      // stops here: a cancel never deletes anything.
+      if (await report.checkCancelled()) {
+        return false;
       }
 
       log.warn(`Clearing the entire directory (clean slate!)`);

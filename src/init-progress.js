@@ -87,6 +87,18 @@ export function createReporter(opts = {}) {
 
 	const steps = () => STEPS.map((step) => ({ ...states.get(step.id) }));
 
+	// The envelope's data. Never lets a failure to describe the project cost
+	// the app its envelope.
+	const data = () => {
+		let described = {};
+		try {
+			described = dataFor() || {};
+		} catch {
+			described = {};
+		}
+		return { ...described, steps: steps() };
+	};
+
 	const reporter = {
 
 		json,
@@ -120,6 +132,26 @@ export function createReporter(opts = {}) {
 				process.on(signal, handler);
 				return [signal, handler];
 			});
+		},
+
+		/**
+		 * Outside a step, has a signal arrived? Yields to the event loop first:
+		 * a signal that came in while a synchronous child (spawnSync) held the
+		 * process is only handled on the next turn. When it has, prints the
+		 * cancelled envelope and resolves true; the caller must stop there and
+		 * do nothing more (above all, delete nothing).
+		 **/
+		async checkCancelled() {
+			if (!cancel || finished) {
+				return finished;
+			}
+			await new Promise((resolve) => setImmediate(resolve));
+			const signal = proc.cancelled();
+			if (signal) {
+				await reporter.cancelled(signal);
+				return true;
+			}
+			return false;
 		},
 
 		releaseSignals() {
@@ -168,7 +200,15 @@ export function createReporter(opts = {}) {
 					result = await running;
 				}
 			} catch (e) {
-				result = { ok: false, error: { code: id, message: e && e.message ? e.message : String(e) } };
+				// Human mode: let it escape, with its message and stack, exactly
+				// as it did before there was a reporter.
+				if (!json) {
+					throw e;
+				}
+				const message = e && e.message ? e.message : String(e);
+				// The console tail says it too, not only the envelope.
+				log.error(message);
+				result = { ok: false, error: { code: id, message } };
 			} finally {
 				stopListening();
 			}
@@ -222,7 +262,7 @@ export function createReporter(opts = {}) {
 			// Exit from the write callback so the envelope is flushed to the
 			// pipe first. The step that was interrupted may still be waiting on
 			// a timer or a child that is being stopped; it does not get to run on.
-			const envelope = format.envelope(false, { ...dataFor(), steps: steps() }, error);
+			const envelope = format.envelope(false, data(), error);
 			return new Promise((resolve) => {
 				emit(envelope, () => {
 					exit(process.exitCode);
@@ -243,7 +283,7 @@ export function createReporter(opts = {}) {
 			if (!ok && !process.exitCode) {
 				process.exitCode = error && error.code === 'usage' ? format.EXIT_USAGE : format.EXIT_FAIL;
 			}
-			emit(format.envelope(ok, { ...dataFor(), steps: steps() }, ok ? null : error));
+			emit(format.envelope(ok, data(), ok ? null : error));
 			return ok;
 		},
 
