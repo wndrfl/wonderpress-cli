@@ -118,7 +118,7 @@ export async function installAcf({
 		return failure(
 			'edition_conflict',
 			`The other ACF edition (${selected.opposite}) is already installed.`,
-			'Remove the other edition first; WonderPress will not delete a plugin automatically.',
+			'Remove the other edition first; Wonderpress will not delete a plugin automatically.',
 		);
 	}
 
@@ -188,7 +188,7 @@ export async function command(subcommand, args) {
 		process.chdir(args['--dir']);
 	}
 	if (!await core.setCwdToEnvironmentRoot()) {
-		return format.fail({ code: 'environment', message: 'Could not find a WonderPress environment.' });
+		return format.fail({ code: 'environment', message: 'Could not find a Wonderpress environment.' });
 	}
 	const installed = await wordpress.coreInstallState();
 	if (!installed.installed) {

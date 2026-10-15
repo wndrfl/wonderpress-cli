@@ -16,7 +16,7 @@ const READY_TIMEOUT_MS = 15000;
  * developer runs themselves, WP-CLI on the PATH, and `wp server` — WP-CLI's
  * wrapper around PHP's built-in web server — for serving.
  *
- * This is the behavior WonderPress has always had. Every command below is the
+ * This is the behavior Wonderpress has always had. Every command below is the
  * one that used to sit inline in core.js, wordpress.js or server.js, moved
  * behind the backend interface without changing what it runs.
  **/

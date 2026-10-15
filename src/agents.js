@@ -16,7 +16,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const TEMPLATE = path.join(__dirname, 'templates/agents.md.mustache');
 const CLI_BIN = path.join(__dirname, '..', 'bin', 'wonderpress.js');
 
-const CLAUDE_STUB = 'Read AGENTS.md in this directory. It is the WonderPress agent contract for this project.\n';
+const CLAUDE_STUB = 'Read AGENTS.md in this directory. It is the Wonderpress agent contract for this project.\n';
 
 const MCP_CONFIGS = [
 	{ rel: '.mcp.json', key: 'mcpServers', extra: {}, host: 'claude' },
@@ -185,7 +185,7 @@ export function buildAgentView({ root, themeDir }) {
 }
 
 /**
- * Merge the WonderPress stdio server into an MCP client config.
+ * Merge the Wonderpress stdio server into an MCP client config.
  *
  * Other servers in the file are left alone. An unparseable file is skipped
  * rather than overwritten — that is someone else's config, not ours to clobber.

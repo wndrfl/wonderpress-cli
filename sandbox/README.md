@@ -1,4 +1,4 @@
-# WonderPress Sandbox
+# Wonderpress Sandbox
 
 A disposable WordPress environment for trying the CLI by hand before shipping it.
 
@@ -128,7 +128,7 @@ should exist on disk — nothing is recorded that was not actually written.
 
 **The style/JS half is delegated.** `--js` scaffolds
 `static/src/js/components/<Name>.js`; the SCSS stub comes by default. Both are
-written by Static Kit, not by WonderPress. Without `static/.staticrc` they are
+written by Static Kit, not by Wonderpress. Without `static/.staticrc` they are
 skipped with a warning and, importantly, are then absent from the manifest.
 Older stamps may still use `src/scss/partials` and `src/js/lib/partials`; the
 manifest path is what `remove` deletes.
@@ -148,7 +148,7 @@ http://localhost:8080/wp-admin
 http://localhost:8888/wp-admin
 
 Either way, a partial created with `--block` shows up in the editor's inserter
-under **WonderPress** (registered by wonderpress-core, which closes the
+under **Wonderpress** (registered by wonderpress-core, which closes the
 emit → consume loop). Under wp-env you can also assert it without clicking:
 
 ```bash

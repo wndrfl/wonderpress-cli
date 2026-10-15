@@ -13,7 +13,7 @@ import * as core from '../src/core.js';
  * Backend resolution precedence. Pure, so the whole table is cheap to pin.
  *
  * The tier that matters most is the last one: an environment with no markers
- * of any kind resolves to `host`. Every WonderPress site built before this
+ * of any kind resolves to `host`. Every Wonderpress site built before this
  * feature existed is in exactly that state, and must keep using the backend it
  * has always used.
  **/
@@ -209,7 +209,7 @@ test('the host backend reports the url it was given, with a scheme', () => {
 // --- who the admin is ---
 //
 // On wp-env, `wp-env start` installs WordPress and creates the first user, so
-// WonderPress never prompts for one and nothing the caller passed describes it.
+// Wonderpress never prompts for one and nothing the caller passed describes it.
 // Someone who just ran init has no way to guess the password.
 
 test('wp-env reports its own fixed default login', () => {

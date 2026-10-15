@@ -198,7 +198,7 @@ manifests without it read as the default and `static-kit-contract.test.js` stays
 untouched.
 
 **It has nothing to act on.** A block's `templateLock` governs its
-`InnerBlocks`, and WonderPress blocks deliberately use ServerSideRender plus
+`InnerBlocks`, and Wonderpress blocks deliberately use ServerSideRender plus
 sidebar attributes. Server-rendered HTML is inert; React `InnerBlocks` cannot
 mount inside its PHP shell without duplicating the shell in JavaScript or
 building a custom portal system. Neither trade belongs in v1. Do not ship a

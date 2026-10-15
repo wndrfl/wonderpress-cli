@@ -1,4 +1,4 @@
-// Guards the WonderPress <-> Static Kit boundary documented in ARCHITECTURE.md.
+// Guards the Wonderpress <-> Static Kit boundary documented in ARCHITECTURE.md.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'fs-extra';

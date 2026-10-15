@@ -1,5 +1,5 @@
 /**
- * JSON Schema documents for WonderPress manifests.
+ * JSON Schema documents for Wonderpress manifests.
  *
  * The editor (via a manifest's `$schema` key) uses these for completion and
  * inline errors. Enums and allowed keys come from validate.js so the editor
@@ -316,7 +316,7 @@ function tabSchema() {
 export function buildPartialManifestSchema() {
 	return {
 		$schema: DRAFT_07,
-		title: 'WonderPress partial manifest',
+		title: 'Wonderpress partial manifest',
 		description: 'Contract for one partial: the fields it accepts and the files that were written for it.',
 		type: 'object',
 		additionalProperties: false,
@@ -376,7 +376,7 @@ export function buildPartialManifestSchema() {
 export function buildPageTemplateManifestSchema() {
 	return {
 		$schema: DRAFT_07,
-		title: 'WonderPress page template manifest',
+		title: 'Wonderpress page template manifest',
 		description: 'Editor contract and composition for one WordPress page template.',
 		type: 'object',
 		additionalProperties: false,

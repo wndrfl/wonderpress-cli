@@ -76,8 +76,8 @@ test('ensureManifestSchemas writes both files and skips an unchanged rewrite', (
 		assert.equal(first.length, 2);
 		const partial = JSON.parse(fs.readFileSync(path.join(dir, '.wonderpress/manifest/schema/partial.schema.json'), 'utf8'));
 		const page = JSON.parse(fs.readFileSync(path.join(dir, '.wonderpress/manifest/schema/page-template.schema.json'), 'utf8'));
-		assert.equal(partial.title, 'WonderPress partial manifest');
-		assert.equal(page.title, 'WonderPress page template manifest');
+		assert.equal(partial.title, 'Wonderpress partial manifest');
+		assert.equal(page.title, 'Wonderpress page template manifest');
 		assert.deepEqual(ensureManifestSchemas(dir), []);
 	} finally {
 		fs.removeSync(dir);

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# Build a throwaway WonderPress environment in ./wp for kicking the tyres on the
+# Build a throwaway Wonderpress environment in ./wp for kicking the tyres on the
 # local CLI. Destroys and rebuilds cleanly, every time.
 #
 # Usage:
@@ -25,7 +25,7 @@ DB_HOST="${WP_DB_HOST:-127.0.0.1}"
 DB_USER="${WP_DB_USER:-root}"
 DB_NAME="${WP_DB_NAME:-wonderpress_sandbox}"
 SITE_URL="${WP_SITE_URL:-localhost:8080}"
-SITE_TITLE="${WP_SITE_TITLE:-WonderPress Sandbox}"
+SITE_TITLE="${WP_SITE_TITLE:-Wonderpress Sandbox}"
 ADMIN_USER="${WP_ADMIN_USER:-admin}"
 ADMIN_EMAIL="${WP_ADMIN_EMAIL:-admin@example.com}"
 ADMIN_PASS="${WP_ADMIN_PASSWORD:-sandbox}"

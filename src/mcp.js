@@ -19,7 +19,7 @@ const mcpIconPng = fs.readFileSync(
 );
 
 const loc = {
-	dir: z.string().optional().describe('WonderPress environment root'),
+	dir: z.string().optional().describe('Wonderpress environment root'),
 	theme: z.string().optional().describe('Theme directory name'),
 };
 
@@ -312,7 +312,7 @@ export const handlers = {
 export function mcpServerInfo() {
 	return {
 		name: 'wonderpress',
-		title: 'WonderPress',
+		title: 'Wonderpress',
 		version: pkg.version,
 		description:
 			'Exposes the same deterministic CLI operations as Model Context Protocol tools so an agent is a second client of the CLI, not a second codebase.',
@@ -333,12 +333,12 @@ export function createWonderpressMcpServer() {
 	const locShape = { dir: loc.dir, theme: loc.theme };
 
 	server.registerTool('partial_list', {
-		description: 'List WonderPress partials in the theme (manifest index).',
+		description: 'List Wonderpress partials in the theme (manifest index).',
 		inputSchema: locShape,
 	}, (args) => handlers.partial_list(args));
 
 	server.registerTool('block_list', {
-		description: 'List Gutenberg blocks wrapping WonderPress partials.',
+		description: 'List Gutenberg blocks wrapping Wonderpress partials.',
 		inputSchema: locShape,
 	}, (args) => handlers.block_list(args));
 
@@ -504,5 +504,5 @@ export async function command() {
 	const server = createWonderpressMcpServer();
 	const transport = new StdioServerTransport();
 	await server.connect(transport);
-	log.info('WonderPress MCP server listening on stdio');
+	log.info('Wonderpress MCP server listening on stdio');
 }

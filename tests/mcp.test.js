@@ -48,10 +48,10 @@ test('MCP server registers the planned tools', () => {
 	assert.ok(server);
 });
 
-test('MCP server advertises WonderPress display metadata and icon', () => {
+test('MCP server advertises Wonderpress display metadata and icon', () => {
 	const info = mcpServerInfo();
 	assert.equal(info.name, 'wonderpress');
-	assert.equal(info.title, 'WonderPress');
+	assert.equal(info.title, 'Wonderpress');
 	assert.equal(info.websiteUrl, 'https://wonderpress.dev');
 	assert.match(info.description, /deterministic CLI operations/);
 	assert.equal(info.icons.length, 1);

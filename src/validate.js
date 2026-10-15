@@ -498,7 +498,7 @@ export function assertDualAuthorable(subject, options = {}) {
 	}
 }
 
-/** WonderPress manifest tree under the theme (typed by subdirectory). */
+/** Wonderpress manifest tree under the theme (typed by subdirectory). */
 export const MANIFEST_ROOT = '.wonderpress/manifest';
 export const PARTIAL_MANIFEST_DIR = `${MANIFEST_ROOT}/partials`;
 export const PAGE_TEMPLATE_MANIFEST_DIR = `${MANIFEST_ROOT}/page-templates`;

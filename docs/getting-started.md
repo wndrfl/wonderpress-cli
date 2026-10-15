@@ -1,4 +1,4 @@
-# Starting a WonderPress project
+# Starting a Wonderpress project
 
 The order to do things in, and which decisions you cannot take back.
 [README.md](../README.md) is the command reference; this is the narrative.
@@ -88,7 +88,7 @@ The cost is that Sass can no longer compute with a token, so
 derived colour as its own `theme.json` slot. Full reasoning in
 [static-kit-conventions.md](static-kit-conventions.md).
 
-WonderPress also discards database-backed user Global Styles, which otherwise
+Wonderpress also discards database-backed user Global Styles, which otherwise
 outrank this file without producing a repository diff. A project that
 intentionally uses the Global Styles UI can opt out:
 
@@ -133,7 +133,7 @@ this cannot accidentally unlock something.
 Accepted values: `'all'` (nothing moves), `'insert'` (reorder only), `false`
 (open). Do not use `'contentOnly'` here — at the root of the editor Gutenberg
 still allows add/remove/move. Frozen layout with in-place text editing is not
-part of WonderPress's v1 editor contract; content is edited through block
+part of Wonderpress's v1 editor contract; content is edited through block
 sidebar controls.
 
 ## 5a. Install ACF if PHP templates will hydrate from fields
