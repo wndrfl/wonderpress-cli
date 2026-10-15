@@ -142,7 +142,7 @@ Runs PHPCS against the [Wonderpress coding standards](https://github.com/wndrfl/
 #### `wonderpress acf install [--free]`
 
 Downloads and activates ACF directly from its official distribution. ACF PRO is
-the default because WonderPress repeater fields require it:
+the default because Wonderpress repeater fields require it:
 
 ```bash
 ACF_PRO_LICENSE=... wonderpress acf install

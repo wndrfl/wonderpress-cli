@@ -42,7 +42,7 @@ test('writeAgentFiles is stable and indexes partials', async () => {
 		const first = writeAgentFiles({ root, themeDir });
 		const second = writeAgentFiles({ root, themeDir });
 		assert.equal(fs.readFileSync(first.agents, 'utf8'), fs.readFileSync(second.agents, 'utf8'));
-		assert.equal(fs.readFileSync(first.claude, 'utf8'), 'Read AGENTS.md in this directory. It is the WonderPress agent contract for this project.\n');
+		assert.equal(fs.readFileSync(first.claude, 'utf8'), 'Read AGENTS.md in this directory. It is the Wonderpress agent contract for this project.\n');
 
 		const md = fs.readFileSync(first.agents, 'utf8');
 		assert.match(md, /`hero` \(Hero\) — block `acme\/hero`/);

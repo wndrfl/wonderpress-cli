@@ -1,6 +1,6 @@
 # Manifest-first partials
 
-WonderPress partial **fields** are defined in JSON, not in the PHP class. ACF and the block editor read `.wonderpress/manifest/partials/*.json` at runtime. The theme partial class and `block.json` are **generated** from that contract.
+Wonderpress partial **fields** are defined in JSON, not in the PHP class. ACF and the block editor read `.wonderpress/manifest/partials/*.json` at runtime. The theme partial class and `block.json` are **generated** from that contract.
 
 ## Where to edit
 
@@ -33,7 +33,7 @@ wonderpress partial sync Hero --dry-run
 
 ## CI / pre-merge check
 
-From the theme directory (with WonderPress env root as cwd):
+From the theme directory (with Wonderpress env root as cwd):
 
 ```bash
 wonderpress partial check-drift --all

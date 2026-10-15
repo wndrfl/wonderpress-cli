@@ -1,8 +1,8 @@
 # Architecture
 
-## WonderPress ↔ Static Kit
+## Wonderpress ↔ Static Kit
 
-WonderPress and [Static Kit](https://github.com/wndrfl/static-kit) are separate
+Wonderpress and [Static Kit](https://github.com/wndrfl/static-kit) are separate
 projects with a deliberate boundary. This document is the contract: it states
 who owns what, so the seam stays clean as both projects evolve.
 
@@ -19,7 +19,7 @@ The CLI declares `@wndrfl/static-kit-cli` as a normal dependency in
   Kit (see below) rather than reaching into `static/` themselves.
 
 Because dependencies are installed by Static Kit at setup time, **Static Kit's
-`node_modules` is never committed to a WonderPress site.** Only hand-written
+`node_modules` is never committed to a Wonderpress site.** Only hand-written
 source (`static/src`) and compiled output (`static/dist`) are tracked. This is
 enforced by the `node_modules` rule in the shipped
 [wonderpress-development-environment](https://github.com/wndrfl/wonderpress-development-environment)
@@ -32,9 +32,9 @@ enforced by the `node_modules` rule in the shipped
 
 | Concern | Owner | Where it lives |
 | --- | --- | --- |
-| PHP partials & templates (the render layer) | **WonderPress CLI** | `wp-content/themes/wonderpress/partials`, `.../src` |
-| Partial manifests (always emitted) | **WonderPress CLI** | `.../.wonderpress/manifest/partials/*.json` |
-| `block.json` + `render.php` (opt-in Gutenberg wrapper — `--block`) | **WonderPress CLI** | `.../blocks/<slug>/` |
+| PHP partials & templates (the render layer) | **Wonderpress CLI** | `wp-content/themes/wonderpress/partials`, `.../src` |
+| Partial manifests (always emitted) | **Wonderpress CLI** | `.../.wonderpress/manifest/partials/*.json` |
+| `block.json` + `render.php` (opt-in Gutenberg wrapper — `--block`) | **Wonderpress CLI** | `.../blocks/<slug>/` |
 | The `static/` tree (layout, `.staticrc`) | **Static Kit** | `wp-content/themes/wonderpress/static` |
 | Component **style stubs** (token-only SCSS) | **Static Kit** | `static/` (created via delegation) |
 | Component **behavior classes** (opt-in JS — `--js`) | **Static Kit** | `static/` (created via delegation) |
@@ -107,7 +107,7 @@ guards that.
 
 ### A partial is not a block
 
-A **partial** is a WonderPress rendering primitive — a button, a section, a
+A **partial** is a Wonderpress rendering primitive — a button, a section, a
 link. It turns properties into HTML (`Abstract_Partial`), is often composed
 inside other partials, and has no inherent relationship to the editor.
 
@@ -133,7 +133,7 @@ per-block JSX and no editor bundler. See
 
 ### The manifest tree
 
-All WonderPress manifests live under `.wonderpress/manifest/`, typed by path:
+All Wonderpress manifests live under `.wonderpress/manifest/`, typed by path:
 `partials/` for components, `page-templates/` for page-template contracts.
 Each file points at a JSON Schema in `schema/` via `$schema`. Those schema
 files are generated from the same constants the CLI validates with
@@ -214,7 +214,7 @@ format:
   `--dir` ([`src/static.js`](src/static.js)). Watch is CLI-only (not MCP).
 
 This keeps a single source of truth for anything under `static/`: if the Static
-Kit layout changes, WonderPress inherits it for free instead of drifting.
+Kit layout changes, Wonderpress inherits it for free instead of drifting.
 
 `partial create` records the paths `component.create` returns. `partial remove`
 calls `component.remove`, then deletes the `style` and `script` paths the

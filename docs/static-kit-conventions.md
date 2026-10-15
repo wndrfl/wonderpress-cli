@@ -1,6 +1,6 @@
-# Static Kit conventions (and how the WonderPress spine interoperates)
+# Static Kit conventions (and how the Wonderpress spine interoperates)
 
-Reference for how styles/scripts are structured in a WonderPress theme's
+Reference for how styles/scripts are structured in a Wonderpress theme's
 `static/` tree, why, and which parts the CLI owns vs. delegates. This is the
 shared model the spine, the component-scaffold API, and the build-tool
 modernization should all build to.
@@ -81,7 +81,7 @@ needed.
 
 ## Design tokens: `theme.json` publishes, wonderpress-core bridges
 
-A WonderPress theme has two places that know what "accent" means, and they are
+A Wonderpress theme has two places that know what "accent" means, and they are
 owned by different projects:
 
 - **`theme.json`** declares the palette, font families, and the type scale

@@ -100,7 +100,7 @@ export const DEFAULT_BACKEND = 'host';
  *   5. host
  *
  * Tier 4 is what keeps an environment working after a `git checkout` reverts
- * the recorded key. Tier 5 is why this is safe to ship: every WonderPress site
+ * the recorded key. Tier 5 is why this is safe to ship: every Wonderpress site
  * built to date has no marker of any kind, and resolves to the backend it has
  * always used.
  *

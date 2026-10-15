@@ -45,7 +45,7 @@ laggy; and the output is inert HTML, so the client edits values in the sidebar
 (Inspector Controls) rather than typing on the page.
 
 This is the default for every emitted block. It is generic — the same edit
-component works for every WonderPress block, parameterized by name and
+component works for every Wonderpress block, parameterized by name and
 attributes — which means **one shared editor bundle, not one per block.**
 
 ### Why `InnerBlocks` is deferred
@@ -58,7 +58,7 @@ React `edit` tree. It cannot mount into an arbitrary slot in the PHP response.
 
 The available alternatives all violate a stronger constraint: reproduce the
 shell in JavaScript, or maintain a custom portal/slot layer over server HTML.
-WonderPress does neither in v1. Content is edited through the sidebar against
+Wonderpress does neither in v1. Content is edited through the sidebar against
 the accurate PHP preview. Revisit only if WordPress adds a supported
 server-rendered shell slot, or if the no-duplicate-markup rule changes
 deliberately.

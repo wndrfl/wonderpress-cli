@@ -883,7 +883,7 @@ export function writeBlock(params, themeDir, options = {}) {
 	}
 	// The project's namespace, not the tool's — see resolveNamespace(). The
 	// category rides along with it so the inserter groups a project's blocks
-	// under the project rather than under WonderPress.
+	// under the project rather than under Wonderpress.
 	const namespace = namespaceFor(params, themeDir);
 
 	const block = {

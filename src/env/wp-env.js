@@ -161,7 +161,7 @@ export function create() {
 		 * How to log in.
 		 *
 		 * wp-env installs WordPress itself during `wp-env start`, so it — not
-		 * WonderPress — creates the first user, and never prompts for it. The
+		 * Wonderpress — creates the first user, and never prompts for it. The
 		 * credentials are wp-env's fixed, documented defaults: admin/password.
 		 *
 		 * Printing that password is not leaking a secret, it is quoting a
