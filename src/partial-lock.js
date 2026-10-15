@@ -67,7 +67,7 @@ export function contentHash(content) {
  * @returns {string}
  */
 export function partialLockPath(themeDir, slug) {
-	return `${themeDir}/${PARTIAL_LOCK_DIR}/${slug}.json`;
+	return path.join(themeDir, PARTIAL_LOCK_DIR, `${slug}.json`);
 }
 
 /**

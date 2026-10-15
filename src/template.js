@@ -443,7 +443,7 @@ export async function create(templateName, opts) {
     }
     themeName = theme.name;
   }
-  const themeDir = `${wordpress.pathToThemesDir}/${themeName}`;
+  const themeDir = path.join(wordpress.pathToThemesDir, themeName);
 
   const sections = [];
   for (const raw of opts.sections || []) {
@@ -486,7 +486,7 @@ export async function create(templateName, opts) {
     uses: uniqueUses(namedSections),
     body_php: pageTemplateBodyPhp(namedSections),
   });
-  const filePath = `${themeDir}/${fileName}`;
+  const filePath = path.join(themeDir, fileName);
   fs.ensureDirSync(path.dirname(filePath));
   fs.writeFileSync(filePath, templateOutput);
   log.success(`Template created: ${filePath}`);
@@ -495,7 +495,7 @@ export async function create(templateName, opts) {
   fs.ensureDirSync(manifestDir);
   ensureManifestSchemas(themeDir);
 
-  const manifestPath = `${manifestDir}/${fileName.replace(/\.php$/, '.json')}`;
+  const manifestPath = path.join(manifestDir, fileName.replace(/\.php$/, '.json'));
   fs.writeFileSync(manifestPath, JSON.stringify(validated.data, null, 2) + '\n');
   log.success(`Template manifest created: ${manifestPath}`);
 
@@ -525,7 +525,7 @@ export async function create(templateName, opts) {
  * Slugs from `.wonderpress/manifest/partials/*.json` for validation.
  **/
 async function loadPartialSlugs(themeDir) {
-  const manifestDir = `${themeDir}/${PARTIAL_MANIFEST_DIR}`;
+  const manifestDir = path.join(themeDir, PARTIAL_MANIFEST_DIR);
   if (!fs.existsSync(manifestDir)) {
     return [];
   }
@@ -535,7 +535,7 @@ async function loadPartialSlugs(themeDir) {
       continue;
     }
     try {
-      const data = JSON.parse(fs.readFileSync(`${manifestDir}/${file}`, 'utf8'));
+      const data = JSON.parse(fs.readFileSync(path.join(manifestDir, file), 'utf8'));
       if (data?.slug) {
         slugs.push(data.slug);
       }

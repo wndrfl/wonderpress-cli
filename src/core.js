@@ -541,7 +541,7 @@ export async function init(dir, initConfig) {
     if (themeName) {
       agents.writeAgentFiles({
         root: process.cwd(),
-        themeDir: `${wordpress.pathToThemesDir}/${themeName}`,
+        themeDir: path.join(wordpress.pathToThemesDir, themeName),
       });
     }
   } catch (err) {

@@ -142,7 +142,7 @@ export function run(bin, args = [], opts = {}) {
 
 /**
  * A path as it is written INTO a file another machine will read: manifests,
- * lock files, .wonderpressrc, JSON envelopes. Always forward slashes,
+ * lock files, .wonderpressrc. Always forward slashes,
  * whatever OS wrote it (app spec section 3: "manifests always use forward
  * slashes"). Paths used to touch the filesystem stay native; this is only for
  * the boundary where a path becomes data.

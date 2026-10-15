@@ -173,7 +173,7 @@ export async function resolveThemeDir(args) {
 		themeName = theme.name;
 	}
 
-	return wordpress.pathToThemesDir + '/' + themeName;
+	return path.join(wordpress.pathToThemesDir, themeName);
 }
 
 async function refreshAgents(themeDir) {
@@ -580,7 +580,7 @@ export async function writePartial(params, themeDir, options = {}) {
 			template_class_name: viewName,
 			template_name: viewName,
 		});
-		const viewFilePath = `${themeDir}/partials/${params.partial_template_name}`;
+		const viewFilePath = path.join(themeDir, 'partials', params.partial_template_name);
 		fs.ensureDirSync(path.dirname(viewFilePath));
 		fs.writeFileSync(viewFilePath, viewOutput);
 		log.success(`View template created at: ${viewFilePath}`);
@@ -892,9 +892,9 @@ export function writeBlock(params, themeDir, options = {}) {
 		attributes,
 		render: 'file:./render.php',
 	};
-	const blockDir = `${themeDir}/blocks/${slug}`;
+	const blockDir = path.join(themeDir, 'blocks', slug);
 	fs.ensureDirSync(blockDir);
-	fs.writeFileSync(`${blockDir}/block.json`, JSON.stringify(block, null, 2) + '\n');
+	fs.writeFileSync(path.join(blockDir, 'block.json'), JSON.stringify(block, null, 2) + '\n');
 	log.success(`Block metadata created at: ${blockDir}/block.json`);
 
 	if (!options.skipRender) {
@@ -905,7 +905,7 @@ export function writeBlock(params, themeDir, options = {}) {
 			namespace,
 			class_name: params.class_name,
 		});
-		fs.writeFileSync(`${blockDir}/render.php`, renderOutput);
+		fs.writeFileSync(path.join(blockDir, 'render.php'), renderOutput);
 		log.success(`Block render created at: ${blockDir}/render.php`);
 	}
 
@@ -1026,7 +1026,7 @@ export function readManifest(themeDir, slug) {
  **/
 export function readManifests(themeDir) {
 
-	const dir = `${themeDir}/${PARTIAL_MANIFEST_DIR}`;
+	const dir = path.join(themeDir, PARTIAL_MANIFEST_DIR);
 	if (!fs.existsSync(dir)) {
 		return [];
 	}

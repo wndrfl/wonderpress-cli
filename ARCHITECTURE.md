@@ -525,9 +525,11 @@ filesystem root and the home directory — not `rm -rf <dir>/*` and `rm -rf
 
 Paths used to touch the filesystem are built with `path.join`/`path.resolve`
 and stay native. Paths written **into** a file another machine reads —
-manifests, sync locks, block.json, `.wonderpressrc`, JSON envelopes — are
-always forward-slash, whatever OS wrote them (app spec section 3: "manifests
-always use forward slashes"). Normalize at that boundary (`themeRel` in
+manifests, sync locks, block.json, `.wonderpressrc` — and theme-relative paths
+in JSON envelopes (a manifest's `artifacts`) are always forward-slash, whatever
+OS wrote them (app spec section 3: "manifests always use forward slashes").
+Absolute paths describing this machine (a `wrote` entry, an MCP config's
+`args`) stay native. Normalize at that boundary (`themeRel` in
 `src/partial.js`, `toPosixPath` in `src/proc.js`); `tests/crud.test.js` scans a
 freshly written manifest, block.json and lock for backslashes, which is a real
 check on the Windows leg. Human output shortens absolute paths (POSIX and
