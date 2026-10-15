@@ -91,7 +91,7 @@ test('create writes a per-partial lock of the manifest, fenced region, and block
 	assert.equal(lock.classFence, sha256(extractFencedRegion(read(dir, CLASS))));
 	assert.equal(lock.block, sha256(fs.readFileSync(path.join(dir, BLOCK))));
 	assert.equal(lock.cliVersion, pkg.version);
-	assert.equal(partialLockPath(dir, 'hero'), `${dir}/${LOCK}`);
+	assert.equal(partialLockPath(dir, 'hero'), path.join(dir, LOCK));
 	// The lock lives beside the manifest tree, never inside a manifest.
 	assert.equal(readManifest(dir).lock, undefined);
 	assert.equal(JSON.stringify(readManifest(dir)).includes(lock.classFence), false);
