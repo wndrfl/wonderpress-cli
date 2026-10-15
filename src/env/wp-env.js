@@ -3,7 +3,7 @@ import path from 'path';
 import sh from 'shelljs';
 import * as doctor from '../doctor.js';
 import * as log from '../log.js';
-import { run } from '../proc.js';
+import { run, runAsync } from '../proc.js';
 import { DEFAULT_WP_ENV_PORT, isPortFree, isPortListening, readWpEnvPort } from './probe.js';
 
 // Re-exported: this is where callers and tests have always found it.
@@ -246,7 +246,8 @@ export function create() {
 			}
 
 			log.info('Installing project tooling (wp-env)...');
-			const installed = run('npm', ['install'], { silent: true });
+			// Async so `init --format json` can be cancelled mid-install.
+			const installed = await runAsync('npm', ['install'], { silent: true });
 
 			if (installed.code !== 0) {
 				return { ok: false, errors: [`npm install failed at the environment root.\n${installed.stderr}`.trim()] };
@@ -282,7 +283,9 @@ export function create() {
 			}
 
 			log.info('Starting the Docker environment (this can take a few minutes the first time)...');
-			const started = runWpEnv(wpEnvBin, ['start'], { cwd, silent: false });
+			// Async, and in its own process group under `init --format json`, so a
+			// cancel stops wp-env and the `docker compose` it runs (src/proc.js).
+			const started = await runAsync(wpEnvBin, ['start'], { cwd });
 			if (started.code !== 0) {
 				return {
 					ok: false,

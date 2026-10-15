@@ -20,6 +20,9 @@ export const EXIT_USAGE = 2;
 /** @type {'human' | 'json' | 'mcp'} */
 let mode = 'human';
 
+/** True when log lines go to stderr in JSON mode instead of nowhere. */
+let stderrLogs = false;
+
 /** @type {typeof process.stdout.write | null} */
 let unguardedWrite = null;
 
@@ -65,6 +68,7 @@ function removeStdoutGuard() {
 
 export function reset() {
 	mode = 'human';
+	stderrLogs = false;
 	removeStdoutGuard();
 }
 
@@ -89,6 +93,21 @@ export function isJson() {
 
 export function isMcp() {
 	return mode === 'mcp';
+}
+
+/**
+ * Send log.* lines to stderr under `--format json` rather than dropping them.
+ *
+ * Only `init` asks for this: it streams progress, and its human lines are the
+ * console tail the desktop app shows. Every other JSON command stays silent
+ * apart from its envelope, as it always has.
+ **/
+export function setLogsToStderr(on = true) {
+	stderrLogs = !!on;
+}
+
+export function logsToStderr() {
+	return stderrLogs;
 }
 
 /** True when log.* must not write to stdout. */

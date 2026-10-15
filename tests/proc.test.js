@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
-import { buildSpawn, isBatchFile, portOwnerCommand, quoteForCmd, run, toPosixPath } from '../src/proc.js';
+import { buildSpawn, cancelAll, cancelled, isBatchFile, portOwnerCommand, quoteForCmd, run, runAsync, setCancellable, toPosixPath } from '../src/proc.js';
 import { writeStubBin } from './helpers/stub-bin.js';
 
 // The argv rule (ARCHITECTURE.md, "Cross-platform support"): commands that
@@ -124,4 +124,40 @@ test('run prints why a program is missing unless silent', () => {
 	assert.equal(result.stdout, '[127,127]');
 	assert.match(result.stderr, /wonderpress-no-such-program-xyz: command not found/);
 	assert.doesNotMatch(result.stderr, /abc/);
+});
+
+// --- runAsync and cancellation (init --format json) ---
+
+test('runAsync captures like run() when silent, and reports a missing program as 127', async () => {
+	const ok = await runAsync(process.execPath, ['-e', 'process.stdout.write("out"); process.stderr.write("err"); process.exit(3)'], { silent: true });
+	assert.equal(ok.code, 3);
+	assert.equal(ok.stdout, 'out');
+	assert.equal(ok.stderr, 'err');
+	assert.equal(String(ok), 'out');
+
+	const missing = await runAsync('wonderpress-no-such-program', [], { silent: true });
+	assert.equal(missing.code, 127);
+	assert.match(missing.stderr, /command not found/);
+});
+
+test('cancelAll stops a running child, and nothing starts after it', async () => {
+	setCancellable(true);
+	try {
+		const started = Date.now();
+		const pending = runAsync(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], { silent: true });
+		await new Promise((resolve) => setTimeout(resolve, 200));
+		cancelAll('SIGTERM');
+		const result = await pending;
+		assert.ok(Date.now() - started < 10000, 'the child did not run to completion');
+		assert.equal(result.cancelled, true);
+		assert.ok(result.signal === 'SIGTERM' || result.code !== 0, 'it was stopped, not finished');
+		assert.equal(cancelled(), 'SIGTERM');
+
+		assert.equal((await runAsync(process.execPath, ['-e', ''], { silent: true })).cancelled, true);
+		assert.equal(run(process.execPath, ['-e', ''], { silent: true }).cancelled, true);
+	} finally {
+		setCancellable(false);
+	}
+	assert.equal(cancelled(), null);
+	assert.equal(run(process.execPath, ['-e', 'process.exit(0)'], { silent: true }).code, 0);
 });

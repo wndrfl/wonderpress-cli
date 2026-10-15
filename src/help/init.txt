@@ -49,6 +49,29 @@ OPTIONS
   --namespace <slug>       Block namespace for this project. Defaults to the
                            theme slug. Set once.
   --skip-readme            Do not generate a README
+  --readme                 With --yes, generate a README named after the title
+  --format json            With --yes: progress events, then one envelope (below)
+
+JSON PROGRESS (--yes --format json)
+  stdout is newline-delimited JSON; every human line goes to stderr. One event
+  when each step starts and one when it ends, then one final envelope:
+
+    {"event":"step","id":"scaffold","label":"Clone the environment scaffold","state":"running"}
+    {"event":"step","id":"scaffold","state":"done"}
+    {"event":"step","id":"wordpress","state":"failed","error":{"code","message","hint"}}
+    {"ok":true,"data":{"root","backend","theme","namespace","cliVersion","url",
+      "steps":[{"id","state","ms"}]},"error":null}
+
+  Steps, in order: scaffold, assets (Static Kit), wordpress (prepare and
+  provision), core (Composer, wonderpress-core), theme (activate, README).
+  States: running, done, failed (queued is implied). Nothing runs after a
+  failed step. A failed preflight is the envelope alone, error code
+  "preflight". It never prompts: without --yes it is a "usage" error, and
+  several themes with no --theme is a "usage" error naming the flag.
+  SIGINT/SIGTERM stops the current step and its child processes, prints the
+  envelope with error code "cancelled", exits non-zero, and deletes nothing
+  (a cancel during the --clean-slate teardown stops before the wipe). An
+  error outside every step is still one envelope, error code "init".
 
 EXAMPLES
   wonderpress init --yes --db-user root --db-name my_site \
@@ -56,3 +79,5 @@ EXAMPLES
     --admin-user admin --admin-email me@example.com
 
   wonderpress init --env wp-env --yes --wp-title "My Site" --namespace acme
+
+  wonderpress init --env wp-env --yes --format json --namespace acme

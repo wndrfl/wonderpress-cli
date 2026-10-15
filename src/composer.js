@@ -2,7 +2,7 @@ import fs from 'fs-extra';
 import path from 'path';
 import sh from 'shelljs';
 import * as log from './log.js';
-import { run } from './proc.js';
+import { runAsync } from './proc.js';
 
 /**
  * Installs the Composer packages for a directory.
@@ -54,7 +54,8 @@ export async function installComposer(dir = process.cwd()) {
 	const verb = locked ? 'install' : 'update';
 
 	log.info(`Installing Composer packages (composer ${verb})...`);
-	const result = run('composer', [verb], { cwd: dir });
+	// Async so `init --format json` can be cancelled mid-install (src/proc.js).
+	const result = await runAsync('composer', [verb], { cwd: dir });
 
 	if (result.code !== 0) {
 		log.error(`Composer failed in ${dir}. Refusing to continue with missing dependencies.`);

@@ -1,7 +1,7 @@
 import fs from 'fs-extra';
 import path from 'path';
 import * as log from './log.js';
-import { run } from './proc.js';
+import { run, runAsync } from './proc.js';
 import * as config from './config.js';
 import * as core from './core.js';
 import * as env from './env/index.js';
@@ -39,7 +39,7 @@ export function themesOnDisk() {
  **/
 export async function activateTheme(themeName) {
 	log.info('Attempting to activate theme: ' + themeName);
-	env.getCurrent().wpCli(['theme', 'activate', themeName]);
+	return env.getCurrent().wpCli(['theme', 'activate', themeName]);
 }
 
 /**
@@ -201,7 +201,8 @@ export async function createThemesDirectory() {
  * Download WordPress core (without wp-content)
  **/
 export async function downloadWordPress() {
-	run('wp', ['core', 'download', '--skip-content', '--force']);
+	// Async so `init --format json` can be cancelled mid-download (src/proc.js).
+	await runAsync('wp', ['core', 'download', '--skip-content', '--force']);
 	return true;
 }
 

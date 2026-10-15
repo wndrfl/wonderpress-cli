@@ -496,6 +496,73 @@ CLI takes no Electron dependency and has no Electron-only path.
 Electron signal with a `node -r` preload and pins that `version` and `doctor`
 still answer in JSON.
 
+### `init` progress protocol
+
+`init --yes --format json` is the one command whose stdout is not a single
+envelope: the desktop app's build screen needs step boundaries, and inferring
+them from log prose is what the protocol exists to avoid. stdout is
+newline-delimited JSON, zero or more step events then exactly one final
+envelope; every human line `init` prints (log lines, the site card, and the
+children's output) goes to stderr unchanged, as the console tail. Human mode is
+unchanged. The reporter is [`src/init-progress.js`](src/init-progress.js).
+
+```json
+{"event":"step","id":"scaffold","label":"Clone the environment scaffold","state":"running"}
+{"event":"step","id":"scaffold","state":"done"}
+{"event":"step","id":"wordpress","label":"Install WordPress","state":"failed","error":{"code":"provision","message":"…","hint":"…"}}
+{"ok":true,"data":{"root":"/abs/path","backend":"wp-env","theme":"wonderpress","namespace":"acme","cliVersion":"2.17.0","url":"http://localhost:8888","steps":[{"id":"scaffold","state":"done","ms":1840},…]},"error":null}
+```
+
+- **Steps**, in order: `scaffold` (clone the environment scaffold), `assets`
+  (Static Kit install), `wordpress` (the backend's prepare and provision:
+  download, database, install, or `wp-env start`), `core` (Composer,
+  wonderpress-core and the root toolchain), `theme` (activation and README).
+  On an environment that already exists `scaffold` and `assets` are reported
+  `done` at once. A `running` event carries the `label`; the closing `done` or
+  `failed` event does not. `failed` carries `error: { code, message, hint }`.
+- **States**: `queued` is implied (and is what `data.steps` says for a step
+  that never ran), then `running`, `done` or `failed`. After a failed step
+  nothing further runs, and the envelope is `ok: false` with that step's error.
+  Codes: `scaffold`, `assets`, `prepare`, `provision`, `core`, `theme`, and
+  `usage` when the theme step needs `--theme` (several themes, none named).
+  A step that throws fails with its own id as the code and the exception's
+  message. Anything that throws outside every step (creating `--dir`, the
+  clean-slate teardown) still ends in exactly one envelope, `ok: false`,
+  `error.code: "init"`, with no further step events.
+- **Envelope**: `data: { root, backend, theme, namespace, cliVersion, url,
+  steps: [{ id, state, ms }] }` on success and failure alike. `cliVersion` is
+  the project's pin; `url` is set only on success; `theme` is the theme
+  activated (or `--theme`).
+- **Preflight is not a step.** The app has already run `doctor`; `init` keeps
+  its preflight as a guard, and a failure is the envelope alone, with no step
+  events: `error.code: "preflight"`, the message counting failed checks, the
+  hint being doctor's hints for them.
+- **Never prompts.** `--format json` without `--yes` is a `usage` envelope
+  before anything runs. With `--yes` every question has a flag: the theme
+  choice (`--theme`; a usage error naming it otherwise), the README
+  (`--readme` / `--skip-readme`), the clean-slate confirmation (`--yes`
+  confirms it), and the host backend's database and admin questions (their
+  `--db-*`, `--wp-*` and `--admin-*` flags, or the defaults).
+- **Cancel.** SIGINT or SIGTERM during a JSON-mode `init` stops at the current
+  step: the step is reported `failed` with `error.code: "cancelled"`, the
+  envelope follows with the same error, and the process exits 130 (SIGINT) or
+  143 (SIGTERM). Nothing is deleted: the folder is left exactly as the
+  interrupted step left it, and running `init` again carries on from it.
+  A signal outside every step (during preflight, or while `--clean-slate`
+  tears the old environment down) is the `cancelled` envelope alone, with no
+  step events; init checks for it, after yielding to the event loop, before
+  it wipes anything, so a cancelled clean-slate run never empties the folder.
+  The long-running children (`git clone`, `npm install`, `wp core download`,
+  `wp-env start`, `composer`) run through `runAsync()` in
+  [`src/proc.js`](src/proc.js), which leaves the event loop free to handle the
+  signal and, in this mode on POSIX, starts each child as the leader of its own
+  process group so `cancelAll()` stops what it started too (`docker compose`
+  under wp-env, PHP under Composer); Windows kills the tree with `taskkill /T`.
+  Short WP-CLI calls still use the blocking `run()`; a signal that arrives
+  during one is handled when it returns. After a cancel, `run()` and
+  `runAsync()` start nothing new. A human's Ctrl-C keeps its default
+  behavior.
+
 ## Cross-platform support
 
 The CLI is the gate for the desktop app's platforms (app spec section 3): the

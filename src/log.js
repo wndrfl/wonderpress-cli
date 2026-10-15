@@ -111,6 +111,11 @@ function compose(level, msg) {
 
 function write(line) {
 	if (format.isJson()) {
+		// `init --format json` streams its progress: the event lines own stdout,
+		// and the human lines are the console tail the app shows beside them.
+		if (format.logsToStderr()) {
+			process.stderr.write(`${line}\n`);
+		}
 		return;
 	}
 	if (format.isMcp()) {
@@ -120,7 +125,22 @@ function write(line) {
 	console.log(line);
 }
 
+/** Who wants to hear about errors as they are logged (init's step reporter). */
+const errorListeners = new Set();
+
+/**
+ * Be told the text of every log.error() until the returned function is called.
+ * `init` uses it to give a failed step the message the phase already printed.
+ **/
+export function onError(listener) {
+	errorListeners.add(listener);
+	return () => errorListeners.delete(listener);
+}
+
 export function error(msg) {
+	for (const listener of errorListeners) {
+		listener(String(msg ?? ''));
+	}
 	write(compose('error', msg));
 }
 
