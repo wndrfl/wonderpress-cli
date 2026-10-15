@@ -300,24 +300,41 @@ build on this contract separately.
 what it wrote in a per-partial lock, committed with the theme:
 
 ```
-.wonderpress/lock/partials/<slug>.json
+.wonderpress/manifest/partials/<slug>.lock.json
 {
-  "manifest":   "<sha256 of the manifest file as sync left it>",
-  "classFence": "<sha256 of the class's fenced region as written>",
-  "block":      "<sha256 of block.json as written>",   // only when the partial is a block
-  "cliVersion": "<CLI version that wrote the lock>"
+  "manifest":          "<sha256 of the manifest file as sync left it>",
+  "classFence":        "<sha256 of the class's fenced region as written>",
+  "classFenceContent": "<that fenced region, verbatim>",
+  "block":             "<sha256 of block.json as written>",   // only when the partial is a block
+  "blockContent":      "<block.json, verbatim>",              //   "
+  "cliVersion":        "<CLI version that wrote the lock>"
 }
 ```
 
-- **One file per partial, outside the manifest.** Two branches that touch
-  different partials never conflict on a lock, and the hand-edited manifest does
-  not churn when a hash moves. Commit the lock directory; it is the "last sync"
-  leg of the three-way comparison, and a teammate without it sees `pending`.
+- **One file per partial, beside its manifest**, as `package-lock.json` sits
+  beside `package.json`: the lock is the manifest's sidecar, not a parallel
+  tree. Two branches that touch different partials never conflict on a lock,
+  and the hand-edited manifest does not churn when a hash moves. Commit the
+  locks; they are the "last sync" leg of the three-way comparison, and a
+  teammate without them sees `pending`.
+- **A lock is not a manifest.** No manifest schema describes one, and nothing
+  validates or `$schema`-stamps it. Every reader that enumerates
+  `.wonderpress/manifest/partials/` filters `*.json` and so must skip
+  `*.lock.json` — `isPartialLockFilename()` in
+  [`src/validate.js`](src/validate.js) is that test, used by `readManifests()`,
+  `stampManifestSchemas()`, and the two page-template slug readers.
 - **Hashes are of exact content**, with one exception: CRLF counts as LF, so a
   Windows autocrlf checkout of committed files is not mistaken for a hand edit.
   The class hash covers only the fenced region (markers included) as
   `extractFencedRegion()` returns it; everything outside the fence may change
   freely. Code: [`src/partial-lock.js`](src/partial-lock.js).
+- **`classFenceContent` and `blockContent` are carried data, not comparison.**
+  They hold those two artifacts verbatim (no CRLF normalization — a merge base
+  has to be the real text), written on every lock write and read as optional,
+  so a lock without them behaves identically everywhere. A hash can say
+  machine-owned output was edited but cannot say what it was edited *from*;
+  these are the three-way merge base a conflict-resolve UI needs. Drift keys
+  nothing off them: the hashes remain the comparison.
 - The lock is written last, after every artifact is on disk. `partial remove`
   deletes it. `block create` and `add-js` rewrite the manifest without writing a
   lock, so the partial reads `pending` until the next sync.

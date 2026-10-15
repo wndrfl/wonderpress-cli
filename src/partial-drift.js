@@ -18,9 +18,9 @@ import {
 	renderLegacyPartialClassSource,
 } from './partial-class.js';
 import {
-	PARTIAL_LOCK_DIR,
 	blockRelPath,
 	currentPartialHashes,
+	partialLockRelPath,
 	readPartialLock,
 } from './partial-lock.js';
 
@@ -278,7 +278,7 @@ function lockChanges(manifest, themeDir, params, issues) {
 	const slug = manifest.slug;
 	const artifacts = manifest.artifacts || {};
 	const sync = `wonderpress partial sync ${params.class_name}`;
-	const lockRel = `${PARTIAL_LOCK_DIR}/${slug}.json`;
+	const lockRel = partialLockRelPath(slug);
 	const blockRel = blockRelPath(manifest);
 	const hashes = currentPartialHashes(manifest, themeDir);
 	const { lock, error: lockError } = readPartialLock(themeDir, slug);

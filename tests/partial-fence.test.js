@@ -39,7 +39,7 @@ const CLASS = 'src/partials/class-hero.php';
 // Create writes a sync lock; a lock-less partial is the legacy case (an
 // older CLI wrote it), where the writer's fence refusal stands on its own.
 // With a lock the same file is a sync conflict (see partial-lock.test.js).
-const LOCK = '.wonderpress/lock/partials/hero.json';
+const LOCK = '.wonderpress/manifest/partials/hero.lock.json';
 
 const USER_METHOD = `
 	/**

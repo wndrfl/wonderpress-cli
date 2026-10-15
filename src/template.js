@@ -17,6 +17,7 @@ import {
   pageTemplateManifestDir,
   PAGE_TEMPLATE_MANIFEST_DIR,
   PARTIAL_MANIFEST_DIR,
+  isPartialLockFilename,
   resolveWithin,
 } from './validate.js';
 import { ensureManifestSchemas } from './manifest-schema.js';
@@ -531,7 +532,8 @@ async function loadPartialSlugs(themeDir) {
   }
   const slugs = [];
   for (const file of fs.readdirSync(manifestDir)) {
-    if (!file.endsWith('.json')) {
+    // `<slug>.lock.json` is a sync lock, not a manifest.
+    if (!file.endsWith('.json') || isPartialLockFilename(file)) {
       continue;
     }
     try {

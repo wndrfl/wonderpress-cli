@@ -100,8 +100,9 @@ FENCES
   artifacts.class; create, sync, and block create all keep it.
 
 SYNC STATES
-  Every sync (and create) records hashes of what it wrote in
-  .wonderpress/lock/partials/<slug>.json. Commit it. check-drift compares
+  Every sync (and create) records what it wrote in a lock beside the
+  manifest, .wonderpress/manifest/partials/<slug>.lock.json. Commit it,
+  and leave it alone: it is not a manifest. check-drift compares
   the manifest, the generated files, and that lock:
 
     clean      nothing changed since the last sync (prints nothing)

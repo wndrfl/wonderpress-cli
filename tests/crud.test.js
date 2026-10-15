@@ -703,19 +703,32 @@ test('manifests and locks written on any OS carry forward-slash paths only', asy
 	try {
 		await writePartial(paramsFromFlags({ '--name': 'Call_To_Action', '--js': true, '--block': true }), dir);
 
-		const strings = (value) => typeof value === 'string'
-			? [value]
-			: (value && typeof value === 'object' ? Object.values(value).flatMap(strings) : []);
+		// The lock's `*Content` fields are verbatim copies of generated files,
+		// not paths: PHP and JSON bodies may legitimately contain a backslash,
+		// and they are what this test is not about.
+		const CARRIED = new Set(['classFenceContent', 'blockContent']);
+		const strings = (value) => {
+			if (typeof value === 'string') {
+				return [value];
+			}
+			if (!value || typeof value !== 'object') {
+				return [];
+			}
+			return Object.entries(value)
+				.filter(([key]) => !CARRIED.has(key))
+				.flatMap(([, v]) => strings(v));
+		};
 
+		// The lock is the manifest's sidecar: `<slug>.lock.json` beside
+		// `<slug>.json`, not a parallel tree.
 		const files = [
 			path.join(dir, '.wonderpress/manifest/partials/call-to-action.json'),
 			path.join(dir, 'blocks/call-to-action/block.json'),
-			...fs.readdirSync(path.join(dir, '.wonderpress')).filter((d) => d !== 'manifest')
-				.flatMap((d) => fs.readdirSync(path.join(dir, '.wonderpress', d), { recursive: true })
-					.map((f) => path.join(dir, '.wonderpress', d, f)))
-				.filter((f) => f.endsWith('.json')),
+			path.join(dir, '.wonderpress/manifest/partials/call-to-action.lock.json'),
 		];
-		assert.ok(files.length >= 3, `expected a manifest, a block.json and a lock, got ${files.join(', ')}`);
+		for (const file of files) {
+			assert.ok(fs.existsSync(file), `expected ${file} to exist`);
+		}
 		for (const file of files) {
 			for (const value of strings(JSON.parse(fs.readFileSync(file, 'utf8')))) {
 				assert.doesNotMatch(value, /\\/, `${path.basename(file)} has a backslash in ${JSON.stringify(value)}`);
