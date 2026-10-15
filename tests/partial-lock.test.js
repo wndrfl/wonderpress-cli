@@ -20,6 +20,7 @@ import { command as lintCommand, inspectTheme } from '../src/lint.js';
 import { handlers } from '../src/mcp.js';
 import { parseEnvelope } from '../src/format.js';
 import pkg from '../package.json' with { type: 'json' };
+import { writeStubBin } from './helpers/stub-bin.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const BIN = path.join(__dirname, '..', 'bin', 'wonderpress.js');
@@ -90,7 +91,7 @@ test('create writes a per-partial lock of the manifest, fenced region, and block
 	assert.equal(lock.classFence, sha256(extractFencedRegion(read(dir, CLASS))));
 	assert.equal(lock.block, sha256(fs.readFileSync(path.join(dir, BLOCK))));
 	assert.equal(lock.cliVersion, pkg.version);
-	assert.equal(partialLockPath(dir, 'hero'), `${dir}/${LOCK}`);
+	assert.equal(partialLockPath(dir, 'hero'), path.join(dir, LOCK));
 	// The lock lives beside the manifest tree, never inside a manifest.
 	assert.equal(readManifest(dir).lock, undefined);
 	assert.equal(JSON.stringify(readManifest(dir)).includes(lock.classFence), false);
@@ -415,8 +416,7 @@ function mcpEnv() {
 	// A phpcs stub that passes, so lint's result is about drift alone.
 	fs.ensureDirSync(path.join(root, 'vendor/bin'));
 	fs.writeFileSync(path.join(root, 'vendor/autoload.php'), '<?php');
-	fs.writeFileSync(path.join(root, 'vendor/bin/phpcs'), '#!/bin/sh\necho \'{"totals":{"errors":0,"warnings":0,"fixable":0},"files":{}}\'\nexit 0\n');
-	fs.chmodSync(path.join(root, 'vendor/bin/phpcs'), 0o755);
+	writeStubBin(path.join(root, 'vendor/bin'), 'phpcs', `process.stdout.write('{"totals":{"errors":0,"warnings":0,"fixable":0},"files":{}}\\n');\n`);
 	return { root, themeDir };
 }
 

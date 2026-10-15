@@ -1,4 +1,5 @@
-import sh from 'shelljs';
+import fs from 'fs-extra';
+import path from 'path';
 import * as format from './format.js';
 import * as log from './log.js';
 import * as composer from './composer.js';
@@ -8,6 +9,7 @@ import * as partial from './partial.js';
 import { checkPartialDrift } from './partial-drift.js';
 import { checkPageTemplates } from './template-check.js';
 import { checkThemeTokenDrift } from './token-drift.js';
+import { run } from './proc.js';
 
 /**
  * Accept and route a command.
@@ -71,17 +73,59 @@ async function resolveLintTheme(dir, opts) {
 		}
 	}
 
-	const themeDir = wordpress.pathToThemesDir + '/' + themeName;
+	const themeDir = path.join(wordpress.pathToThemesDir, themeName);
 	return { ok: true, themeName, themeDir };
+}
+
+/**
+ * The phpcs / phpcbf Composer installs at the environment root.
+ *
+ * Composer writes a `.bat` proxy beside each vendor binary on Windows, and the
+ * extensionless one there is a PHP script nothing can execute directly — so
+ * the platform decides which file is the command. Resolved to an absolute
+ * path, never `./vendor/bin/...` handed to a shell.
+ *
+ * @param {'phpcs'|'phpcbf'} tool
+ * @param {{ root?: string, platform?: string }} [opts]
+ * @returns {string}
+ **/
+export function phpcsBin(tool, { root = process.cwd(), platform = process.platform } = {}) {
+	return path.join(root, 'vendor', 'bin', platform === 'win32' ? `${tool}.bat` : tool);
+}
+
+/**
+ * A missing binary as a result rather than a shell's "not found": the
+ * environment root's Composer install is what provides it.
+ **/
+function missingTool(bin) {
+	const message = `${path.basename(bin)} was not found at ${bin}. Run \`composer install\` at the environment root, then lint again.`;
+	return { code: 127, stdout: '', stderr: message, missing: true, toString() { return ''; } };
+}
+
+/**
+ * Run phpcs or phpcbf with an argv array. `echo` replays the captured output
+ * to the terminal (human mode), since the caller also needs to read it.
+ **/
+function runTool(tool, args, { echo = false } = {}) {
+	const bin = phpcsBin(tool);
+	if (!fs.existsSync(bin)) {
+		const result = missingTool(bin);
+		log.error(result.stderr);
+		return result;
+	}
+	const result = run(bin, args, { silent: true });
+	if (echo) {
+		process.stdout.write(result.stdout);
+		process.stderr.write(result.stderr);
+	}
+	return result;
 }
 
 /**
  * Run phpcbf on a theme directory (CLI `--fix` / MCP `fix: true`).
  **/
 export function applyPhpcsFix(themeDir, opts = {}) {
-	return sh.exec('./vendor/bin/phpcbf ' + themeDir + ' -p -v --colors', {
-		silent: opts.silent === true,
-	});
+	return runTool('phpcbf', [themeDir, '-p', '-v', '--colors'], { echo: opts.silent !== true });
 }
 
 /**
@@ -134,7 +178,7 @@ export async function inspectTheme(dir, opts = {}) {
 	const wantFix = opts.fix === true;
 	let phpcs = runPhpcs(resolved.themeDir, { json: true });
 	let fixed = false;
-	if (wantFix && (!phpcs.ok || phpcsHasFixable(phpcs))) {
+	if (wantFix && !phpcs.missing && (!phpcs.ok || phpcsHasFixable(phpcs))) {
 		applyPhpcsFix(resolved.themeDir, { silent: true });
 		fixed = true;
 		phpcs = runPhpcs(resolved.themeDir, { json: true });
@@ -173,11 +217,8 @@ export async function inspectTheme(dir, opts = {}) {
 }
 
 function runPhpcs(themeDir, { json }) {
-	let cmd = './vendor/bin/phpcs ' + themeDir + ' -p -v --colors';
-	if (json) {
-		cmd = './vendor/bin/phpcs ' + themeDir + ' --report=json';
-	}
-	const lintResult = sh.exec(cmd, { silent: json });
+	const args = json ? [themeDir, '--report=json'] : [themeDir, '-p', '-v', '--colors'];
+	const lintResult = runTool('phpcs', args, { echo: !json });
 	let report = null;
 	if (json && lintResult.stdout) {
 		try {
@@ -186,11 +227,15 @@ function runPhpcs(themeDir, { json }) {
 			report = { raw: lintResult.stdout };
 		}
 	}
+	if (lintResult.missing) {
+		report = { error: lintResult.stderr };
+	}
 	return {
 		ok: lintResult.code === 0,
 		code: lintResult.code,
 		report,
 		stdout: lintResult.stdout,
+		missing: lintResult.missing === true,
 	};
 }
 
@@ -242,7 +287,7 @@ export async function theme(dir, opts) {
 
 	const phpcs = runPhpcs(themeDir, { json: wantJson });
 
-	if (opts.fix && (!phpcs.ok || phpcsHasFixable(phpcs))) {
+	if (opts.fix && !phpcs.missing && (!phpcs.ok || phpcsHasFixable(phpcs))) {
 		applyPhpcsFix(themeDir, { silent: format.isJson() });
 		log.info('All issues that could be fixed were fixed. Rerunning phpcs...');
 		return theme(process.cwd(), { name: themeName, axe: opts.axe, budget: opts.budget });
@@ -252,6 +297,8 @@ export async function theme(dir, opts) {
 		if (!wantJson) {
 			log.success('Great! The theme passed phpcs.');
 		}
+	} else if (phpcs.missing) {
+		// runTool already said what is missing and how to install it.
 	} else if (!wantJson) {
 		log.error('Issues were found during phpcs.');
 		log.info('If you would like Wonderpress to automatically fix as many issues as possible, add the --fix (or -f) flag to the command.');
@@ -342,6 +389,9 @@ export async function theme(dir, opts) {
 		} else if (phpcs.ok) {
 			code = 'tokens';
 			message = 'Static Kit tokens and theme.json are out of sync';
+		} else if (phpcs.missing) {
+			code = 'phpcs-missing';
+			message = phpcs.report.error;
 		}
 		const hint = lintHint({
 			phpcsOk: phpcs.ok,

@@ -519,14 +519,14 @@ export const TEMPLATE_MANIFEST_SCHEMA_VERSION = 1;
  * Path to a partial manifest file.
  **/
 export function partialManifestPath(themeDir, slug) {
-	return `${themeDir}/${PARTIAL_MANIFEST_DIR}/${slug}.json`;
+	return path.join(themeDir, PARTIAL_MANIFEST_DIR, `${slug}.json`);
 }
 
 /**
  * Directory for page-template manifest JSON files.
  **/
 export function pageTemplateManifestDir(themeDir) {
-	return `${themeDir}/${PAGE_TEMPLATE_MANIFEST_DIR}`;
+	return path.join(themeDir, PAGE_TEMPLATE_MANIFEST_DIR);
 }
 
 export const TEMPLATE_LOCK_LEVELS = ['all', 'insert', false];

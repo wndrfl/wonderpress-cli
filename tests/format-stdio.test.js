@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import * as format from '../src/format.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -19,7 +19,7 @@ test('isProtocolChunk accepts JSON-RPC and JSON envelopes, not ANSI CSI', () => 
 
 test('MCP mode keeps ANSI and log chrome off stdout', () => {
 	const script = `
-		import * as format from ${JSON.stringify(path.join(SRC, 'format.js'))};
+		import * as format from ${JSON.stringify(pathToFileURL(path.join(SRC, 'format.js')).href)};
 		format.setMcp();
 		process.stdout.write('\\u001B[2m  · Grabbing the currently active theme...\\u001B[0m\\n');
 		process.stdout.write('{"jsonrpc":"2.0","id":1,"result":{}}\\n');

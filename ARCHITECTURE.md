@@ -437,7 +437,9 @@ something answering on the port. Composer is checked for both backends (it
 installs the theme's packages on the host either way); before it was, a
 missing Composer surfaced mid-init, after the clone and npm install. On Windows the host backend is a single
 failing `host-platform` check pointing at wp-env, and every-backend mode skips
-the host there.
+the host there. `init`'s preflight treats that one check as a warning instead
+(see "Cross-platform support"). The wp-env port hint names the platform's own
+tool (`portOwnerCommand` in [`src/proc.js`](src/proc.js)).
 
 ### `manifest schema`
 
@@ -461,15 +463,113 @@ means no warning. `version --format json` carries
 
 The desktop app runs the CLI on Electron's bundled Node (`ELECTRON_RUN_AS_NODE=1`),
 not a system `node`. shelljs checks `process.versions.electron` at load and,
-when it is set, leaves `config.execPath` null, so every synchronous `sh.exec()`
-returns `undefined` and anything exec-backed — `lint` (phpcs), doctor's docker
-checks, Composer, the host backend — throws. Under `ELECTRON_RUN_AS_NODE`
-`process.execPath` *is* a working node, so
+when it is set, leaves `config.execPath` null, so any synchronous `sh.exec()`
+returns `undefined` instead of a result. Since the cross-platform work below
+no command runs through `sh.exec` any more (everything goes through
+[`src/proc.js`](src/proc.js), a plain `spawnSync`), and the `sh.which` calls
+that remain do not need `execPath`. Even so, the CLI must not be one stray
+`sh.exec` away from breaking in the app, so
 [`src/shell-exec-path.js`](src/shell-exec-path.js) sets
 `sh.config.execPath = process.execPath` whenever it is null or Electron is
-detected. It is the first import of `bin/wonderpress.js` and `src/cli.js`. On
-plain Node shelljs has already set the same value, so the module is a no-op
-there; the CLI takes no Electron dependency and has no Electron-only path.
+detected — under `ELECTRON_RUN_AS_NODE` that path *is* a working node. It is
+the first import of `bin/wonderpress.js` and `src/cli.js`. On plain Node
+shelljs has already set the same value, so the module is a no-op there; the
+CLI takes no Electron dependency and has no Electron-only path.
 [`tests/electron-execpath.test.js`](tests/electron-execpath.test.js) fakes the
 Electron signal with a `node -r` preload and pins that `version` and `doctor`
 still answer in JSON.
+
+## Cross-platform support
+
+The CLI is the gate for the desktop app's platforms (app spec section 3): the
+app's Windows and Linux builds ship only while the `unit` job in
+[`.github/workflows/test.yml`](.github/workflows/test.yml) is green on
+`ubuntu-latest`, `macos-latest` and `windows-latest`. Integration and e2e stay
+Ubuntu-only — they need MySQL, PHP, WP-CLI and Docker services.
+
+### Tiers
+
+| Platform | Backends | Notes |
+| --- | --- | --- |
+| macOS | host, wp-env | Reference platform. |
+| Linux (Ubuntu LTS tested) | host, wp-env | |
+| Windows 10/11 | wp-env | Docker Desktop with the WSL2 engine. Host: unsupported. |
+
+**Why the host backend is unsupported on Windows.** It means native PHP, MySQL
+and WP-CLI (`wp.bat`) on the PATH and `wp server` (PHP's built-in server) as a
+supervised foreground process. None of that is tested on Windows, `wp server`'s
+`php -S` grandchild cannot be stopped as a group (there are no process groups;
+the JSON-mode start falls back to `taskkill /T /F` by pid), and the e2e that
+proves the host lifecycle runs on Ubuntu only. The decision, by layer:
+
+- `wonderpress doctor` reports it as one failing `host-platform` check — a
+  checklist that can never fully pass is worse than one sentence.
+- `init`'s preflight (`doctor.preflight('host')` on win32) turns that check
+  into a **warning** (`HINTS.hostOnWindowsInit`: "it may work, but nothing tests
+  it there") and still checks WP-CLI and Composer, so a determined user can
+  try. The CLI warns; the app blocks it in onboarding, because the app could
+  not help them when it fails.
+
+### The argv rule
+
+A command that carries a path, a name, a password or any other user value is
+run as an **argv array**, never as a string handed to a shell.
+[`src/proc.js`](src/proc.js)'s `run(bin, args, opts)` is the one way to do it:
+it returns shelljs's `{ code, stdout, stderr }` shape (with `toString()` →
+stdout) so converted call sites read results unchanged, reports a missing
+program as `code: 127` (and, unless `silent`, prints `<bin>: command not
+found` to stderr, as the shell used to), never inherits stdin (MCP's protocol
+channel), and while `--format json` or MCP owns stdout routes the child's
+stdout to stderr. `run()` never throws, so a caller that used to rely on
+`execSync` throwing must check `code` itself: the foreground `server start`
+(`foregroundOutcome` in [`src/env/host.js`](src/env/host.js)) treats a signal
+stop as success and anything else non-zero as a failure with exit code 1.
+
+The string form was wrong twice over: sh and cmd.exe disagree about quoting,
+`$`, `%`, `&` and spaces, so `wp core install --title="My $HOME"` meant
+different things on each, and a database password with a space split in two.
+`buildWpCliCommand`'s POSIX single-quoting became `buildWpCliArgv` in
+[`src/env/command.js`](src/env/command.js), which returns `{ file, args }`.
+
+Windows batch files (`wp.bat`, `composer.bat`, `phpcs.bat`, npm's
+`node_modules/.bin/*.cmd`) cannot be spawned without a shell, so `buildSpawn`
+builds the `cmd.exe /d /s /c "..."` line itself with every argument escaped
+(cross-spawn's rules, double-escaped for npm shims) and verbatim arguments. The
+caller still passes argv. `resolveBin` finds `wp` → `wp.bat` with PATHEXT on
+Windows; per-platform names are explicit where the CLI picks a file itself:
+`vendor/bin/phpcs.bat` / `phpcbf.bat` (`phpcsBin` in
+[`src/lint.js`](src/lint.js), with a clear "run composer install" error when
+missing) and `node_modules/.bin/wp-env.cmd` (`resolveWpEnvBin`).
+
+No shell commands for filesystem work: `init --clean-slate` is
+`core.cleanSlate()` — fs-extra `emptyDir`, dotfiles included, refusing the
+filesystem root and the home directory — not `rm -rf <dir>/*` and `rm -rf
+<dir>/.*`.
+
+### The forward-slash rule
+
+Paths used to touch the filesystem are built with `path.join`/`path.resolve`
+and stay native. Paths written **into** a file another machine reads —
+manifests, sync locks, block.json, `.wonderpressrc` — and theme-relative paths
+in JSON envelopes (a manifest's `artifacts`) are always forward-slash, whatever
+OS wrote them (app spec section 3: "manifests always use forward slashes").
+Absolute paths describing this machine (a `wrote` entry, an MCP config's
+`args`) stay native. Normalize at that boundary (`themeRel` in
+`src/partial.js`, `toPosixPath` in `src/proc.js`); `tests/crud.test.js` scans a
+freshly written manifest, block.json and lock for backslashes, which is a real
+check on the Windows leg. Human output shortens absolute paths (POSIX and
+`C:\...`) relative to the cwd and prints them with forward slashes too.
+
+### Tests on Windows
+
+Command stubs come from `tests/helpers/stub-bin.js`: the behavior is
+JavaScript, and the launcher is a `#!/bin/sh` script or a `.bat` depending on
+the OS, which is exactly what Composer and WP-CLI install. Dynamic imports in
+spawned `-e` scripts use `pathToFileURL(...).href` (a bare `D:\...` is not an
+ESM specifier). Tests that are inherently POSIX — process-group signalling in
+`server start --format json` — are skipped on win32 with the reason, not
+deleted; the readiness half of that path runs everywhere. `.gitattributes`
+(`* text=auto eol=lf`) keeps a Windows checkout LF, so byte-exact fixtures
+(fences, checksums) compare as they do elsewhere; the code itself already reads
+CRLF as LF where it hashes (see "Sync lock and drift states").
+

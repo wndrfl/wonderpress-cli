@@ -18,6 +18,10 @@ ENVIRONMENT BACKENDS
   `wonderpress doctor` runs init's prerequisite checks on their own, before
   anything is built.
 
+  Windows: use wp-env (Docker Desktop with the WSL2 engine). The host backend
+  is not supported there; init warns ("it may work, but nothing tests it
+  there") and carries on rather than refusing. macOS and Linux support both.
+
   init pins the running CLI version as `cliVersion` in .wonderpressrc (unless
   the project already pins one). Commit it: any other CLI version warns when
   run in this project.

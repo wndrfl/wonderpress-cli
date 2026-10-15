@@ -72,8 +72,23 @@ test('a project-local wp-env is preferred over anything global', () => {
 		const bin = path.join(dir, 'node_modules', '.bin', 'wp-env');
 		fs.ensureDirSync(path.dirname(bin));
 		fs.writeFileSync(bin, '#!/bin/sh\n');
+		fs.writeFileSync(`${bin}.cmd`, '@exit /b 0\r\n');
 
-		assert.equal(resolveWpEnvBin(dir), bin);
+		assert.equal(resolveWpEnvBin(dir, 'darwin'), bin);
+		assert.equal(resolveWpEnvBin(dir, 'linux'), bin);
+	} finally { fs.removeSync(dir); }
+});
+
+test('on Windows the runnable npm shim is the .cmd one', () => {
+	// npm writes an sh shim there too, which nothing on Windows can execute.
+	const dir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'wp-bin-')));
+	try {
+		const bin = path.join(dir, 'node_modules', '.bin', 'wp-env');
+		fs.ensureDirSync(path.dirname(bin));
+		fs.writeFileSync(bin, '#!/bin/sh\n');
+		fs.writeFileSync(`${bin}.cmd`, '@exit /b 0\r\n');
+
+		assert.equal(resolveWpEnvBin(dir, 'win32'), `${bin}.cmd`);
 	} finally { fs.removeSync(dir); }
 });
 

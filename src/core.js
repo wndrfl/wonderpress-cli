@@ -8,7 +8,7 @@ import * as log from './log.js';
 import os from 'os';
 import path from 'path';
 import * as readme from './readme.js';
-import sh from 'shelljs';
+import { run } from './proc.js';
 import * as wordpress from './wordpress.js';
 import { resolveInitConfig } from './init-config.js';
 import { isValidNamespace, LEGACY_NAMESPACE } from './validate.js';
@@ -188,20 +188,14 @@ function applyCoreOverride(themeDir, override) {
   // untagged branch is a dev-* constraint that "^2.0" will never match.
   const constraint = override.ref || (isLocalPath ? '*@dev' : 'dev-master');
 
-  const configured = sh.exec(
-    `composer config repositories.wonderpress-core ${type} ${JSON.stringify(url)}`,
-    { cwd: themeDir }
-  );
+  const configured = run('composer', ['config', 'repositories.wonderpress-core', type, url], { cwd: themeDir });
 
   if (configured.code !== 0) {
     log.error(`Could not point ${themeDir} at ${url}.`);
     return false;
   }
 
-  const required = sh.exec(
-    `composer require ${CORE_PACKAGE}:${JSON.stringify(constraint)} --no-interaction`,
-    { cwd: themeDir }
-  );
+  const required = run('composer', ['require', `${CORE_PACKAGE}:${constraint}`, '--no-interaction'], { cwd: themeDir });
 
   if (required.code !== 0) {
     log.error(`Could not require ${CORE_PACKAGE} at ${constraint} in ${themeDir}.`);
@@ -248,6 +242,35 @@ function readCoreVersion() {
 }
 
 /**
+ * Empty a directory for `init --clean-slate`, dotfiles included.
+ *
+ * This used to be `rm -rf ${dir}/*` and `rm -rf ${dir}/.*` through a shell:
+ * no `rm` on Windows, a glob that split on spaces in the path, and a `.*`
+ * whose meaning depends on the shell (in some, it matches `..`). fs-extra's
+ * emptyDir removes the directory's contents and nothing else, with no shell
+ * and no glob.
+ *
+ * Refuses the filesystem root and the home directory outright: there is no
+ * project that lives there, and a typo in --dir should not be able to cost
+ * someone their machine.
+ *
+ * @param {String} dir
+ * @returns {{ ok: Boolean, error?: String }}
+ **/
+export function cleanSlate(dir) {
+  const resolved = path.resolve(dir);
+  if (resolved === path.parse(resolved).root || resolved === path.resolve(os.homedir())) {
+    return { ok: false, error: `Refusing to clear ${resolved}: --clean-slate empties a project directory, and that is not one.` };
+  }
+  try {
+    fs.emptyDirSync(resolved);
+  } catch (e) {
+    return { ok: false, error: `Could not clear ${resolved}: ${e.message}` };
+  }
+  return { ok: true };
+}
+
+/**
  * Initialize a new or existing Wonderpress Development Environment
  **/
 export async function init(dir, initConfig) {
@@ -260,6 +283,8 @@ export async function init(dir, initConfig) {
   // The real backends' preflight() is `wonderpress doctor` scoped to that
   // backend (src/doctor.js), so a failed init and doctor say the same thing.
   const preflight = await backend.preflight();
+  // Warnings do not stop init (today: the host backend on Windows).
+  (preflight.warnings || []).forEach((warning) => log.warn(warning));
   if (!preflight.ok) {
     preflight.errors.forEach((error) => log.error(error));
     // Exit non-zero. This used to `return 0`, so an init that refused to run
@@ -312,8 +337,12 @@ export async function init(dir, initConfig) {
       }
 
       log.warn(`Clearing the entire directory (clean slate!)`);
-      await sh.exec(`rm -rf ${targetDir}/*`);
-      await sh.exec(`rm -rf ${targetDir}/.*`);
+      const wiped = cleanSlate(targetDir);
+      if (!wiped.ok) {
+        log.error(wiped.error);
+        process.exitCode = 1;
+        return false;
+      }
     } else {
       log.success(`You are safe. Cancelling the installation. Please try again without requesting a clean slate installation.`);
       return;
@@ -341,7 +370,7 @@ export async function init(dir, initConfig) {
     const envRefArg = envSource.ref ? ` --branch ${envSource.ref}` : '';
     // Silent: git's protocol dump (--progress --verbose, inherited stdio) sat
     // flush-left in the middle of the gutter log. Failures still print stderr.
-    const cloned = sh.exec(`git clone ${envSource.repo}${envRefArg} ${tmpDir} --depth=1`, { silent: true });
+    const cloned = run('git', ['clone', envSource.repo, ...(envSource.ref ? ['--branch', envSource.ref] : []), tmpDir, '--depth=1'], { silent: true });
 
     // Stop rather than carry on into a half-scaffolded directory. This used to
     // ignore the exit code entirely, so a failed clone produced an environment
@@ -512,7 +541,7 @@ export async function init(dir, initConfig) {
     if (themeName) {
       agents.writeAgentFiles({
         root: process.cwd(),
-        themeDir: `${wordpress.pathToThemesDir}/${themeName}`,
+        themeDir: path.join(wordpress.pathToThemesDir, themeName),
       });
     }
   } catch (err) {

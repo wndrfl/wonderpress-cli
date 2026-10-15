@@ -54,6 +54,7 @@ import {
 	renderFencedRegion,
 	renderPartialClassSource,
 } from './partial-class.js';
+import { toPosixPath } from './proc.js';
 
 // Re-exported so callers that already import partial.js get the one renderer
 // and the fence helpers without a second import.
@@ -173,7 +174,7 @@ export async function resolveThemeDir(args) {
 		themeName = theme.name;
 	}
 
-	return wordpress.pathToThemesDir + '/' + themeName;
+	return path.join(wordpress.pathToThemesDir, themeName);
 }
 
 async function refreshAgents(themeDir) {
@@ -580,7 +581,7 @@ export async function writePartial(params, themeDir, options = {}) {
 			template_class_name: viewName,
 			template_name: viewName,
 		});
-		const viewFilePath = `${themeDir}/partials/${params.partial_template_name}`;
+		const viewFilePath = path.join(themeDir, 'partials', params.partial_template_name);
 		fs.ensureDirSync(path.dirname(viewFilePath));
 		fs.writeFileSync(viewFilePath, viewOutput);
 		log.success(`View template created at: ${viewFilePath}`);
@@ -685,7 +686,9 @@ function themeRel(themeDir, abs) {
 	if (!abs) {
 		return false;
 	}
-	return path.relative(themeDir, abs).split(path.sep).join('/');
+	// Written into the manifest: forward slashes on every OS (the
+	// forward-slash rule, ARCHITECTURE.md "Cross-platform support").
+	return toPosixPath(path.relative(themeDir, abs));
 }
 
 function wroteRel(themeDir, result, kind) {
@@ -892,9 +895,9 @@ export function writeBlock(params, themeDir, options = {}) {
 		attributes,
 		render: 'file:./render.php',
 	};
-	const blockDir = `${themeDir}/blocks/${slug}`;
+	const blockDir = path.join(themeDir, 'blocks', slug);
 	fs.ensureDirSync(blockDir);
-	fs.writeFileSync(`${blockDir}/block.json`, JSON.stringify(block, null, 2) + '\n');
+	fs.writeFileSync(path.join(blockDir, 'block.json'), JSON.stringify(block, null, 2) + '\n');
 	log.success(`Block metadata created at: ${blockDir}/block.json`);
 
 	if (!options.skipRender) {
@@ -905,7 +908,7 @@ export function writeBlock(params, themeDir, options = {}) {
 			namespace,
 			class_name: params.class_name,
 		});
-		fs.writeFileSync(`${blockDir}/render.php`, renderOutput);
+		fs.writeFileSync(path.join(blockDir, 'render.php'), renderOutput);
 		log.success(`Block render created at: ${blockDir}/render.php`);
 	}
 
@@ -1026,7 +1029,7 @@ export function readManifest(themeDir, slug) {
  **/
 export function readManifests(themeDir) {
 
-	const dir = `${themeDir}/${PARTIAL_MANIFEST_DIR}`;
+	const dir = path.join(themeDir, PARTIAL_MANIFEST_DIR);
 	if (!fs.existsSync(dir)) {
 		return [];
 	}

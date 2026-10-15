@@ -1,3 +1,4 @@
+import path from 'path';
 import fs from 'fs-extra';
 import * as format from './format.js';
 import * as help from './help.js';
@@ -235,7 +236,7 @@ export function listBlocks(themeDir) {
  **/
 export function scanBlockDirs(themeDir) {
 
-	const dir = `${themeDir}/blocks`;
+	const dir = path.join(themeDir, 'blocks');
 	if (!fs.existsSync(dir)) {
 		return [];
 	}
@@ -243,7 +244,7 @@ export function scanBlockDirs(themeDir) {
 	const found = [];
 
 	for (const slug of fs.readdirSync(dir).sort()) {
-		const metadata = `${dir}/${slug}/block.json`;
+		const metadata = path.join(dir, slug, 'block.json');
 		if (!fs.existsSync(metadata)) {
 			continue;
 		}

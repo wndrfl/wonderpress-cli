@@ -690,3 +690,41 @@ test('unreadable block.json is skipped rather than crashing the listing', async 
 		fs.removeSync(dir);
 	}
 });
+
+// --- the forward-slash rule ---
+//
+// App spec section 3: manifests always use forward slashes. A project is
+// committed and opened on other machines, so a manifest or lock written on
+// Windows must read the same as one written on macOS. This runs on the
+// Windows leg of CI, which is where it means something.
+
+test('manifests and locks written on any OS carry forward-slash paths only', async () => {
+	const dir = tmpTheme();
+	try {
+		await writePartial(paramsFromFlags({ '--name': 'Call_To_Action', '--js': true, '--block': true }), dir);
+
+		const strings = (value) => typeof value === 'string'
+			? [value]
+			: (value && typeof value === 'object' ? Object.values(value).flatMap(strings) : []);
+
+		const files = [
+			path.join(dir, '.wonderpress/manifest/partials/call-to-action.json'),
+			path.join(dir, 'blocks/call-to-action/block.json'),
+			...fs.readdirSync(path.join(dir, '.wonderpress')).filter((d) => d !== 'manifest')
+				.flatMap((d) => fs.readdirSync(path.join(dir, '.wonderpress', d), { recursive: true })
+					.map((f) => path.join(dir, '.wonderpress', d, f)))
+				.filter((f) => f.endsWith('.json')),
+		];
+		assert.ok(files.length >= 3, `expected a manifest, a block.json and a lock, got ${files.join(', ')}`);
+		for (const file of files) {
+			for (const value of strings(JSON.parse(fs.readFileSync(file, 'utf8')))) {
+				assert.doesNotMatch(value, /\\/, `${path.basename(file)} has a backslash in ${JSON.stringify(value)}`);
+			}
+		}
+		const m = manifestOf(dir, 'call-to-action');
+		assert.match(m.artifacts.class, /^src\/partials\//);
+		assert.match(m.artifacts.script, /^static\/src\/js\//);
+	} finally {
+		fs.removeSync(dir);
+	}
+});

@@ -2,6 +2,7 @@ import sh from 'shelljs';
 import * as format from './format.js';
 import * as log from './log.js';
 import { isPortFree } from './env/probe.js';
+import { portOwnerCommand, run as runProcess } from './proc.js';
 
 /**
  * `wonderpress doctor` — every prerequisite check, in one place.
@@ -36,14 +37,19 @@ export const HINTS = {
 	// preflight exist to head off.
 	composer: `Composer is not installed, or is not on your PATH. See https://getcomposer.org/download/`,
 	hostOnWindows: `The host backend is not supported on Windows.\nUse the Docker backend instead: wonderpress init --env wp-env`,
+	// What `init` prints instead on Windows: doctor's sentence, plus why it
+	// carries on. The CLI warns and lets a determined user try; the app is
+	// where this blocks (onboarding), because the app cannot help them when it
+	// fails. See ARCHITECTURE.md, "Cross-platform support".
+	hostOnWindowsInit: `The host backend is not supported on Windows. It may work, but nothing tests it there.\nUse the Docker backend instead: wonderpress init --env wp-env\nContinuing with the host backend.`,
 };
 
 /**
  * The port-conflict message wp-env's provision() prints. Lives here so doctor
  * and provision say the same thing.
  **/
-export function portInUseHint(port) {
-	return `Port ${port} is already in use, so wp-env cannot start.\n  See what has it:  lsof -nP -iTCP:${port} -sTCP:LISTEN\n  Most likely another wp-env environment — run \`wp-env stop\` in that project.\nOr change "port" in .wp-env.json.`;
+export function portInUseHint(port, platform = process.platform) {
+	return `Port ${port} is already in use, so wp-env cannot start.\n  See what has it:  ${portOwnerCommand(port, platform)}\n  Most likely another wp-env environment — run \`wp-env stop\` in that project.\nOr change "port" in .wp-env.json.`;
 }
 
 /**
@@ -55,8 +61,8 @@ export const defaultDeps = {
 		const found = sh.which(bin);
 		return found ? String(found) : null;
 	},
-	exec(cmd) {
-		const result = sh.exec(cmd, { silent: true });
+	exec(bin, args = []) {
+		const result = runProcess(bin, args, { silent: true });
 		return { code: result.code, stdout: result.stdout || '', stderr: result.stderr || '' };
 	},
 	isPortFree,
@@ -157,7 +163,7 @@ async function wpEnvChecks(deps, opts) {
 	if (docker) {
 		// wp-env spawns `docker compose`; the old standalone docker-compose v1
 		// does not satisfy it.
-		const compose = deps.exec('docker compose version');
+		const compose = deps.exec('docker', ['compose', 'version']);
 		checks.push(check({
 			check: 'docker-compose',
 			label: 'Docker Compose v2',
@@ -169,7 +175,7 @@ async function wpEnvChecks(deps, opts) {
 
 		// `docker version` succeeds against a dead daemon, so this is the check
 		// a PATH lookup misses.
-		const info = deps.exec('docker info');
+		const info = deps.exec('docker', ['info']);
 		checks.push(check({
 			check: 'docker-daemon',
 			label: 'Docker daemon running',
@@ -218,7 +224,7 @@ async function wpEnvChecks(deps, opts) {
 			label: `Port ${opts.port} available`,
 			ok,
 			backend: 'wp-env',
-			hint: portInUseHint(opts.port),
+			hint: portInUseHint(opts.port, opts.platform || process.platform),
 			detail,
 		}));
 	}
@@ -248,7 +254,7 @@ export async function run(backend, opts = {}) {
 	for (const name of selected) {
 		const found = name === 'host'
 			? hostChecks(deps, platform)
-			: await wpEnvChecks(deps, opts);
+			: await wpEnvChecks(deps, { ...opts, platform });
 		for (const c of found) {
 			// WP-CLI and Composer are required by both backends; list them once.
 			if (!checks.some((existing) => existing.check === c.check)) {
@@ -266,12 +272,28 @@ export async function run(backend, opts = {}) {
 }
 
 /**
- * What a backend's preflight() returns: { ok, errors }, the errors being the
+ * What a backend's preflight() returns: { ok, errors, warnings? }, the errors being the
  * failing checks' hints. A failure with no hint was not reached (Docker
  * missing makes the Compose and daemon checks moot), so it adds no message —
  * which is exactly what the old inline preflight printed.
  **/
 export async function preflight(backend, opts = {}) {
+
+	// The host backend on Windows: doctor reports it as a failing check (one
+	// sentence, nothing else), but init only warns and carries on — the plan's
+	// "unsupported, may work". What can still be checked is checked, so a
+	// Windows machine with no WP-CLI fails here rather than halfway through.
+	const platform = opts.platform || process.platform;
+	if (backend === 'host' && platform === 'win32') {
+		const deps = { ...defaultDeps, ...(opts.deps || {}) };
+		const checks = [wpCliCheck(deps), composerCheck(deps)];
+		return {
+			ok: checks.every((c) => c.ok),
+			errors: checks.filter((c) => !c.ok && c.hint).map((c) => c.hint),
+			warnings: [HINTS.hostOnWindowsInit],
+		};
+	}
+
 	const report = await run(backend, { ...opts, port: null });
 	return {
 		ok: report.ok,

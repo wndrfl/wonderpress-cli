@@ -31,4 +31,5 @@ AUTHORING
 
 Run `wonderpress <command> help` for detail. Start with
 `wonderpress partial help` if you are new; almost everything begins there.
-Requires Node.js 24+, WP-CLI, PHP, and Composer.
+Requires Node.js 24+, WP-CLI, PHP, and Composer. Runs on macOS, Linux and
+Windows; on Windows, use the wp-env (Docker) backend.

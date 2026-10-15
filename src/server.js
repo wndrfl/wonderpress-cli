@@ -141,6 +141,13 @@ export async function start(dir) {
 
 	const result = await backend.start();
 
+	// A backend that could not start (no `wp`, `wp server` exiting non-zero,
+	// wp-env failing) has said why; the exit code has to agree.
+	if (result && result.ok === false) {
+		process.exitCode = format.EXIT_FAIL;
+		return false;
+	}
+
 	// A detached backend has returned with the site still up, so say where it
 	// is. A foreground one never reaches this line.
 	if (result && result.detached) {
@@ -284,7 +291,7 @@ export async function stop(dir) {
 		// log.* is silent in JSON mode, and this is worth saying.
 		// Both of these now stop `php -S` too: a JSON-mode start forwards stop
 		// signals to the server's process group, and the reported pid leads it.
-		process.stderr.write('The host development server runs in the foreground; stop it with Ctrl-C, by sending SIGTERM to the `wonderpress server start` process, or with `kill -TERM -<pid>` using the pid its JSON envelope reported.\n');
+		process.stderr.write(hostStopHint() + '\n');
 	}
 
 	// A detached backend that stopped cleanly is down. The host has nothing
@@ -329,4 +336,16 @@ export async function status(dir) {
 	}
 
 	return true;
+}
+
+/**
+ * How to stop a host `wp server` from outside, in the platform's own terms.
+ * POSIX signals the process group the JSON envelope's pid leads; Windows has
+ * no groups, so the tree is killed by pid.
+ **/
+export function hostStopHint(platform = process.platform) {
+	if (platform === 'win32') {
+		return 'The host development server runs in the foreground; stop it with Ctrl-C, or with `taskkill /PID <pid> /T /F` using the pid its JSON envelope reported.';
+	}
+	return 'The host development server runs in the foreground; stop it with Ctrl-C, by sending SIGTERM to the `wonderpress server start` process, or with `kill -TERM -<pid>` using the pid its JSON envelope reported.';
 }

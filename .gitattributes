@@ -1,0 +1,4 @@
+# LF in the working tree on every OS, Windows included. Fixtures and
+# generated output are compared byte for byte (fences, checksums), and a
+# CRLF checkout would fail them for a reason no user hits.
+* text=auto eol=lf

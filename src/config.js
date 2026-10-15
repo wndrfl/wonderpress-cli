@@ -22,10 +22,10 @@ function isFile(path) {
 export async function exists(dir) {
 
   // Check for .wonderpressrc
-  if (isFile(`${dir}/.wonderpressrc`)) return true;
+  if (isFile(path.join(dir, '.wonderpressrc'))) return true;
 
   // Check for .wonderpress (old version)
-  if (isFile(`${dir}/.wonderpress`)) return true;
+  if (isFile(path.join(dir, '.wonderpress'))) return true;
 
   return false;
 }

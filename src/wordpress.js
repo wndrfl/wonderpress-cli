@@ -1,7 +1,7 @@
 import fs from 'fs-extra';
 import path from 'path';
 import * as log from './log.js';
-import sh from 'shelljs';
+import { run } from './proc.js';
 import * as config from './config.js';
 import * as core from './core.js';
 import * as env from './env/index.js';
@@ -30,7 +30,7 @@ export function themesOnDisk() {
 	if (! fs.existsSync(pathToThemesDir)) return [];
 
 	return fs.readdirSync(pathToThemesDir).filter((entry) => {
-		return fs.existsSync(`${pathToThemesDir}/${entry}/style.css`);
+		return fs.existsSync(path.join(pathToThemesDir, entry, 'style.css'));
 	});
 }
 
@@ -160,12 +160,15 @@ export async function configureWordPress(config) {
 	connection.end();
 
 	// Use WP CLI to create the wp-config.php file
-	let wpConfigCreateCmd = 'wp config create';
-	wpConfigCreateCmd += ' --dbhost=' + creds.host;
-	wpConfigCreateCmd += ' --dbuser=' + creds.user;
-	wpConfigCreateCmd += ' --dbpass=' + creds.password;
-	wpConfigCreateCmd += ' --dbname=' + dbName;
-	const configResult = sh.exec(wpConfigCreateCmd);
+	// argv, not a shell string: a password with a space, `$` or `&` in it
+	// used to be split or expanded by the shell before WP-CLI saw it.
+	const configResult = run('wp', [
+		'config', 'create',
+		`--dbhost=${creds.host}`,
+		`--dbuser=${creds.user}`,
+		`--dbpass=${creds.password}`,
+		`--dbname=${dbName}`,
+	]);
 	if (configResult.code !== 0) {
 		log.error('Failed to create wp-config.php.');
 		return false;
@@ -198,7 +201,7 @@ export async function createThemesDirectory() {
  * Download WordPress core (without wp-content)
  **/
 export async function downloadWordPress() {
-	sh.exec('wp core download --skip-content --force');
+	run('wp', ['core', 'download', '--skip-content', '--force']);
 	return true;
 }
 
@@ -261,7 +264,7 @@ export async function getAllThemes() {
  * moments before `init` goes on to write the file.
  **/
 export async function hasConfig() {
-	const result = sh.exec('wp config path', { silent: true });
+	const result = run('wp', ['config', 'path'], { silent: true });
 	return result.code === 0;
 }
 
@@ -277,7 +280,7 @@ export async function hasConfig() {
 export async function ensureDatabaseFromConfig() {
 
 	const read = (key) => {
-		const result = sh.exec(`wp config get ${key}`, { silent: true });
+		const result = run('wp', ['config', 'get', key], { silent: true });
 		return result.code === 0 ? result.stdout.trim() : null;
 	};
 
@@ -366,13 +369,14 @@ export async function installWordPress(config) {
 	vals.adminPassword = vals.adminPassword ?? 'supersecure';
 	vals.adminEmail = vals.adminEmail ?? 'example@example.com';
 
-	let wpInstallCmd = 'wp core install';
-	wpInstallCmd += ' --url=' + vals.url;
-	wpInstallCmd += ' --title=' + JSON.stringify(vals.title);
-	wpInstallCmd += ' --admin_user=' + vals.adminUser;
-	wpInstallCmd += ' --admin_password=' + vals.adminPassword;
-	wpInstallCmd += ' --admin_email=' + vals.adminEmail;
-	const installResult = sh.exec(wpInstallCmd);
+	const installResult = run('wp', [
+		'core', 'install',
+		`--url=${vals.url}`,
+		`--title=${vals.title}`,
+		`--admin_user=${vals.adminUser}`,
+		`--admin_password=${vals.adminPassword}`,
+		`--admin_email=${vals.adminEmail}`,
+	]);
 	if (installResult.code !== 0) {
 		log.error('WordPress installation failed.');
 		return false;
@@ -385,11 +389,7 @@ export async function installWordPress(config) {
  * Install a specific plugin and optionally activate
  **/
 export async function installPlugin(url, activate) {
-	let cmd = `wp plugin install ${url}`;
-	if (activate) {
-		cmd += ` --activate`;
-	}
-	sh.exec(cmd);
+	run('wp', ['plugin', 'install', url, ...(activate ? ['--activate'] : [])]);
 }
 
 /**
@@ -413,8 +413,7 @@ export async function installMuPlugin(url, ref = null) {
 	const tmpDir = '.wonderpress-tmp';
 	await fs.emptyDirSync(tmpDir);
 
-	const refArg = ref ? ` --branch ${ref}` : '';
-	const cloned = sh.exec(`git clone ${url}${refArg} ${tmpDir} --depth=1`, { silent: true });
+	const cloned = run('git', ['clone', url, ...(ref ? ['--branch', ref] : []), tmpDir, '--depth=1'], { silent: true });
 
 	if (cloned.code !== 0) {
 		log.error(`Could not install ${url}${ref ? ` at ${ref}` : ''}. Refusing to continue with a different version than the one requested.`);
@@ -459,9 +458,7 @@ export async function installTheme(url, opts) {
 
 	opts = opts ? opts : {};
 
-	let cmd = 'wp theme install';
-	cmd += ' ' + url;
-	cmd += ' --color';
+	const args = ['theme', 'install', url, '--color'];
 
 	// Should we activate this theme?
 	let activate = opts.activate;
@@ -479,10 +476,10 @@ export async function installTheme(url, opts) {
 		}
 	}
 	if (activate) {
-		cmd += ' --activate';
+		args.push('--activate');
 	}
 
-	sh.exec(cmd);
+	run('wp', args);
 }
 
 /**
