@@ -1,9 +1,9 @@
 import fs from 'fs-extra';
 import path from 'path';
 import sh from 'shelljs';
-import { execFileSync } from 'child_process';
 import * as doctor from '../doctor.js';
 import * as log from '../log.js';
+import { run } from '../proc.js';
 import { DEFAULT_WP_ENV_PORT, isPortFree, isPortListening, readWpEnvPort } from './probe.js';
 
 // Re-exported: this is where callers and tests have always found it.
@@ -59,9 +59,12 @@ const DEFAULT_CONFIG = {
  * redirects to a project-local install when it finds one, so resolving it
  * directly just makes that explicit.
  **/
-export function resolveWpEnvBin(root) {
+export function resolveWpEnvBin(root, platform = process.platform) {
 
-	const local = path.join(root || process.cwd(), 'node_modules', '.bin', 'wp-env');
+	// npm writes a `.cmd` shim beside the sh one on Windows; the sh one is
+	// what exists everywhere, but only the `.cmd` is runnable there.
+	const name = platform === 'win32' ? 'wp-env.cmd' : 'wp-env';
+	const local = path.join(root || process.cwd(), 'node_modules', '.bin', name);
 	if (fs.existsSync(local)) return local;
 
 	const global = sh.which('wp-env');
@@ -106,36 +109,28 @@ function readPort(root) {
 }
 
 /**
- * Run a wp-env subcommand. execFileSync rather than a shell string: wp-env
- * hands argv straight to spawn with no inner shell, so there is no quoting to
- * get wrong — which is strictly safer than the host backend's concatenation.
+ * Run a wp-env subcommand as argv (src/proc.js): wp-env hands argv straight
+ * to spawn with no inner shell, so there is no quoting to get wrong. On
+ * Windows the binary is npm's `wp-env.cmd`, which run() takes through cmd.exe
+ * with every argument escaped.
+ *
+ * wp-env collapses every non-zero exit to 1, so the code carries no more
+ * information than "it failed".
  **/
 function runWpEnv(bin, args, opts = {}) {
 
-	try {
-		const stdout = execFileSync(bin, args, {
-			cwd: opts.cwd || process.cwd(),
-			encoding: 'utf8',
-			// `input` replaces the inherited stdin, which is how wp-env's own
-			// confirmation prompt gets answered without a human present. Its
-			// stderr is CAPTURED rather than inherited in that case: wp-env
-			// collapses every non-zero exit to 1, so the message is the only way
-			// to tell "already gone" from "could not be removed", and an
-			// inherited stream reaches the terminal without reaching us.
-			stdio: opts.input !== undefined
-				? ['pipe', 'pipe', 'pipe']
-				: (opts.silent === false ? ['ignore', 'pipe', 'inherit'] : ['ignore', 'pipe', 'pipe']),
-			input: opts.input,
-			maxBuffer: 32 * 1024 * 1024,
-		});
-		return { code: 0, stdout: stdout || '', stderr: '', toString() { return stdout || ''; } };
-	} catch (error) {
-		const stdout = (error.stdout || '').toString();
-		const stderr = (error.stderr || '').toString();
-		// wp-env collapses every non-zero exit to 1, so the code carries no
-		// more information than "it failed".
-		return { code: error.status || 1, stdout, stderr, toString() { return stdout; } };
-	}
+	return run(bin, args, {
+		cwd: opts.cwd || process.cwd(),
+		// `input` replaces the inherited stdin, which is how wp-env's own
+		// confirmation prompt gets answered without a human present. Its
+		// stderr is CAPTURED rather than inherited in that case: the message is
+		// the only way to tell "already gone" from "could not be removed", and
+		// an inherited stream reaches the terminal without reaching us.
+		stdio: opts.input !== undefined
+			? ['pipe', 'pipe', 'pipe']
+			: (opts.silent === false ? ['ignore', 'pipe', 'inherit'] : ['ignore', 'pipe', 'pipe']),
+		input: opts.input,
+	});
 }
 
 export function create() {
@@ -241,7 +236,7 @@ export function create() {
 			}
 
 			log.info('Installing project tooling (wp-env)...');
-			const installed = sh.exec('npm install', { silent: true });
+			const installed = run('npm', ['install'], { silent: true });
 
 			if (installed.code !== 0) {
 				return { ok: false, errors: [`npm install failed at the environment root.\n${installed.stderr}`.trim()] };

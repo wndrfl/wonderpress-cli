@@ -1,8 +1,8 @@
-import sh from 'shelljs';
-import { execSync, spawn } from 'child_process';
+import { spawn, spawnSync } from 'child_process';
 import * as doctor from '../doctor.js';
 import * as log from '../log.js';
-import { buildWpCliCommand, toResult } from './command.js';
+import { buildSpawn, resolveBin, run } from '../proc.js';
+import { buildWpCliArgv } from './command.js';
 import { isPortListening, urlTarget } from './probe.js';
 
 // How long a JSON-mode start waits for `wp server` to accept connections
@@ -110,8 +110,8 @@ export function create() {
 		 * Run a WP-CLI command. `cmd` omits the leading `wp`.
 		 **/
 		wpCli(cmd, opts) {
-			const command = buildWpCliCommand(['wp'], cmd);
-			return toResult(opts ? sh.exec(command, opts) : sh.exec(command));
+			const { file, args } = buildWpCliArgv(['wp'], cmd);
+			return run(file, args, { silent: !!(opts && opts.silent) });
 		},
 
 		/**
@@ -131,11 +131,10 @@ export function create() {
 
 			log.info('Starting development server...');
 
-			execSync('wp server', {
-				stdio: [0, 1, 2], // we need this so node will print the command output
-			});
+			// Inherited stdio, stdin included: this is the user's foreground job.
+			const result = run('wp', ['server'], { stdio: 'inherit' });
 
-			return { url: null, detached: false };
+			return foregroundOutcome(result);
 		},
 
 		/**
@@ -175,7 +174,7 @@ export function create() {
 		async destroy() {
 			log.info('Dropping the database...');
 
-			const result = sh.exec('wp db drop --yes', { silent: true });
+			const result = run('wp', ['db', 'drop', '--yes'], { silent: true });
 
 			if (result.code !== 0) {
 				// A database that was never created, or already dropped, is the
@@ -225,19 +224,22 @@ export async function startObserved(url, onReady, { command = 'wp', args = ['ser
 		return { ok: false, running: null, url, detached: false, pid: null, errors: [`Something is already listening on port ${target.port}. Is the server already running? Check with: wonderpress server status`] };
 	}
 
-	// Process groups are POSIX. On Windows `wp` is a .bat shim that only a
-	// shell can run, and there is no group to signal; the host backend is
-	// unsupported there, but failing with a clear message beats ENOENT.
+	// Process groups are POSIX. On Windows `wp` is a .bat shim that only
+	// cmd.exe can run (buildSpawn escapes the line), there is no group to
+	// signal, and the tree is killed with taskkill instead. The host backend is
+	// unsupported there, but it should fail cleanly rather than throw.
 	const posix = process.platform !== 'win32';
+	const spec = buildSpawn(resolveBin(command), args);
 
 	return new Promise((resolve) => {
 
-		const child = spawn(command, args, {
+		const child = spawn(spec.file, spec.args, {
 			// No stdin: a process outside the terminal's foreground group that
 			// reads from it is stopped by the kernel, and the server needs none.
 			stdio: [posix ? 'ignore' : 'inherit', 2, 2],
-			shell: !posix,
 			detached: posix,
+			windowsHide: true,
+			windowsVerbatimArguments: spec.windowsVerbatimArguments,
 		});
 
 		let ready = false;
@@ -255,7 +257,10 @@ export async function startObserved(url, onReady, { command = 'wp', args = ['ser
 				if (posix) {
 					process.kill(-child.pid, signal);
 				} else {
-					child.kill(signal);
+					// No signals and no groups on Windows: kill the tree (cmd.exe,
+					// wp, php -S) by pid. Never process.kill(-pid), which throws
+					// there.
+					spawnSync('taskkill', ['/pid', String(child.pid), '/T', '/F'], { stdio: 'ignore', windowsHide: true });
 				}
 			} catch (e) {
 				// ESRCH: the group is already gone, which is what was wanted.
@@ -324,4 +329,24 @@ export async function startObserved(url, onReady, { command = 'wp', args = ['ser
 		};
 		poll();
 	});
+}
+
+/**
+ * What a foreground `wp server` run amounts to, once it has returned.
+ *
+ * A stop by signal (Ctrl-C) is the normal way out and is success. A missing
+ * `wp` (run() has already printed why) or a non-zero exit — no wp-config, the
+ * port taken — is a failure, and the process exit code must say so: `execSync`
+ * used to throw here, and an argv spawn does not.
+ **/
+export function foregroundOutcome(result) {
+	if (!result || result.signal || result.code === 0) {
+		return { url: null, detached: false };
+	}
+	const reason = result.code === 127
+		? 'WP-CLI (`wp`) was not found on PATH.'
+		: `The development server exited with code ${result.code}.`;
+	log.error(reason);
+	process.exitCode = 1;
+	return { ok: false, errors: [reason], url: null, detached: false };
 }

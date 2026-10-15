@@ -9,13 +9,29 @@ on:
 
 jobs:
   unit:
-    name: Unit + smoke
-    runs-on: ubuntu-latest
+    name: Unit + smoke (${{ matrix.os }})
+    # The cross-platform gate (app spec section 3, "The CLI is the gate"): the
+    # app's Windows and Linux builds do not ship until this job is green on all
+    # three. Integration and e2e stay Ubuntu-only: they need MySQL, PHP, WP-CLI
+    # and Docker, and the host backend is unsupported on Windows anyway.
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
     steps:
+      # LF on Windows too comes from .gitattributes, not runner config.
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v5
         with:
           node-version: 24
+      # PHP and Composer on every OS, so the Composer test runs for real —
+      # on Windows that is composer.bat, through the cmd.exe path in
+      # src/proc.js, which nothing else in the unit job reaches.
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.2'
+          tools: composer
       - run: npm ci
       - run: npm test
 

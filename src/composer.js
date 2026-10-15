@@ -2,6 +2,7 @@ import fs from 'fs-extra';
 import path from 'path';
 import sh from 'shelljs';
 import * as log from './log.js';
+import { run } from './proc.js';
 
 /**
  * Installs the Composer packages for a directory.
@@ -50,10 +51,10 @@ export async function installComposer(dir = process.cwd()) {
 	}
 
 	const locked = fs.existsSync(path.join(dir, 'composer.lock'));
-	const cmd = locked ? 'composer install' : 'composer update';
+	const verb = locked ? 'install' : 'update';
 
-	log.info(`Installing Composer packages (${cmd})...`);
-	const result = sh.exec(cmd, { cwd: dir });
+	log.info(`Installing Composer packages (composer ${verb})...`);
+	const result = run('composer', [verb], { cwd: dir });
 
 	if (result.code !== 0) {
 		log.error(`Composer failed in ${dir}. Refusing to continue with missing dependencies.`);

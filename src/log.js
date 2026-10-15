@@ -57,10 +57,14 @@ function shorten(abs) {
 	return !rel || rel.startsWith('..') ? abs : rel;
 }
 
-/** Dim the directory half, so the filename is what the eye lands on. */
+/**
+ * Dim the directory half, so the filename is what the eye lands on. Shown
+ * with forward slashes on every OS, matching the paths the CLI prints from
+ * manifests.
+ **/
 function stem(rel) {
 	const dir = path.dirname(rel);
-	return dir === '.' ? rel : pc.dim(`${dir}/`) + path.basename(rel);
+	return dir === '.' ? rel : pc.dim(`${dir.replace(/\\/g, '/')}/`) + path.basename(rel);
 }
 
 /**
@@ -71,10 +75,15 @@ function stem(rel) {
  * by a digit.
  **/
 function paths(msg) {
-	return msg.replace(/(?<![:\w/])(?:\/[\w.@~+-]+){2,}/g, (abs) => {
+	const relativise = (abs) => {
 		const rel = shorten(abs);
 		return rel === abs ? abs : stem(rel);
-	});
+	};
+	const posix = msg.replace(/(?<![:\w/])(?:\/[\w.@~+-]+){2,}/g, relativise);
+	// Windows absolute paths (`C:\Users\...`), only where they can be one.
+	return process.platform === 'win32'
+		? posix.replace(/(?<![\w])[A-Za-z]:\\(?:[\w.@~+-]+\\)*[\w.@~+-]+/g, relativise)
+		: posix;
 }
 
 /**

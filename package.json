@@ -16,9 +16,9 @@
   },
   "scripts": {
     "test": "node --test \"tests/**/*.test.js\"",
-    "test:integration": "WP_INTEGRATION=1 node --test \"tests/**/*.test.js\"",
-    "test:e2e": "WP_E2E=1 node --test tests/lifecycle.e2e.test.js",
-    "test:e2e:wp-env": "WP_E2E=1 WP_BACKEND=wp-env node --test tests/lifecycle.e2e.test.js",
+    "test:integration": "cross-env WP_INTEGRATION=1 node --test \"tests/**/*.test.js\"",
+    "test:e2e": "cross-env WP_E2E=1 node --test tests/lifecycle.e2e.test.js",
+    "test:e2e:wp-env": "cross-env WP_E2E=1 WP_BACKEND=wp-env node --test tests/lifecycle.e2e.test.js",
     "test-cli": "rm -rf test && mkdir test && cd test && npm install .. && node ../bin/wonderpress.js init --name test-project"
   },
   "files": [
@@ -58,5 +58,8 @@
     "qs": "6.16.0",
     "sharp": "0.35.4",
     "esbuild": "^0.25.12"
+  },
+  "devDependencies": {
+    "cross-env": "10.1.0"
   }
 }

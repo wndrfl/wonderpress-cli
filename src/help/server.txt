@@ -32,7 +32,9 @@ OPTIONS
   it, send SIGINT/SIGTERM/SIGHUP to the `wonderpress server start` process
   (it forwards them to the group and exits 0), or `kill -TERM -<pid>`. If the
   server dies on its own after the envelope went out, that process says so on
-  stderr and exits 1.
+  stderr and exits 1. Windows has no process groups: there, stop it with
+  Ctrl-C or `taskkill /PID <pid> /T /F` (the host backend is unsupported on
+  Windows; see `wonderpress init help`).
 
 EXAMPLES
   wonderpress server

@@ -6,6 +6,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { handlers, createWonderpressMcpServer, mcpServerInfo } from '../src/mcp.js';
 import { writePartial, paramsFromFlags, listPartials } from '../src/partial.js';
+import { writePhpcsStubs } from './helpers/stub-bin.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const SRC = path.join(__dirname, '..', 'src');
@@ -34,25 +35,7 @@ function makeLintEnv({ failPhpcs = false, warnPhpcs = false } = {}) {
 	if (warnPhpcs) {
 		fs.writeFileSync(warnFlag, '1');
 	}
-	fs.writeFileSync(path.join(bin, 'phpcs'), `#!/bin/sh
-if [ -f ${JSON.stringify(failFlag)} ]; then
-  echo '{"totals":{"errors":1,"warnings":0,"fixable":1},"files":{}}'
-  exit 1
-fi
-if [ -f ${JSON.stringify(warnFlag)} ]; then
-  echo '{"totals":{"errors":0,"warnings":5,"fixable":5},"files":{}}'
-  exit 0
-fi
-echo '{"totals":{"errors":0,"warnings":0,"fixable":0},"files":{}}'
-exit 0
-`);
-	fs.writeFileSync(path.join(bin, 'phpcbf'), `#!/bin/sh
-echo ran >> ${JSON.stringify(logFile)}
-rm -f ${JSON.stringify(failFlag)} ${JSON.stringify(warnFlag)}
-exit 0
-`);
-	fs.chmodSync(path.join(bin, 'phpcs'), 0o755);
-	fs.chmodSync(path.join(bin, 'phpcbf'), 0o755);
+	writePhpcsStubs(bin, { failFlag, warnFlag, logFile });
 	return { root, themeDir, logFile };
 }
 

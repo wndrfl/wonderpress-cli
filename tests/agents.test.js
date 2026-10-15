@@ -69,7 +69,7 @@ test('writeAgentFiles is stable and indexes partials', async () => {
 		assert.match(ignore, /^\.codex\/config\.toml$/m);
 		const codex = fs.readFileSync(path.join(root, '.codex/config.toml'), 'utf8');
 		assert.match(codex, /\[mcp_servers\.wonderpress\]/);
-		assert.match(codex, /bin[/\\]wonderpress\.js/);
+		assert.match(codex, /bin(?:\/|\\\\)wonderpress\.js/);
 	} finally {
 		fs.removeSync(root);
 	}
@@ -156,7 +156,7 @@ test('writeAgentFiles keeps an existing Codex wonderpress table unless forced', 
 		const forced = fs.readFileSync(file, 'utf8');
 		assert.match(forced, /\[mcp_servers\.other\]/);
 		assert.doesNotMatch(forced, /command = "hand"/);
-		assert.match(forced, /bin[/\\]wonderpress\.js/);
+		assert.match(forced, /bin(?:\/|\\\\)wonderpress\.js/);
 	} finally {
 		fs.removeSync(root);
 	}

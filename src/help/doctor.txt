@@ -11,7 +11,11 @@ Which checks run:
   outside a project        every backend
 
 The host backend is not supported on Windows; there it reports one failing
-check saying to use wp-env instead.
+check saying to use wp-env instead. (`init` only warns about it and carries
+on — it may work, but nothing tests it there.)
+
+A port conflict names the platform's own way to see what holds the port:
+lsof on macOS, ss on Linux, Get-NetTCPConnection or netstat on Windows.
 
 OPTIONS
   --env <host|wp-env>      Check one backend
