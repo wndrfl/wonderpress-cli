@@ -114,6 +114,8 @@ Clones the [development environment](https://github.com/wndrfl/wonderpress-devel
 | `--wp-title <title>` | Site title. |
 | `--admin-user`, `--admin-email`, `--admin-password` | First administrator. Password may come from `WP_ADMIN_PASSWORD`. `--admin-user` is refused on `wp-env` (the first user is always `admin`). |
 | `--skip-readme` | Do not generate a project README. |
+| `--readme` | With `--yes`, generate a README named after the site title. |
+| `--format json` | With `--yes`: newline-delimited progress events on stdout (five steps), then one `{ ok, data, error }` envelope; human output goes to stderr. SIGINT/SIGTERM ends it with error code `cancelled`. See [ARCHITECTURE.md](ARCHITECTURE.md#init-progress-protocol). |
 
 ```bash
 wonderpress init --yes --db-user root --db-name my_site \
