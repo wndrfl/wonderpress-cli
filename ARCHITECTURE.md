@@ -459,6 +459,26 @@ stdout belongs to the JSON envelope or the MCP protocol. No pin, or no project,
 means no warning. `version --format json` carries
 `cliVersionMismatch: { pinned, current } | null`.
 
+### Running on Electron's Node
+
+The desktop app runs the CLI on Electron's bundled Node (`ELECTRON_RUN_AS_NODE=1`),
+not a system `node`. shelljs checks `process.versions.electron` at load and,
+when it is set, leaves `config.execPath` null, so any synchronous `sh.exec()`
+returns `undefined` instead of a result. Since the cross-platform work below
+no command runs through `sh.exec` any more (everything goes through
+[`src/proc.js`](src/proc.js), a plain `spawnSync`), and the `sh.which` calls
+that remain do not need `execPath`. Even so, the CLI must not be one stray
+`sh.exec` away from breaking in the app, so
+[`src/shell-exec-path.js`](src/shell-exec-path.js) sets
+`sh.config.execPath = process.execPath` whenever it is null or Electron is
+detected — under `ELECTRON_RUN_AS_NODE` that path *is* a working node. It is
+the first import of `bin/wonderpress.js` and `src/cli.js`. On plain Node
+shelljs has already set the same value, so the module is a no-op there; the
+CLI takes no Electron dependency and has no Electron-only path.
+[`tests/electron-execpath.test.js`](tests/electron-execpath.test.js) fakes the
+Electron signal with a `node -r` preload and pins that `version` and `doctor`
+still answer in JSON.
+
 ## Cross-platform support
 
 The CLI is the gate for the desktop app's platforms (app spec section 3): the
