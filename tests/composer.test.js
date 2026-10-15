@@ -6,6 +6,7 @@ import assert from 'node:assert/strict';
 import fs from 'fs-extra';
 import os from 'node:os';
 import path from 'node:path';
+import sh from 'shelljs';
 import * as composer from '../src/composer.js';
 
 async function withTmpDir(fn) {
@@ -43,7 +44,11 @@ test('an already-installed directory is detected and skipped', async () => {
 // An interrupted install leaves the directory but not the autoloader. Keying
 // off the directory read that as "installed" and left the project broken with
 // nothing reporting it.
-test('an empty vendor directory does not count as installed', async () => {
+// Runs Composer for real. CI installs it on every OS; a machine without it
+// skips rather than fails, since what is under test is the install decision.
+const needsComposer = { skip: !sh.which('composer') && 'Composer is not on PATH' };
+
+test('an empty vendor directory does not count as installed', needsComposer, async () => {
 	await withTmpDir(async (dir) => {
 		await fs.writeJson(path.join(dir, 'composer.json'), {
 			name: 'test/pkg',

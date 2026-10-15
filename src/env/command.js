@@ -1,49 +1,40 @@
 /**
  * Command construction for environment backends.
  *
- * Pure string work, no I/O — every backend builds its WP-CLI invocations here
+ * Pure argv work, no I/O — every backend builds its WP-CLI invocations here
  * so the difference between them is one array of leading tokens (`wp` on the
  * host, `<wp-env> run cli wp` in a container) rather than a scattering of
  * hand-concatenated strings.
- **/
-
-// Characters a POSIX shell passes through untouched. Anything outside this set
-// gets quoted; anything inside it is emitted verbatim, which is what keeps the
-// common case (`wp theme activate wonderpress`) byte-identical to the strings
-// this code replaced.
-const SHELL_SAFE = /^[A-Za-z0-9_@%+=:,./-]+$/;
-
-/**
- * Quote a single argument for a POSIX shell, but only when it needs it.
- **/
-export function quoteArg(arg) {
-
-	const str = String(arg);
-
-	// The empty string still needs quotes, or it vanishes from the argv.
-	if (str === '') return "''";
-
-	if (SHELL_SAFE.test(str)) return str;
-
-	// Single quotes protect everything except a single quote itself, which has
-	// to be closed, escaped, and reopened.
-	return `'${str.replaceAll("'", `'\\''`)}'`;
-}
-
-/**
- * Build a WP-CLI command line from a backend's leading tokens and a command.
  *
- * `cmd` is the WP-CLI command *without* the leading `wp`. A string is passed
- * through as-is (callers that already hand-built one keep their exact bytes);
- * an array is quoted element by element, which is how a caller opts out of
- * worrying about spaces and shell metacharacters in a value.
+ * This used to build a POSIX shell string, quoting each argument for sh. That
+ * is wrong on Windows, where cmd.exe parses the line instead and treats single
+ * quotes as literal characters. The result is now an argv array that is never
+ * parsed by any shell (see src/proc.js and ARCHITECTURE.md, "Cross-platform
+ * support").
  **/
-export function buildWpCliCommand(prefix, cmd) {
 
-	const head = (Array.isArray(prefix) ? prefix : [prefix]).map(quoteArg).join(' ');
-	const tail = Array.isArray(cmd) ? cmd.map(quoteArg).join(' ') : String(cmd);
+/**
+ * Build a WP-CLI invocation from a backend's leading tokens and a command.
+ *
+ * `cmd` is the WP-CLI command *without* the leading `wp`. An array is used
+ * element by element, untouched — a title with spaces or a password with `$`
+ * in it is one argument, whatever the platform. A string is split on
+ * whitespace, which is only right for commands with no user values in them;
+ * every caller in this codebase passes an array.
+ *
+ * @param {string|string[]} prefix e.g. ['wp'], or [wpEnvBin, 'run', 'cli', 'wp']
+ * @param {string|string[]} cmd
+ * @returns {{ file: string, args: string[] }}
+ **/
+export function buildWpCliArgv(prefix, cmd) {
 
-	return `${head} ${tail}`.trim();
+	const head = (Array.isArray(prefix) ? prefix : [prefix]).map(String);
+	const tail = Array.isArray(cmd)
+		? cmd.map(String)
+		: String(cmd).split(/\s+/).filter(Boolean);
+	const [file, ...rest] = head;
+
+	return { file, args: [...rest, ...tail] };
 }
 
 /**

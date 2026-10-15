@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'fs-extra';
 import os from 'node:os';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { spawnSync } from 'node:child_process';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -24,6 +24,18 @@ function makeFixture() {
  * care about colour set the environment themselves.
  **/
 const plain = (out) => String(out).replace(/\u001B\[[0-9;]*m/g, '');
+
+/**
+ * The glyphs are the subject here, and the CLI swaps them for ASCII on a
+ * Windows console that has not said it speaks UTF-8 (src/log.js). Say so on
+ * every child's behalf; the fallback has its own test below.
+ **/
+const UTF8_ENV = { LANG: 'en_US.UTF-8' };
+for (const [key, value] of Object.entries(UTF8_ENV)) {
+	if (!/UTF-?8/i.test(process.env.LC_ALL || process.env.LC_CTYPE || process.env[key] || '')) {
+		process.env[key] = value;
+	}
+}
 
 function run(dir, argv, env = {}) {
 	return spawnSync('node', [BIN, ...argv, '--dir', dir, '--theme', 'smoke'], {
@@ -104,7 +116,7 @@ test('a group aligns its hint column across rows', () => {
 	// is invisible but not free, so `a/much/longer/path.json` carries two escape
 	// sequences that `b.json` does not.
 	const script = `
-		import * as log from ${JSON.stringify(path.join(__dirname, '..', 'src', 'log.js'))};
+		import * as log from ${JSON.stringify(pathToFileURL(path.join(__dirname, '..', 'src', 'log.js')).href)};
 		log.group([
 			{ level: 'success', path: 'short.md' },
 			{ level: 'info', path: 'a/much/longer/path.json', hint: 'left alone' },
@@ -185,4 +197,13 @@ test('--format json still emits only the envelope', () => {
 	} finally {
 		fs.removeSync(dir);
 	}
+});
+
+test('a Windows console with no UTF-8 locale gets ASCII glyphs', { skip: process.platform !== 'win32' && 'the fallback is Windows-only' }, () => {
+	const env = { ...process.env };
+	for (const key of ['LANG', 'LC_ALL', 'LC_CTYPE', 'WT_SESSION']) {
+		delete env[key];
+	}
+	const result = spawnSync(process.execPath, [BIN, 'bogus-command'], { encoding: 'utf8', env });
+	assert.match(plain(result.stdout + result.stderr), /^ {2}x Unknown command: bogus-command$/m);
 });

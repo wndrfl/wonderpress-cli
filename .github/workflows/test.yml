@@ -30,6 +30,13 @@ jobs:
       - uses: actions/setup-node@v5
         with:
           node-version: 24
+      # PHP and Composer on every OS, so the Composer test runs for real —
+      # on Windows that is composer.bat, through the cmd.exe path in
+      # src/proc.js, which nothing else in the unit job reaches.
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.2'
+          tools: composer
       - run: npm ci
       - run: npm test
 

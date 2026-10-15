@@ -1,5 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import path from 'node:path';
 import {
 	isValidClassName,
 	isValidTemplateName,
@@ -538,8 +539,9 @@ test('validateTemplateManifest rejects invalid when on inline properties', () =>
 });
 
 test('resolveWithin keeps a path inside its root, or returns null', () => {
-	assert.equal(resolveWithin('/theme', 'partials/hero.php'), '/theme/partials/hero.php');
-	assert.equal(resolveWithin('/theme', './a/../b.txt'), '/theme/b.txt');
+	// path.resolve, not a literal: on Windows '/theme' resolves onto a drive.
+	assert.equal(resolveWithin('/theme', 'partials/hero.php'), path.resolve('/theme/partials/hero.php'));
+	assert.equal(resolveWithin('/theme', './a/../b.txt'), path.resolve('/theme/b.txt'));
 
 	// Escapes, absolute paths, and the root itself are all refused.
 	assert.equal(resolveWithin('/theme', '../../../../.ssh/id_rsa'), null);

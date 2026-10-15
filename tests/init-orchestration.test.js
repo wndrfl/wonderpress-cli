@@ -190,6 +190,41 @@ test('--clean-slate tears the environment down before deleting its directory', a
 	}
 });
 
+test('cleanSlate empties the directory, dotfiles and spaces included, with no shell', () => {
+	// It used to be `rm -rf <dir>/*` and `rm -rf <dir>/.*` through a shell: no
+	// `rm` on Windows, and a path with a space split into two targets.
+	const parent = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'wp wipe ')));
+	const target = path.join(parent, 'my project');
+	const sibling = path.join(parent, 'my');
+	try {
+		fs.ensureDirSync(path.join(target, 'wp-content/themes/acme'));
+		fs.writeFileSync(path.join(target, '.wonderpressrc'), '{}');
+		fs.writeFileSync(path.join(target, '.env'), 'X=1');
+		fs.writeFileSync(path.join(target, 'wp-content/themes/acme/style.css'), '');
+		// What `rm -rf my project/*` would have reached for.
+		fs.ensureDirSync(sibling);
+		fs.writeFileSync(path.join(sibling, 'keep.txt'), 'keep');
+
+		assert.deepEqual(core.cleanSlate(target), { ok: true });
+		assert.ok(fs.existsSync(target), 'the directory itself stays');
+		assert.deepEqual(fs.readdirSync(target), []);
+		assert.equal(fs.readFileSync(path.join(sibling, 'keep.txt'), 'utf8'), 'keep');
+	} finally {
+		fs.removeSync(parent);
+	}
+});
+
+test('cleanSlate refuses the filesystem root and the home directory', () => {
+	const root = path.parse(process.cwd()).root;
+	const refusedRoot = core.cleanSlate(root);
+	assert.equal(refusedRoot.ok, false);
+	assert.match(refusedRoot.error, /Refusing to clear/);
+
+	const refusedHome = core.cleanSlate(os.homedir());
+	assert.equal(refusedHome.ok, false);
+	assert.match(refusedHome.error, /Refusing to clear/);
+});
+
 test('a backend with nothing to tear down is not an error', async () => {
 	const backend = fakeBackend();
 	delete backend.destroy;

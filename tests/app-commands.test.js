@@ -16,6 +16,7 @@ import { isPortListening, urlTarget } from '../src/env/probe.js';
 import { create as createWpEnv, parseWpEnvStatus } from '../src/env/wp-env.js';
 import { buildPageTemplateManifestSchema, buildPartialManifestSchema } from '../src/manifest-schema.js';
 import pkg from '../package.json' with { type: 'json' };
+import { writeStubBin } from './helpers/stub-bin.js';
 
 /**
  * The commands the desktop app drives: `server` in JSON, `doctor`, the
@@ -545,6 +546,27 @@ async function startHarness() {
 
 const posixOnly = { skip: process.platform === 'win32' && 'process groups are POSIX' };
 
+test('JSON-mode host start reports readiness and a pid on every OS', async () => {
+	// The group semantics below are POSIX; this is the part that must also hold
+	// on Windows, where the spawn goes through buildSpawn and stopping is a
+	// taskkill of the tree rather than a signal to a group.
+	const run = await startHarness();
+	try {
+		const { ready } = run.lines.find((l) => l.ready);
+		assert.equal(typeof ready.pid, 'number');
+		assert.equal(ready.port, run.port);
+	} finally {
+		run.cleanup();
+	}
+});
+
+test('the outside-stop hint names the platform\'s own way to stop a tree', () => {
+	assert.match(server.hostStopHint('darwin'), /kill -TERM -<pid>/);
+	assert.match(server.hostStopHint('linux'), /kill -TERM -<pid>/);
+	assert.match(server.hostStopHint('win32'), /taskkill \/PID <pid> \/T \/F/);
+	assert.doesNotMatch(server.hostStopHint('win32'), /kill -TERM/);
+});
+
 test('SIGTERM to the CLI stops the whole server, not just wp', posixOnly, async () => {
 	const run = await startHarness();
 	try {
@@ -621,6 +643,39 @@ test('the host backend on Windows is one failing check saying to use wp-env', as
 	assert.match(only.hint, /--env wp-env/);
 });
 
+test('init on Windows warns about the host backend and carries on', async () => {
+	// doctor fails it (above); init's preflight only warns, and still checks
+	// what it can, so a missing WP-CLI fails here rather than mid-provision.
+	const preflight = await doctor.preflight('host', { platform: 'win32', deps: allPresent });
+	assert.equal(preflight.ok, true);
+	assert.deepEqual(preflight.errors, []);
+	assert.deepEqual(preflight.warnings, [doctor.HINTS.hostOnWindowsInit]);
+	assert.match(preflight.warnings[0], /not supported on Windows/);
+	assert.match(preflight.warnings[0], /may work/);
+	assert.match(preflight.warnings[0], /--env wp-env/);
+
+	const missing = await doctor.preflight('host', { platform: 'win32', deps: { ...allPresent, which: () => null } });
+	assert.equal(missing.ok, false);
+	assert.deepEqual(missing.errors, [doctor.HINTS.wpCli, doctor.HINTS.composer]);
+	assert.deepEqual(missing.warnings, [doctor.HINTS.hostOnWindowsInit]);
+
+	// Off Windows the host preflight has no warnings at all.
+	assert.equal((await doctor.preflight('host', { platform: 'darwin', deps: allPresent })).warnings, undefined);
+});
+
+test('the port-conflict hint names the platform\'s own tool', () => {
+	assert.match(doctor.portInUseHint(8888, 'darwin'), /lsof -nP -iTCP:8888 -sTCP:LISTEN/);
+	assert.match(doctor.portInUseHint(8888, 'linux'), /ss -ltnp 'sport = :8888'/);
+	assert.match(doctor.portInUseHint(8888, 'win32'), /Get-NetTCPConnection -LocalPort 8888/);
+	for (const platform of ['linux', 'win32']) {
+		assert.doesNotMatch(doctor.portInUseHint(8888, platform), /lsof/);
+	}
+	for (const platform of ['darwin', 'linux', 'win32']) {
+		assert.match(doctor.portInUseHint(8888, platform), /^Port 8888 is already in use/);
+		assert.match(doctor.portInUseHint(8888, platform), /wp-env stop/);
+	}
+});
+
 test('every-backend mode on Windows checks wp-env only', async () => {
 	const report = await doctor.run(null, { platform: 'win32', deps: allPresent });
 	assert.ok(!report.checks.some((c) => c.backend === 'host'));
@@ -655,16 +710,24 @@ test('a machine with WP-CLI but no Composer is not ready, under either backend',
 	}
 });
 
-test('doctor run with only WP-CLI on PATH fails on Composer', { skip: process.platform === 'win32' && 'a sh stub stands in for wp' }, () => {
-	// End to end: PATH holds node and a stub `wp`, nothing else.
+test('doctor run with only WP-CLI on PATH fails on Composer', () => {
+	// End to end: PATH holds node and a stub `wp` (wp.bat on Windows), nothing
+	// else. On Windows the host is one check regardless, so ask for wp-env's
+	// list there, which also has WP-CLI and Composer in it.
 	const bin = tmp('wp-path-');
-	fs.writeFileSync(path.join(bin, 'wp'), '#!/bin/sh\nexit 0\n', { mode: 0o755 });
-	fs.symlinkSync(process.execPath, path.join(bin, 'node'));
+	writeStubBin(bin, 'wp', 'process.exit(0);\n');
+	if (process.platform !== 'win32') {
+		fs.symlinkSync(process.execPath, path.join(bin, 'node'));
+	}
 	try {
-		const result = spawnSync(process.execPath, [BIN, 'doctor', '--env', 'host', '--format', 'json'], {
+		const backend = process.platform === 'win32' ? 'wp-env' : 'host';
+		// Windows spells it `Path`, and a copy with both spellings leaves which
+		// one the child sees to chance.
+		const env = Object.fromEntries(Object.entries(process.env).filter(([key]) => key.toUpperCase() !== 'PATH'));
+		const result = spawnSync(process.execPath, [BIN, 'doctor', '--env', backend, '--format', 'json'], {
 			encoding: 'utf8',
 			cwd: os.tmpdir(),
-			env: { ...process.env, WONDERPRESS_ENV: '', PATH: bin },
+			env: { ...env, WONDERPRESS_ENV: '', PATH: bin },
 		});
 		const body = onlyEnvelope(result.stdout);
 		assert.equal(body.ok, false);
@@ -693,7 +756,7 @@ test('without Docker, the Compose and daemon checks are reported but not reached
 });
 
 test('a dead daemon and a missing Compose plugin are separate failures', async () => {
-	const exec = (cmd) => ({ code: 1, stdout: '', stderr: `${cmd} failed\nmore` });
+	const exec = (bin, args) => ({ code: 1, stdout: '', stderr: `${[bin, ...args].join(' ')} failed\nmore` });
 	const preflight = await doctor.preflight('wp-env', { platform: 'linux', deps: { ...allPresent, exec } });
 	assert.deepEqual(preflight.errors, [doctor.HINTS.compose, doctor.HINTS.daemon]);
 

@@ -3,7 +3,8 @@ import assert from 'node:assert/strict';
 import fs from 'fs-extra';
 import os from 'node:os';
 import path from 'node:path';
-import { command, inspectTheme } from '../src/lint.js';
+import { command, inspectTheme, phpcsBin } from '../src/lint.js';
+import { writePhpcsStubs, writeStubBin } from './helpers/stub-bin.js';
 
 function makeLintEnv({ failPhpcs = false, warnPhpcs = false } = {}) {
 	const root = fs.mkdtempSync(path.join(os.tmpdir(), 'wp-lint-'));
@@ -27,39 +28,7 @@ function makeLintEnv({ failPhpcs = false, warnPhpcs = false } = {}) {
 		fs.writeFileSync(warnFlag, '1');
 	}
 
-	fs.writeFileSync(path.join(bin, 'phpcs'), `#!/bin/sh
-mode=human
-for arg in "$@"; do
-  case "$arg" in
-    --report=json) mode=json ;;
-  esac
-done
-if [ -f ${JSON.stringify(failFlag)} ]; then
-  if [ "$mode" = json ]; then
-    echo '{"totals":{"errors":1,"warnings":0,"fixable":1},"files":{}}'
-  fi
-  exit 1
-fi
-if [ -f ${JSON.stringify(warnFlag)} ]; then
-  if [ "$mode" = json ]; then
-    echo '{"totals":{"errors":0,"warnings":5,"fixable":5},"files":{}}'
-  else
-    echo 'PHPCBF CAN FIX THE 5 MARKED SNIFF VIOLATIONS AUTOMATICALLY'
-  fi
-  exit 0
-fi
-if [ "$mode" = json ]; then
-  echo '{"totals":{"errors":0,"warnings":0,"fixable":0},"files":{}}'
-fi
-exit 0
-`);
-	fs.writeFileSync(path.join(bin, 'phpcbf'), `#!/bin/sh
-echo ran >> ${JSON.stringify(logFile)}
-rm -f ${JSON.stringify(failFlag)} ${JSON.stringify(warnFlag)}
-exit 0
-`);
-	fs.chmodSync(path.join(bin, 'phpcs'), 0o755);
-	fs.chmodSync(path.join(bin, 'phpcbf'), 0o755);
+	writePhpcsStubs(bin, { failFlag, warnFlag, logFile });
 
 	return { root, themeDir, logFile };
 }
@@ -173,5 +142,57 @@ test('inspectTheme with fix: true does not run phpcbf when phpcs already passes'
 	} finally {
 		process.chdir(cwd);
 		fs.removeSync(root);
+	}
+});
+
+test('phpcsBin resolves the Composer proxy for the platform', () => {
+	const root = path.join(os.tmpdir(), 'some root');
+	assert.equal(phpcsBin('phpcs', { root, platform: 'darwin' }), path.join(root, 'vendor', 'bin', 'phpcs'));
+	assert.equal(phpcsBin('phpcbf', { root, platform: 'linux' }), path.join(root, 'vendor', 'bin', 'phpcbf'));
+	assert.equal(phpcsBin('phpcs', { root, platform: 'win32' }), path.join(root, 'vendor', 'bin', 'phpcs.bat'));
+	assert.equal(phpcsBin('phpcbf', { root, platform: 'win32' }), path.join(root, 'vendor', 'bin', 'phpcbf.bat'));
+});
+
+test('a missing phpcs is a clear failure, not a shell error', async () => {
+	const { root } = makeLintEnv();
+	fs.removeSync(path.join(root, 'vendor/bin'));
+	const cwd = process.cwd();
+	try {
+		const result = await inspectTheme(root, { name: 'acme', fix: true });
+		assert.equal(result.ok, false);
+		assert.equal(result.data.phpcs.ok, false);
+		assert.match(result.data.phpcs.report.error, /phpcs(\.bat)? was not found at .*composer install/s);
+		assert.equal(result.data.fixed, undefined, 'phpcbf is not attempted without phpcs');
+	} finally {
+		process.chdir(cwd);
+		fs.removeSync(root);
+	}
+});
+
+test('a theme path with spaces reaches phpcs as one argument', async () => {
+	const parent = fs.mkdtempSync(path.join(os.tmpdir(), 'wp lint spaced '));
+	const root = path.join(parent, 'my project');
+	const themeDir = path.join(root, 'wp-content/themes/acme');
+	fs.ensureDirSync(path.join(themeDir, 'partials'));
+	fs.writeFileSync(path.join(root, '.wonderpressrc'), JSON.stringify({ namespace: 'acme' }));
+	fs.writeFileSync(path.join(themeDir, 'style.css'), '/* Theme Name: Acme */');
+	fs.ensureDirSync(path.join(root, 'vendor'));
+	fs.writeFileSync(path.join(root, 'vendor/autoload.php'), '<?php');
+	const argvLog = path.join(parent, 'argv.json');
+	writeStubBin(path.join(root, 'vendor/bin'), 'phpcs', `
+require('fs').writeFileSync(${JSON.stringify(argvLog)}, JSON.stringify(process.argv.slice(2)));
+process.stdout.write('{"totals":{"errors":0,"warnings":0,"fixable":0},"files":{}}\\n');
+`);
+	const cwd = process.cwd();
+	try {
+		const result = await inspectTheme(root, { name: 'acme' });
+		assert.equal(result.data.phpcs.ok, true);
+		const argv = JSON.parse(fs.readFileSync(argvLog, 'utf8'));
+		assert.equal(argv.length, 2);
+		assert.equal(fs.realpathSync(argv[0]), fs.realpathSync(themeDir));
+		assert.equal(argv[1], '--report=json');
+	} finally {
+		process.chdir(cwd);
+		fs.removeSync(parent);
 	}
 });
