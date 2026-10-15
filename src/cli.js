@@ -127,6 +127,12 @@ export async function cli() {
     format.setMcp();
   }
 
+  // `init --format json` streams progress events on stdout; its human lines
+  // (including the warnings below) are the console tail, on stderr.
+  if (cmd === 'init' && format.isJson()) {
+    format.setLogsToStderr(true);
+  }
+
   // Handle for no cmd
   if (cmd == undefined) {
     if (args['--version']) {

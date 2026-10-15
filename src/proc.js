@@ -1,4 +1,4 @@
-import { spawnSync } from 'child_process';
+import { spawn, spawnSync } from 'child_process';
 import path from 'path';
 import sh from 'shelljs';
 import { quietStdout } from './format.js';
@@ -117,6 +117,9 @@ export function resolveBin(bin, platform = process.platform) {
  * so a caller can tell a stop from a failure.
  **/
 export function run(bin, args = [], opts = {}) {
+	if (cancelledBy) {
+		return cancelledResult(bin);
+	}
 	const platform = opts.platform || process.platform;
 	const spec = buildSpawn(resolveBin(bin, platform), args, { platform });
 	const stdio = opts.stdio
@@ -147,6 +150,172 @@ export function run(bin, args = [], opts = {}) {
 	const stderr = result.stderr || '';
 	const code = result.status ?? 1;
 	return { code, stdout, stderr, signal: result.signal || null, toString() { return stdout; } };
+}
+
+/**
+ * Cancellation, for `init --format json` (ARCHITECTURE.md, "App-facing
+ * commands and the version pin").
+ *
+ * The desktop app stops a build by signalling `init`. run() blocks the event
+ * loop in spawnSync, so a signal is only handled once the child it is waiting
+ * on has finished — fine for a two-second WP-CLI call, not for a three-minute
+ * `wp-env start`. The long-running children of `init` therefore go through
+ * runAsync(), which keeps the event loop free and records the child here so
+ * cancelAll() can stop it.
+ *
+ * While cancellable mode is on (POSIX), each such child leads its own process
+ * group, and cancelAll() signals the whole group: `wp-env start` runs
+ * `docker compose`, `composer` runs PHP, `npm` runs scripts, and stopping
+ * only the leader would leave those running. Windows has no groups; the tree
+ * is killed with `taskkill /T`. Outside cancellable mode runAsync() leaves the
+ * child in this process's group, so a terminal's Ctrl-C reaches it exactly as
+ * it reaches a run() child.
+ *
+ * Once cancelled, run() and runAsync() start nothing new: they return a
+ * failed result at once, so a step that carries on after its child was
+ * stopped cannot start the next one.
+ **/
+const active = new Set();
+let cancellable = false;
+let cancelledBy = null;
+
+/**
+ * Turn process-group cancellation on or off. Resets the cancelled state.
+ **/
+export function setCancellable(on) {
+	cancellable = !!on;
+	cancelledBy = null;
+}
+
+/**
+ * The signal that cancelled this run, or null.
+ **/
+export function cancelled() {
+	return cancelledBy;
+}
+
+function cancelledResult(bin) {
+	const stderr = `${bin}: not started, the run was cancelled (${cancelledBy})`;
+	return { code: 130, stdout: '', stderr, signal: cancelledBy, cancelled: true, toString() { return ''; } };
+}
+
+/**
+ * Stop every child runAsync() is waiting on, and refuse to start more.
+ *
+ * @param {string} [signal] The signal to send (and to record as the reason).
+ * @param {string} [platform]
+ **/
+export function cancelAll(signal = 'SIGTERM', platform = process.platform) {
+	cancelledBy = cancelledBy || signal;
+	for (const child of active) {
+		killTree(child, signal, platform);
+	}
+}
+
+/**
+ * Signal a child and everything it started.
+ **/
+export function killTree(child, signal = 'SIGTERM', platform = process.platform) {
+	if (!child || !child.pid) {
+		return;
+	}
+	try {
+		if (platform === 'win32') {
+			spawnSync('taskkill', ['/pid', String(child.pid), '/T', '/F'], { stdio: 'ignore', windowsHide: true });
+		} else if (child.wonderpressGroup) {
+			process.kill(-child.pid, signal);
+		} else {
+			child.kill(signal);
+		}
+	} catch (e) {
+		// ESRCH: already gone, which is what was wanted.
+	}
+}
+
+/**
+ * run(), without blocking the event loop, and stoppable by cancelAll().
+ *
+ * Same options and the same `{ code, stdout, stderr, signal }` result as
+ * run(), minus `input`. Streams exactly as run() does: captured when
+ * `silent`, otherwise live (to stderr while `--format json` owns stdout).
+ *
+ * @returns {Promise<{ code: number, stdout: string, stderr: string, signal: string|null }>}
+ **/
+export function runAsync(bin, args = [], opts = {}) {
+	if (cancelledBy) {
+		return Promise.resolve(cancelledResult(bin));
+	}
+
+	const platform = opts.platform || process.platform;
+	const spec = buildSpawn(resolveBin(bin, platform), args, { platform });
+	const stdio = opts.stdio
+		|| (opts.silent ? ['ignore', 'pipe', 'pipe'] : ['ignore', quietStdout() ? 2 : 'inherit', 'inherit']);
+	const group = cancellable && platform !== 'win32';
+
+	return new Promise((resolve) => {
+		let child;
+		try {
+			child = spawn(spec.file, spec.args, {
+				cwd: opts.cwd || process.cwd(),
+				env: opts.env || process.env,
+				stdio,
+				detached: group,
+				windowsHide: true,
+				windowsVerbatimArguments: spec.windowsVerbatimArguments,
+			});
+		} catch (error) {
+			resolve(notFound(bin, error, opts));
+			return;
+		}
+		child.wonderpressGroup = group;
+		active.add(child);
+
+		let stdout = '';
+		let stderr = '';
+		if (child.stdout) {
+			child.stdout.setEncoding('utf8');
+			child.stdout.on('data', (chunk) => { stdout += chunk; });
+		}
+		if (child.stderr) {
+			child.stderr.setEncoding('utf8');
+			child.stderr.on('data', (chunk) => { stderr += chunk; });
+		}
+
+		let settled = false;
+		const settle = (result) => {
+			if (settled) {
+				return;
+			}
+			settled = true;
+			active.delete(child);
+			resolve(result);
+		};
+
+		child.once('error', (error) => settle(notFound(bin, error, opts)));
+		child.once('close', (code, signal) => {
+			// A group leader that exits can leave the rest of its group behind;
+			// after a cancel, sweep it.
+			if (cancelledBy && group) {
+				killTree(child, 'SIGTERM', platform);
+			}
+			settle({
+				code: code ?? 1,
+				stdout,
+				stderr,
+				signal: signal || null,
+				...(cancelledBy ? { cancelled: true } : {}),
+				toString() { return stdout; },
+			});
+		});
+	});
+}
+
+function notFound(bin, error, opts) {
+	const stderr = `${bin}: ${error.code === 'ENOENT' ? 'command not found' : error.message}`;
+	if (!opts.silent) {
+		process.stderr.write(`${stderr}\n`);
+	}
+	return { code: error.code === 'ENOENT' ? 127 : 1, stdout: '', stderr, signal: null, error, toString() { return ''; } };
 }
 
 /**

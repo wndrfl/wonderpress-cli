@@ -8,7 +8,8 @@ import * as log from './log.js';
 import os from 'os';
 import path from 'path';
 import * as readme from './readme.js';
-import { run } from './proc.js';
+import { run, runAsync } from './proc.js';
+import * as progress from './init-progress.js';
 import * as wordpress from './wordpress.js';
 import { resolveInitConfig } from './init-config.js';
 import { isValidNamespace, LEGACY_NAMESPACE } from './validate.js';
@@ -271,14 +272,62 @@ export function cleanSlate(dir) {
 }
 
 /**
- * Initialize a new or existing Wonderpress Development Environment
+ * Initialize a new or existing Wonderpress Development Environment.
+ *
+ * Five steps — scaffold, assets, wordpress, core, theme — reported through
+ * src/init-progress.js. In human mode the reporter is silent and the phases'
+ * own log lines are the output, as they always were. Under `--format json`
+ * each step's start and end is an event line on stdout, the log lines go to
+ * stderr, and the run ends with one envelope (ARCHITECTURE.md, "App-facing
+ * commands and the version pin").
  **/
 export async function init(dir, initConfig) {
+
+  initConfig = initConfig || {};
+  const interactive = initConfig.interactive !== false;
+
+  // Set the target directory
+  const targetDir = dir || process.cwd();
+  const root = path.resolve(targetDir);
+
+  const backend = env.getCurrent();
+  const report = progress.createReporter();
+  const outcome = { theme: null, url: null };
+
+  report.describe(() => {
+    const rc = config.read(root).data;
+    return {
+      root,
+      backend: backend.name,
+      theme: outcome.theme || initConfig.theme || null,
+      namespace: rc.namespace || null,
+      cliVersion: rc.cliVersion || null,
+      url: outcome.url,
+    };
+  });
+
+  // The app reads stdout as protocol, and a prompt would write to it and then
+  // wait for a human who is not there.
+  if (report.json && interactive) {
+    const message = 'init --format json never prompts, so it needs --yes.';
+    log.error(message);
+    return report.finish(false, { code: 'usage', message, hint: 'Pass --yes, and every setting as a flag (see `wonderpress init --help`).' });
+  }
+
+  report.trapSignals();
+
+  try {
+    return await runInit(targetDir, initConfig, { backend, interactive, report, outcome });
+  } finally {
+    report.releaseSignals();
+  }
+}
+
+async function runInit(targetDir, initConfig, { backend, interactive, report, outcome }) {
 
   // Whatever the backend needs before we write anything to disk. Failing here
   // costs 200ms; failing after the scaffold clone and npm install costs
   // minutes.
-  const backend = env.getCurrent();
   //
   // The real backends' preflight() is `wonderpress doctor` scoped to that
   // backend (src/doctor.js), so a failed init and doctor say the same thing.
@@ -286,26 +335,29 @@ export async function init(dir, initConfig) {
   // Warnings do not stop init (today: the host backend on Windows).
   (preflight.warnings || []).forEach((warning) => log.warn(warning));
   if (!preflight.ok) {
-    preflight.errors.forEach((error) => log.error(error));
+    const errors = preflight.errors || [];
+    errors.forEach((error) => log.error(error));
     // Exit non-zero. This used to `return 0`, so an init that refused to run
     // for want of WP-CLI still told the shell it had succeeded.
     process.exitCode = 1;
-    return false;
+    // Not a step: the envelope's error, in doctor's words.
+    return report.finish(false, {
+      code: 'preflight',
+      message: errors.length
+        ? `${errors.length} prerequisite check${errors.length === 1 ? '' : 's'} failed. Run \`wonderpress doctor\` for the full list.`
+        : 'A prerequisite check failed. Run `wonderpress doctor` for the full list.',
+      hint: errors.length ? errors.join('\n') : null,
+    });
   }
-
-  initConfig = initConfig || {};
-  const interactive = initConfig.interactive !== false;
-
-  // Set the target directory
-  const targetDir = dir || process.cwd();
 
   // DO NOT set process.cwd() to targetDir yet.
 
   // Clear the entire directory?
   if (initConfig.cleanSlate) {
     if (targetDir == '.') {
-      log.error(`The --clean-slate does not work when initializing into your current directory. Please navigate outside of this directory and try again.`);
-      return false;
+      const message = `The --clean-slate does not work when initializing into your current directory. Please navigate outside of this directory and try again.`;
+      log.error(message);
+      return report.finish(false, { code: 'usage', message, hint: 'Pass --dir <path> from outside the directory.' });
     }
 
     // Destructive: prompt when interactive; a headless run only reaches here
@@ -341,7 +393,7 @@ export async function init(dir, initConfig) {
       if (!wiped.ok) {
         log.error(wiped.error);
         process.exitCode = 1;
-        return false;
+        return report.finish(false, { code: 'clean_slate', message: wiped.error, hint: null });
       }
     } else {
       log.success(`You are safe. Cancelling the installation. Please try again without requesting a clean slate installation.`);
@@ -358,7 +410,13 @@ export async function init(dir, initConfig) {
 
   // Check to see if there is already an installation in
   // the target directory. If there is, then don't install.
-  if (! await config.exists(process.cwd())) {
+  const fresh = ! await config.exists(process.cwd());
+
+  // Step 1: the scaffold. Done at once on an existing environment.
+  const scaffolded = await report.step('scaffold', async () => {
+    if (!fresh) {
+      return true;
+    }
 
     log.info(`Installing Wonderpress Development Environment into ${process.cwd()}`);
 
@@ -370,18 +428,20 @@ export async function init(dir, initConfig) {
     const envRefArg = envSource.ref ? ` --branch ${envSource.ref}` : '';
     // Silent: git's protocol dump (--progress --verbose, inherited stdio) sat
     // flush-left in the middle of the gutter log. Failures still print stderr.
-    const cloned = run('git', ['clone', envSource.repo, ...(envSource.ref ? ['--branch', envSource.ref] : []), tmpDir, '--depth=1'], { silent: true });
+    // Async so a cancel can stop it (src/proc.js).
+    const cloned = await runAsync('git', ['clone', envSource.repo, ...(envSource.ref ? ['--branch', envSource.ref] : []), tmpDir, '--depth=1'], { silent: true });
 
     // Stop rather than carry on into a half-scaffolded directory. This used to
     // ignore the exit code entirely, so a failed clone produced an environment
     // with no theme and an error message about something else entirely.
     if (cloned.code !== 0) {
-      log.error(`Could not clone the environment scaffold from ${envSource.repo}${envRefArg}.`);
+      const message = `Could not clone the environment scaffold from ${envSource.repo}${envRefArg}.`;
+      log.error(message);
       const detail = String(cloned.stderr || cloned.stdout || '').trim();
       if (detail) {
         log.info(detail);
       }
-      return false;
+      return { ok: false, error: { code: 'scaffold', message, hint: detail || null } };
     }
 
     // Copy a filtered list of files
@@ -396,139 +456,202 @@ export async function init(dir, initConfig) {
       }
     });
     await fs.removeSync(tmpDir);
+    return true;
+  });
+  if (!scaffolded) {
+    return false;
+  }
 
-    // Install Static Kit
+  // Step 2: Static Kit, into the scaffold's theme. Done at once on an existing
+  // environment, which already has its static/ tree.
+  const assetsInstalled = await report.step('assets', async () => {
+    if (!fresh) {
+      return true;
+    }
     const staticCli = await importStaticKit();
-    await installStaticKit(staticCli, `./wp-content/themes/wonderpress/static`, {
+    const installed = await installStaticKit(staticCli, `./wp-content/themes/wonderpress/static`, {
       init: true,
       name: '404,archive,author,category,index,page,search,single,tag',
     });
-  }
-
-  // Record which backend built this environment, as soon as there is a root to
-  // record it in — not at the end. A provision that fails halfway must still be
-  // discoverable as the kind of environment it is, or the next command resolves
-  // the wrong backend and does something incoherent.
-  //
-  // The block namespace is pinned at the same moment and for a stronger
-  // reason: it is written into the client's content as `<!-- wp:acme/hero -->`,
-  // so it must be decided once and never drift. Recording it here means a
-  // later theme rename cannot silently re-namespace content already placed.
-  //
-  // The CLI version is pinned alongside them, but only when the project has
-  // no pin yet. Re-running init with a newer CLI must not quietly bump a
-  // committed pin — moving it is a deliberate edit, and the mismatch warning
-  // says when one is due.
-  config.write(process.cwd(), {
-    environment: { backend: backend.name },
-    namespace: resolveProjectNamespace(process.cwd(), initConfig),
-    ...(config.getCliVersion(process.cwd()) ? {} : { cliVersion: pkg.version }),
+    if (installed && installed.ok === false) {
+      const error = installed.error || {};
+      const message = error.message || 'Static Kit could not be installed.';
+      log.error(message);
+      return { ok: false, error: { code: 'assets', message, hint: error.hint || null } };
+    }
+    return true;
   });
-
-  // Anything the backend needs on disk before it can provision.
-  const prepared = await backend.prepare(initConfig);
-  if (! reportBackendStep(prepared)) {
+  if (!assetsInstalled) {
     return false;
   }
 
-  // Download, configure and install WordPress. The backend owns the order:
-  // the host downloads then configures then installs, where a container-based
-  // backend provisions along a different graph entirely.
-  //
-  // Stop here on failure rather than carrying on. An environment with no
-  // database is not an environment: the remaining steps would install the
-  // mu-plugin and Composer packages into it, fail again at theme activation,
-  // and then print "The Wonderpress environment has been initialized!"
-  const provisioned = await backend.provision(initConfig);
-  if (! reportBackendStep(provisioned)) {
+  // Step 3: WordPress — the backend's prepare and provision.
+  const wordpressInstalled = await report.step('wordpress', async () => {
+    // Record which backend built this environment, as soon as there is a root
+    // to record it in — not at the end. A provision that fails halfway must
+    // still be discoverable as the kind of environment it is, or the next
+    // command resolves the wrong backend and does something incoherent.
+    //
+    // The block namespace is pinned at the same moment and for a stronger
+    // reason: it is written into the client's content as `<!-- wp:acme/hero -->`,
+    // so it must be decided once and never drift. Recording it here means a
+    // later theme rename cannot silently re-namespace content already placed.
+    //
+    // The CLI version is pinned alongside them, but only when the project has
+    // no pin yet. Re-running init with a newer CLI must not quietly bump a
+    // committed pin — moving it is a deliberate edit, and the mismatch warning
+    // says when one is due.
+    config.write(process.cwd(), {
+      environment: { backend: backend.name },
+      namespace: resolveProjectNamespace(process.cwd(), initConfig),
+      ...(config.getCliVersion(process.cwd()) ? {} : { cliVersion: pkg.version }),
+    });
+
+    // Anything the backend needs on disk before it can provision.
+    const prepared = await backend.prepare(initConfig);
+    if (! reportBackendStep(prepared)) {
+      return { ok: false, error: backendError('prepare', prepared) };
+    }
+
+    // Download, configure and install WordPress. The backend owns the order:
+    // the host downloads then configures then installs, where a container-based
+    // backend provisions along a different graph entirely.
+    //
+    // Stop here on failure rather than carrying on. An environment with no
+    // database is not an environment: the remaining steps would install the
+    // mu-plugin and Composer packages into it, fail again at theme activation,
+    // and then print "The Wonderpress environment has been initialized!"
+    const provisioned = await backend.provision(initConfig);
+    if (! reportBackendStep(provisioned)) {
+      return { ok: false, error: backendError('provision', provisioned) };
+    }
+
+    return true;
+  });
+  if (!wordpressInstalled) {
     return false;
   }
 
-  // Install the theme's Composer dependencies, chiefly wonderpress-core.
-  //
-  // Core used to be cloned into wp-content/mu-plugins from a pinned git tag.
-  // It is a theme dependency now: nothing in it needs mu-plugin load order —
-  // its earliest hook is `init` — and it cannot function without a theme at
-  // all, since it registers the blocks in the theme's blocks/ directory and
-  // resolves its partial views through locate_template(). Installing it into
-  // the theme means deleting the theme removes Wonderpress with it, and
-  // upgrading is `composer update` in one directory.
-  const coreInstalled = await installCore();
+  // Step 4: the Composer packages, chiefly wonderpress-core.
+  const coreReady = await report.step('core', async () => {
+    // Install the theme's Composer dependencies, chiefly wonderpress-core.
+    //
+    // Core used to be cloned into wp-content/mu-plugins from a pinned git tag.
+    // It is a theme dependency now: nothing in it needs mu-plugin load order —
+    // its earliest hook is `init` — and it cannot function without a theme at
+    // all, since it registers the blocks in the theme's blocks/ directory and
+    // resolves its partial views through locate_template(). Installing it into
+    // the theme means deleting the theme removes Wonderpress with it, and
+    // upgrading is `composer update` in one directory.
+    if (! await installCore()) {
+      return false;
+    }
 
-  if (!coreInstalled) {
+    // The environment root's own Composer packages — the phpcs toolchain that
+    // `wonderpress lint` runs. Separate from the theme's: different manifest,
+    // different purpose, and the root one ships no runtime code.
+    if (! await composer.installComposer(process.cwd())) {
+      return false;
+    }
+
+    // Recorded only now, unlike the backend above: the backend is worth knowing
+    // even when a provision failed halfway, but a core version is a claim about
+    // what is on disk, and claiming one we failed to install would be worse than
+    // recording nothing.
+    //
+    // The version that was ACTUALLY resolved, read back out of the lock file
+    // rather than restated from a constant. A project built from a branch should
+    // say so when someone later asks which core it is running.
+    config.write(process.cwd(), { core: readCoreVersion() });
+    return true;
+  });
+  if (!coreReady) {
+    process.exitCode = process.exitCode || 1;
     return false;
   }
 
-  // The environment root's own Composer packages — the phpcs toolchain that
-  // `wonderpress lint` runs. Separate from the theme's: different manifest,
-  // different purpose, and the root one ships no runtime code.
-  if (! await composer.installComposer(process.cwd())) {
-    return false;
-  }
+  // Step 5: activate a theme, then the README and AGENTS.md.
+  const themeReady = await report.step('theme', async () => {
+    // Activate a theme. --theme wins; otherwise auto-activate a lone theme, and
+    // prompt (interactive) or error (headless) when several exist.
+    log.info(`Checking for themes that can be activated...`);
+    let toActivate = null;
+    if (initConfig.theme) {
+      toActivate = initConfig.theme;
+    } else {
+      const themes = await wordpress.getAllThemes();
 
-  // Recorded only now, unlike the backend above: the backend is worth knowing
-  // even when a provision failed halfway, but a core version is a claim about
-  // what is on disk, and claiming one we failed to install would be worse than
-  // recording nothing.
-  //
-  // The version that was ACTUALLY resolved, read back out of the lock file
-  // rather than restated from a constant. A project built from a branch should
-  // say so when someone later asks which core it is running.
-  config.write(process.cwd(), { core: readCoreVersion() });
+      if (themes.length == 1) {
+        toActivate = themes[0].name;
+      } else if (themes.length > 1) {
+        if (interactive) {
+          const choices = themes.map((theme) => ({ name: theme.name, value: theme.name }));
+          const themeToActivateAnswer = await inquirer.prompt([
+            {
+              type: 'list',
+              name: 'themeToActivate',
+              message: 'Which theme would you like to activate?',
+              choices: choices,
+            }
+          ]);
+          toActivate = themeToActivateAnswer.themeToActivate || null;
+        } else {
+          log.error('Multiple themes found. Pass --theme <name> to choose which to activate.');
+          // A human --yes run carries on, as it always has. The app cannot see
+          // a log line, so for it this is the usage error naming the flag.
+          if (report.json) {
+            return {
+              ok: false,
+              error: {
+                code: 'usage',
+                message: `Multiple themes found (${themes.map((theme) => theme.name).join(', ')}).`,
+                hint: 'Pass --theme <name> to choose which to activate.',
+              },
+            };
+          }
+        }
+      }
+    }
 
-  // Activate a theme. --theme wins; otherwise auto-activate a lone theme, and
-  // prompt (interactive) or error (headless) when several exist.
-  log.info(`Checking for themes that can be activated...`);
-  if (initConfig.theme) {
-    log.info(`Activating ${initConfig.theme} theme...`);
-    wordpress.activateTheme(initConfig.theme);
-  } else {
-    const themes = await wordpress.getAllThemes();
+    if (toActivate) {
+      log.info(`Activating ${toActivate} theme...`);
+      const activated = await wordpress.activateTheme(toActivate);
+      if (activated && activated.code !== undefined && activated.code !== 0) {
+        const message = `Could not activate the ${toActivate} theme.`;
+        log.error(message);
+        const detail = String(activated.stderr || activated.stdout || '').trim();
+        return { ok: false, error: { code: 'theme', message, hint: detail || 'Is it installed? Pass --theme <name> to choose another.' } };
+      }
+      outcome.theme = toActivate;
+    }
 
-    if (themes.length == 1) {
-      log.info(`Activating ${themes[0].name} theme...`);
-      wordpress.activateTheme(themes[0].name);
-    } else if (themes.length > 1) {
+    // Create a Readme?
+    if (! await readme.exists(process.cwd())) {
       if (interactive) {
-        const choices = themes.map((theme) => ({ name: theme.name, value: theme.name }));
-        const themeToActivateAnswer = await inquirer.prompt([
-          {
-            type: 'list',
-            name: 'themeToActivate',
-            message: 'Which theme would you like to activate?',
-            choices: choices,
+        if (!initConfig.skipReadme) {
+          const createReadmeAnswer = await inquirer.prompt([
+            {
+              type: 'confirm',
+              name: 'confirm',
+              message: 'Would you like to create a readme?',
+              default: true,
+            }
+          ]);
+          if (createReadmeAnswer.confirm === true) {
+            await readme.create();
           }
-        ]);
-        if (themeToActivateAnswer.themeToActivate) {
-          log.info(`Activating ${themeToActivateAnswer.themeToActivate} theme...`);
-          wordpress.activateTheme(themeToActivateAnswer.themeToActivate);
         }
-      } else {
-        log.error('Multiple themes found. Pass --theme <name> to choose which to activate.');
+      } else if (initConfig.readme) {
+        // Headless: generate a README named after the site title.
+        await readme.create({ '--project-name': (initConfig.wp && initConfig.wp.title) || undefined });
       }
     }
-  }
 
-  // Create a Readme?
-  if (! await readme.exists(process.cwd())) {
-    if (interactive) {
-      if (!initConfig.skipReadme) {
-        const createReadmeAnswer = await inquirer.prompt([
-          {
-            type: 'confirm',
-            name: 'confirm',
-            message: 'Would you like to create a readme?',
-            default: true,
-          }
-        ]);
-        if (createReadmeAnswer.confirm === true) {
-          await readme.create();
-        }
-      }
-    } else if (initConfig.readme) {
-      // Headless: generate a README named after the site title.
-      await readme.create({ '--project-name': (initConfig.wp && initConfig.wp.title) || undefined });
-    }
+    return true;
+  });
+  if (!themeReady) {
+    process.exitCode = process.exitCode || 1;
+    return false;
   }
 
   log.success(`The Wonderpress environment has been initialized!`);
@@ -548,7 +671,20 @@ export async function init(dir, initConfig) {
     log.warn(`Could not write AGENTS.md: ${err.message}`);
   }
 
-  return true;
+  outcome.url = typeof backend.siteUrl === 'function' ? backend.siteUrl(initConfig) : null;
+
+  return report.finish(true);
+}
+
+/**
+ * A backend lifecycle failure as a step error: the first line says what
+ * failed, the rest (commands to run, output) is the hint.
+ **/
+function backendError(code, result) {
+  const lines = (result.errors || []).join('\n').split('\n');
+  const message = (lines.shift() || `The backend's ${code} failed.`).trim();
+  const hint = lines.join('\n').trim();
+  return { code, message, hint: hint || null };
 }
 
 /**
