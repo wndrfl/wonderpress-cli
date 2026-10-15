@@ -642,8 +642,10 @@ async function runInit(targetDir, initConfig, { backend, interactive, report, ou
           }
         }
       } else if (initConfig.readme) {
-        // Headless: generate a README named after the site title.
-        await readme.create({ '--project-name': (initConfig.wp && initConfig.wp.title) || undefined });
+        // Headless: generate a README named after the site title. Never
+        // undefined: with no --project-* flag at all, readme.create() falls
+        // back to its interactive wizard, which --yes must never reach.
+        await readme.create({ '--project-name': (initConfig.wp && initConfig.wp.title) || 'Wonderpress' });
       }
     }
 
