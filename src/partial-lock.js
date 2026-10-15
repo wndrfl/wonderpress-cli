@@ -2,14 +2,16 @@
  * Sync locks: what each partial's machine-owned artifacts looked like the last
  * time sync wrote them.
  *
- * One file per partial at `.wonderpress/lock/partials/<slug>.json`, committed
- * with the theme:
+ * One file per partial at `.wonderpress/manifest/partials/<slug>.lock.json`,
+ * committed with the theme:
  *
  *   {
- *     "manifest":   sha256 of the manifest file as sync left them,
- *     "classFence": sha256 of the class's fenced region as written,
- *     "block":      sha256 of block.json bytes as written (absent without a block),
- *     "cliVersion": the CLI version that wrote the lock
+ *     "manifest":          sha256 of the manifest file as sync left them,
+ *     "classFence":        sha256 of the class's fenced region as written,
+ *     "classFenceContent": that fenced region verbatim,
+ *     "block":             sha256 of block.json bytes as written (absent without a block),
+ *     "blockContent":      block.json verbatim,
+ *     "cliVersion":        the CLI version that wrote the lock
  *   }
  *
  * The hashes turn drift from a binary "differs from what sync would write"
@@ -18,9 +20,18 @@
  * hash means someone edited machine-owned output by hand (conflict), which a
  * sync would silently destroy.
  *
- * Per-partial files rather than one lock, and never inside the manifest: two
- * branches touching different partials then never conflict on the lock, and
- * the hand-edited manifest does not churn every time a hash moves.
+ * The `*Content` fields are carried data, not comparison: nothing here or in
+ * partial-drift.js keys off them. They are the merge base a conflict-resolve
+ * UI needs — a hash says output was edited but cannot say what it was edited
+ * from. They are written every time and read as optional, so a lock from
+ * before they existed still works everywhere.
+ *
+ * Per-partial files rather than one lock, and beside the manifest rather than
+ * inside it: the lock is the manifest's sidecar (package-lock.json beside
+ * package.json), so two branches touching different partials never conflict on
+ * the lock, and the hand-edited manifest does not churn every time a hash
+ * moves. Locks are never manifests — readers of the manifest directory skip
+ * `*.lock.json` (`isPartialLockFilename`), and no manifest schema covers them.
  *
  * Like partial-class.js, this imports nothing from partial.js (partial.js
  * imports partial-drift.js, which imports this).
@@ -29,11 +40,14 @@
 import { createHash } from 'node:crypto';
 import fs from 'fs-extra';
 import path from 'path';
-import { partialManifestPath, resolveWithin } from './validate.js';
+import {
+	PARTIAL_LOCK_SUFFIX,
+	PARTIAL_MANIFEST_DIR,
+	partialManifestPath,
+	resolveWithin,
+} from './validate.js';
 import { extractFencedRegion } from './partial-class.js';
 import pkg from '../package.json' with { type: 'json' };
-
-export const PARTIAL_LOCK_DIR = '.wonderpress/lock/partials';
 
 /**
  * @param {string | Buffer} bytes
@@ -62,12 +76,22 @@ export function contentHash(content) {
 }
 
 /**
+ * Theme-relative path of a partial's lock, for messages.
+ *
+ * @param {string} slug
+ * @returns {string}
+ */
+export function partialLockRelPath(slug) {
+	return `${PARTIAL_MANIFEST_DIR}/${slug}${PARTIAL_LOCK_SUFFIX}`;
+}
+
+/**
  * @param {string} themeDir
  * @param {string} slug
  * @returns {string}
  */
 export function partialLockPath(themeDir, slug) {
-	return path.join(themeDir, PARTIAL_LOCK_DIR, `${slug}.json`);
+	return path.join(themeDir, PARTIAL_MANIFEST_DIR, `${slug}${PARTIAL_LOCK_SUFFIX}`);
 }
 
 /**
@@ -116,13 +140,20 @@ export function readPartialLock(themeDir, slug) {
  * extractFencedRegion() returns, because everything outside the fence is the
  * user's and may change freely.
  *
+ * `classFenceContent` and `blockContent` are the same two artifacts verbatim,
+ * byte for byte as they are on disk — not CRLF-normalized the way the hashes
+ * beside them are, because a merge base has to be the real text. They are what
+ * writePartialLock() carries into the lock; nothing compares them.
+ *
  * @param {object} manifest Parsed manifest (supplies slug and artifact paths).
  * @param {string} themeDir
  * @returns {{
  *   manifest: string | null,
  *   classFence: string | null,
+ *   classFenceContent: string | null,
  *   classFenceState: 'ok' | 'missing' | 'unfenced' | 'malformed' | 'none',
  *   block: string | null,
+ *   blockContent: string | null,
  * }}
  */
 export function currentPartialHashes(manifest, themeDir) {
@@ -131,8 +162,10 @@ export function currentPartialHashes(manifest, themeDir) {
 	const out = {
 		manifest: fs.existsSync(manifestFile) ? contentHash(fs.readFileSync(manifestFile)) : null,
 		classFence: null,
+		classFenceContent: null,
 		classFenceState: 'none',
 		block: null,
+		blockContent: null,
 	};
 
 	if (artifacts.class) {
@@ -149,13 +182,16 @@ export function currentPartialHashes(manifest, themeDir) {
 			}
 			if (region !== null) {
 				out.classFence = contentHash(region);
+				out.classFenceContent = region;
 			}
 		}
 	}
 
 	const blockFile = resolveWithin(themeDir, blockRelPath(manifest));
 	if (blockFile && fs.existsSync(blockFile)) {
-		out.block = contentHash(fs.readFileSync(blockFile));
+		const blockSource = fs.readFileSync(blockFile, 'utf8');
+		out.block = contentHash(blockSource);
+		out.blockContent = blockSource;
 	}
 
 	return out;
@@ -175,11 +211,13 @@ export function writePartialLock(manifest, themeDir) {
 	const lock = { manifest: hashes.manifest };
 	if (hashes.classFence) {
 		lock.classFence = hashes.classFence;
+		lock.classFenceContent = hashes.classFenceContent;
 	}
 	// block.json is only part of the contract when the partial is a block; a
 	// stray file left by a removed wrapper is not recorded.
 	if (manifest.block && hashes.block) {
 		lock.block = hashes.block;
+		lock.blockContent = hashes.blockContent;
 	}
 	lock.cliVersion = pkg.version;
 	const file = partialLockPath(themeDir, manifest.slug);
@@ -196,7 +234,7 @@ export function writePartialLock(manifest, themeDir) {
  * @returns {boolean}
  */
 export function removePartialLock(themeDir, slug) {
-	const file = resolveWithin(themeDir, `${PARTIAL_LOCK_DIR}/${slug}.json`);
+	const file = resolveWithin(themeDir, partialLockRelPath(slug));
 	if (!file || !fs.existsSync(file)) {
 		return false;
 	}

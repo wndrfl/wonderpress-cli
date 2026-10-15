@@ -12,6 +12,7 @@ import path from 'path';
 import {
 	PARTIAL_MANIFEST_DIR,
 	compositionRowIsFieldGroup,
+	isPartialLockFilename,
 	compositionRowIsTab,
 	pageTemplateManifestDir,
 	resolveWithin,
@@ -106,7 +107,8 @@ function readPartialSlugs(themeDir) {
 	}
 	const slugs = [];
 	for (const file of fs.readdirSync(dir)) {
-		if (!file.endsWith('.json')) {
+		// `<slug>.lock.json` is a sync lock, not a manifest.
+		if (!file.endsWith('.json') || isPartialLockFilename(file)) {
 			continue;
 		}
 		try {

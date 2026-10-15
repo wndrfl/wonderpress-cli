@@ -516,6 +516,28 @@ export const PAGE_TEMPLATE_MANIFEST_SCHEMA_REF = '../schema/page-template.schema
 export const TEMPLATE_MANIFEST_SCHEMA_VERSION = 1;
 
 /**
+ * Partial sync locks live beside their manifest, the way package-lock.json
+ * sits beside package.json: `<slug>.lock.json` next to `<slug>.json`. The
+ * suffix lives here, with the manifest directory, because every reader that
+ * enumerates that directory has to skip locks — they are not manifests, carry
+ * no `$schema`, and are never validated as one. Writers are in
+ * `src/partial-lock.js`.
+ */
+export const PARTIAL_LOCK_SUFFIX = '.lock.json';
+
+/**
+ * Is this manifest-directory entry a sync lock rather than a manifest?
+ * `<slug>.lock.json` ends with `.json`, so the usual filter sweeps it up and
+ * reads it as a partial named "<slug>.lock".
+ *
+ * @param {string} name Filename within the manifest directory.
+ * @returns {boolean}
+ **/
+export function isPartialLockFilename(name) {
+	return String(name).endsWith(PARTIAL_LOCK_SUFFIX);
+}
+
+/**
  * Path to a partial manifest file.
  **/
 export function partialManifestPath(themeDir, slug) {

@@ -8,6 +8,7 @@ import { spawnSync } from 'node:child_process';
 import {
 	SyncConflictError,
 	paramsFromFlags,
+	readManifests,
 	removePartial,
 	syncPartialFromManifest,
 	writePartial,
@@ -16,6 +17,7 @@ import { addBlock } from '../src/block.js';
 import { checkPartialDrift } from '../src/partial-drift.js';
 import { FENCE_CLOSE, FENCE_OPEN, extractFencedRegion } from '../src/partial-class.js';
 import { contentHash, partialLockPath, sha256 } from '../src/partial-lock.js';
+import { stampManifestSchemas } from '../src/manifest-schema.js';
 import { command as lintCommand, inspectTheme } from '../src/lint.js';
 import { handlers } from '../src/mcp.js';
 import { parseEnvelope } from '../src/format.js';
@@ -26,7 +28,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const BIN = path.join(__dirname, '..', 'bin', 'wonderpress.js');
 
 const MANIFEST = '.wonderpress/manifest/partials/hero.json';
-const LOCK = '.wonderpress/lock/partials/hero.json';
+const LOCK = '.wonderpress/manifest/partials/hero.lock.json';
 const CLASS = 'src/partials/class-hero.php';
 const BLOCK = 'blocks/hero/block.json';
 
@@ -86,20 +88,20 @@ function withTheme(fn) {
 test('create writes a per-partial lock of the manifest, fenced region, and block.json', withTheme(async (dir) => {
 	await createHero(dir, { '--block': true });
 	const lock = readLock(dir);
-	assert.deepEqual(Object.keys(lock), ['manifest', 'classFence', 'block', 'cliVersion']);
+	assert.deepEqual(Object.keys(lock), ['manifest', 'classFence', 'classFenceContent', 'block', 'blockContent', 'cliVersion']);
 	assert.equal(lock.manifest, sha256(fs.readFileSync(path.join(dir, MANIFEST))));
 	assert.equal(lock.classFence, sha256(extractFencedRegion(read(dir, CLASS))));
 	assert.equal(lock.block, sha256(fs.readFileSync(path.join(dir, BLOCK))));
 	assert.equal(lock.cliVersion, pkg.version);
 	assert.equal(partialLockPath(dir, 'hero'), path.join(dir, LOCK));
-	// The lock lives beside the manifest tree, never inside a manifest.
+	// The lock lives beside its manifest, never inside one.
 	assert.equal(readManifest(dir).lock, undefined);
 	assert.equal(JSON.stringify(readManifest(dir)).includes(lock.classFence), false);
 }));
 
 test('a partial without a block omits the block hash', withTheme(async (dir) => {
 	await createHero(dir);
-	assert.deepEqual(Object.keys(readLock(dir)), ['manifest', 'classFence', 'cliVersion']);
+	assert.deepEqual(Object.keys(readLock(dir)), ['manifest', 'classFence', 'classFenceContent', 'cliVersion']);
 }));
 
 test('clean right after create, and edits outside the fence stay clean', withTheme(async (dir) => {
@@ -293,6 +295,103 @@ test('partial remove deletes the lock', withTheme(async (dir) => {
 	assert.ok(fs.existsSync(path.join(dir, LOCK)));
 	assert.equal(await removePartial(dir, 'Hero'), true);
 	assert.equal(fs.existsSync(path.join(dir, LOCK)), false);
+}));
+
+// --- the lock is a sidecar, not a manifest ------------------------------
+
+test('a lock is never enumerated as a partial', withTheme(async (dir) => {
+	await createHero(dir, { '--block': true });
+	// `<slug>.lock.json` ends in .json and sits in the manifest directory, so
+	// the naive filter would read it as a partial named "hero.lock".
+	assert.ok(fs.existsSync(path.join(dir, LOCK)), 'the lock is in the manifest directory');
+	assert.deepEqual(readManifests(dir).map((m) => m.slug), ['hero']);
+}));
+
+test('a lock is never $schema-stamped as a manifest', withTheme(async (dir) => {
+	await createHero(dir, { '--block': true });
+	const before = read(dir, LOCK);
+
+	const stamped = stampManifestSchemas(dir);
+	assert.deepEqual(stamped, [], 'create already stamped the manifest; nothing left to stamp');
+	assert.equal(read(dir, LOCK), before, 'the lock is untouched');
+	assert.equal(readLock(dir).$schema, undefined);
+
+	// And from the state a pre-schema theme is in: a manifest that still needs
+	// the stamp, with its lock beside it.
+	const manifest = readManifest(dir);
+	delete manifest.$schema;
+	write(dir, MANIFEST, JSON.stringify(manifest, null, 2) + '\n');
+	assert.deepEqual(
+		stampManifestSchemas(dir).map((f) => path.basename(f)),
+		['hero.json'],
+		'only the manifest is stamped',
+	);
+	assert.equal(read(dir, LOCK), before, 'the lock is still untouched');
+	assert.equal(readLock(dir).$schema, undefined);
+}));
+
+test('CLI: partial list and remove see the partial, not its lock', () => {
+	const { root, themeDir, run } = cliEnv();
+	try {
+		run(['partial', 'create', '--name', 'Hero', '--prop', 'title:string:required', '--no-style']);
+		const lock = path.join(themeDir, '.wonderpress/manifest/partials/hero.lock.json');
+		assert.ok(fs.existsSync(lock));
+
+		const listed = run(['partial', 'list', '--format', 'json']);
+		assert.equal(listed.status, 0, listed.stderr);
+		assert.deepEqual(oneEnvelope(listed).data.partials.map((p) => p.slug), ['hero']);
+		assert.doesNotMatch(listed.stdout + listed.stderr, /hero\.lock|malformed manifest/);
+
+		const removed = run(['partial', 'remove', 'Hero', '--yes', '--format', 'json']);
+		assert.equal(removed.status, 0, removed.stderr);
+		assert.equal(fs.existsSync(lock), false, 'remove deletes the lock at its new path');
+		assert.deepEqual(oneEnvelope(run(['partial', 'list', '--format', 'json'])).data.partials, []);
+	} finally {
+		fs.removeSync(root);
+	}
+});
+
+// --- carried content ----------------------------------------------------
+
+test('the lock carries the fenced region and block.json verbatim', withTheme(async (dir) => {
+	let manifest = await createHero(dir, { '--block': true });
+	let lock = readLock(dir);
+	assert.equal(lock.classFenceContent, extractFencedRegion(read(dir, CLASS)));
+	assert.equal(lock.blockContent, read(dir, BLOCK));
+	// Carried, not hashed differently: the content is what the hash beside it
+	// covers.
+	assert.equal(contentHash(lock.classFenceContent), lock.classFence);
+	assert.equal(contentHash(lock.blockContent), lock.block);
+
+	// Rewritten on every lock write, not just the first.
+	manifest = addProp(dir, manifest, 'dek');
+	await syncPartialFromManifest(manifest, dir);
+	lock = readLock(dir);
+	assert.match(lock.classFenceContent, /'dek'/);
+	assert.equal(lock.classFenceContent, extractFencedRegion(read(dir, CLASS)));
+	assert.equal(lock.blockContent, read(dir, BLOCK));
+}));
+
+test('a lock written before classFenceContent existed behaves identically', withTheme(async (dir) => {
+	const manifest = await createHero(dir, { '--block': true });
+	const full = readLock(dir);
+
+	// An older CLI's lock: the hashes, no carried content.
+	const legacy = { manifest: full.manifest, classFence: full.classFence, block: full.block, cliVersion: '2.15.0' };
+	write(dir, LOCK, JSON.stringify(legacy, null, 2) + '\n');
+
+	// Clean, and the hash still does the comparing.
+	assert.equal(checkPartialDrift(manifest, dir).state, 'clean');
+
+	editFence(dir);
+	let result = checkPartialDrift(manifest, dir);
+	assert.equal(result.state, 'conflict');
+	assert.deepEqual(result.changes.map((c) => [c.artifact, c.region, c.kind]), [['class', 'fence', 'edited']]);
+
+	// And the next sync fills the content in.
+	await syncPartialFromManifest(manifest, dir, { force: true });
+	assert.equal(readLock(dir).classFenceContent, extractFencedRegion(read(dir, CLASS)));
+	assert.equal(checkPartialDrift(readManifest(dir), dir).state, 'clean');
 }));
 
 // --- CLI ---------------------------------------------------------------

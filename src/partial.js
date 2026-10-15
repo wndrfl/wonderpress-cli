@@ -31,6 +31,7 @@ import {
 	assertDualAuthorable,
 	LEGACY_NAMESPACE,
 	validateManifestProperty,
+	isPartialLockFilename,
 	partialManifestPath,
 	PARTIAL_MANIFEST_DIR,
 	PARTIAL_MANIFEST_SCHEMA_REF,
@@ -1035,7 +1036,10 @@ export function readManifests(themeDir) {
 	}
 
 	return fs.readdirSync(dir)
-		.filter((file) => file.endsWith('.json'))
+		// Sync locks live beside their manifest as `<slug>.lock.json`; without
+		// this they read as a partial named "<slug>.lock" and warn their way
+		// through every list and remove.
+		.filter((file) => file.endsWith('.json') && !isPartialLockFilename(file))
 		.sort()
 		.map((file) => {
 			let manifest;

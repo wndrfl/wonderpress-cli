@@ -17,6 +17,7 @@ import {
 	PAGE_TEMPLATE_MANIFEST_DIR,
 	PAGE_TEMPLATE_MANIFEST_SCHEMA_REF,
 	PARTIAL_MANIFEST_DIR,
+	isPartialLockFilename,
 	PARTIAL_MANIFEST_SCHEMA_REF,
 	PROP_TYPES,
 	REPEATER_SUB_TYPES,
@@ -511,7 +512,9 @@ function stampDir(dir, ref) {
 	}
 	const stamped = [];
 	for (const name of fs.readdirSync(dir)) {
-		if (!name.endsWith('.json')) {
+		// A sync lock sits beside its manifest and is not one: no manifest
+		// schema describes it, so it must never be stamped with a `$schema`.
+		if (!name.endsWith('.json') || isPartialLockFilename(name)) {
 			continue;
 		}
 		const file = path.join(dir, name);
