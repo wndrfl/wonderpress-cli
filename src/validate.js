@@ -173,15 +173,30 @@ export function parseSubFlag(str) {
 }
 
 /**
+ * Escape a string for the inside of a PHP single-quoted literal.
+ * Only `\` and `'` are special there; everything else is literal, so the
+ * text must not also be HTML-escaped (Mustache's `{{ }}` would do that).
+ *
+ * @param {unknown} value
+ * @returns {string}
+ */
+export function phpSingleQuoted(value) {
+	return String(value ?? '').replace(/[\\']/g, '\\$&');
+}
+
+/**
  * Property rows for the partial class template.
  * Pads `=>` so WordPress.Arrays.MultipleStatementAlignment is already satisfied.
  * The longest key keeps a single space; shorter keys pad out to that column.
+ * `description` is pre-escaped for its single-quoted PHP string; the template
+ * prints it with `{{{ }}}`.
  **/
 export function propertiesForClassTemplate(properties) {
 	const list = properties || [];
 	const max = list.reduce((longest, prop) => Math.max(longest, String(prop.name || '').length), 0);
 	return list.map((prop) => ({
 		...prop,
+		description: phpSingleQuoted(prop.description),
 		format: phpFormatForType(prop.type),
 		arrow_pad: ' '.repeat(Math.max(1, max - String(prop.name || '').length + 1)),
 	}));
