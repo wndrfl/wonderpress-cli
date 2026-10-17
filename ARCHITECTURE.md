@@ -177,6 +177,90 @@ Envelope `data`:
 }
 ```
 
+### Migrating class-based legacy partials
+
+`wonderpress theme migrate --list | <slug> [--type name=type ...] [--apply]`
+([`src/theme.js`](src/theme.js), parser in
+[`src/legacy-partial.js`](src/legacy-partial.js)) is the step after adopt: it
+brings one hand-written partial class under a manifest. It requires the
+manifest tree adopt creates (error `not_adopted` otherwise) and never creates
+it as a side effect. Like adopt, the theme comes from `--theme` or the lone
+theme on disk; the database is not consulted.
+
+**What counts as legacy.** A class under `src/partials/class-<slug>.php` in
+namespace `Wonderpress\Partials` with `protected $_partial_template = '...'`
+and `protected static $_properties = array( 'name' => array( 'description',
+'format', 'required' ), ... )` (underscored names, sometimes an empty table,
+sometimes no template member at all). The table is read by a small tolerant
+parser for PHP array literals (`array()` and `[]`, both quote styles,
+true/false/null, numbers, comments; anything else kept as `{ raw }`), never by
+executing PHP. ACF blocks (`partials/blocks/*.php`) are listed with kind
+`acf-block` and status `not migrated`; they are out of scope and never touched.
+
+**The inventory** (`--list`) reports each class with `slug`, `className`,
+`classPath`, `viewPath` (`$_partial_template` resolved theme-relative),
+`properties` (count) and `status`: `ready` when every legacy format maps
+without a decision, `review` when one does not, `migrated` when a manifest
+exists for the slug.
+
+**Format mapping.** `string` -> `string`; `boolean`/`bool` -> `boolean`;
+`object` -> `post_object`, flagged for review (it was how the old classes
+said "a WP_Post", but may not be); `array`, `string|array` and anything else
+-> `string`, flagged. `--type name=type` settles a flagged property (the type
+must be one of `PROP_TYPES`; a type that needs more than a name, like `select`,
+fails the same validation `partial sync` applies). `description` and
+`required` carry over, except that `required` is dropped with a note on
+`REQUIRED_FORBIDDEN_TYPES`. A legacy `default` is dropped with a note. The
+manifest records `acf_compatible: false` and no block, whatever the legacy
+`$_acf_compatible` said (noted); both are a later, deliberate edit followed by
+`partial sync`.
+
+**Dry run** (no `--apply`) prints the manifest that would be written and one
+note per property, and writes nothing. **Apply** refuses while any property is
+still flagged (error `review`, with the `--type` flags to pass in the hint and
+the plan in `data`). Otherwise it:
+
+1. copies the class to `class-<slug>.php.legacy` (never overwritten; the user
+   deletes it once satisfied),
+2. rewrites the class as `partial create` would render it, with the
+   `<wonderpress:generated>` fence; the legacy property block is gone, every
+   other member of the class body is kept below the closing marker, and a
+   parent other than `Abstract_Partial` (a core partial such as `Image`) is
+   kept along with the file's `use` lines,
+3. leaves the view untouched and records it as `artifacts.view`,
+4. asks Static Kit for the style stub only when the theme has a static tree
+   (Static Kit never overwrites an existing stub), recording it only if it
+   landed,
+5. writes the manifest through `writeManifest()` and the sync lock through
+   `writePartialLock()`, so `check-drift` reads `clean` and the next
+   `partial sync` replaces only the fenced region.
+
+A second apply is a no-op (`applied: false`, a note that the manifest exists).
+
+Envelope `data` for `--list`: `{ theme, partials: [...] }`. For a dry run or
+apply:
+
+```json
+{
+  "slug": "project-card",
+  "manifestPath": "/abs/.../.wonderpress/manifest/partials/project-card.json",
+  "manifest": { "name": "Project_Card", "slug": "project-card", "acf_compatible": false, "properties": [], "artifacts": {} },
+  "properties": [
+    { "name": "project", "type": "post_object", "source": "format:object", "review": true, "note": "..." },
+    { "name": "title", "type": "string", "source": "format:string", "review": false, "note": null }
+  ],
+  "notes": [],
+  "review": true,
+  "applied": false,
+  "files": { "written": [], "preserved": [] }
+}
+```
+
+`source` is `format:<legacy format>` or `override` (`--type`); `review` is
+whether that property still needs a decision; after an apply `files.written`
+lists the class, manifest and lock (and a style stub when one landed) and
+`files.preserved` the `.legacy` copy and the view.
+
 ### Partial manifests are the index
 
 `.wonderpress/manifest/partials/<slug>.json` is the CLI's record of what a component is

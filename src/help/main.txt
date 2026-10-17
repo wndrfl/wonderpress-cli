@@ -26,7 +26,7 @@ AUTHORING
   partial       Reusable render primitives — the unit of markup in a theme
   block         Editor wrappers that expose a partial in Gutenberg
   template      Page templates — create, list, validate, and remove
-  theme         Bring an existing theme under manifests (`theme adopt`)
+  theme         Bring an existing theme under manifests (`theme adopt`, `theme migrate`)
   readme        Generate a project README
   manifest      Print the manifest JSON Schemas (`manifest schema`)
 
