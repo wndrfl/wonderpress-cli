@@ -6,6 +6,7 @@ import * as format from './format.js';
 import * as help from './help.js';
 import * as log from './log.js';
 import * as wordpress from './wordpress.js';
+import { toPosixPath } from './proc.js';
 import { namespaceFromBlocks } from './partial.js';
 import {
 	isValidNamespace,
@@ -227,7 +228,8 @@ export async function adopt(args) {
 		return format.ok(data);
 	}
 
-	const manifestRel = path.join(themeDir, MANIFEST_ROOT);
+	// Forward slashes on every OS, matching the paths the CLI prints from manifests.
+	const manifestRel = toPosixPath(path.join(themeDir, MANIFEST_ROOT));
 	if (data.created) {
 		log.success(`Created ${manifestRel}`);
 	} else {

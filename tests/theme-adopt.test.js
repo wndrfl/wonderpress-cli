@@ -53,7 +53,8 @@ function tree(dir) {
 	const walk = (d) => {
 		for (const entry of fs.readdirSync(d).sort()) {
 			const abs = path.join(d, entry);
-			out.push(path.relative(dir, abs));
+			// Forward slashes so the expectation reads the same on Windows.
+			out.push(path.relative(dir, abs).split(path.sep).join('/'));
 			if (fs.statSync(abs).isDirectory()) walk(abs);
 		}
 	};
