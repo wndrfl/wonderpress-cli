@@ -1,0 +1,46 @@
+wonderpress theme — bring an existing theme under manifests
+
+USAGE
+  wonderpress theme adopt [--theme <name>] [--namespace <ns>] [--format json]
+
+WHAT IT DOES
+  A theme is one the CLI (and the desktop app) can work with once it has a
+  `.wonderpress/manifest/` tree. Themes built before manifests existed have
+  none. `theme adopt` creates that tree and nothing else:
+
+    <theme>/.wonderpress/manifest/partials/
+    <theme>/.wonderpress/manifest/page-templates/
+
+  Running it again is safe; it reports that the tree already exists.
+
+  Nothing is migrated. Existing partial directories under `<theme>/partials`
+  are counted and left exactly as they are.
+
+WHICH THEME
+  --theme <name> names one. Without it, the one theme under
+  wp-content/themes is used; with several on disk, the error lists them.
+  The database is not consulted, so this runs before the site does.
+
+THE NAMESPACE
+  Blocks are written into content as `<!-- wp:<namespace>/hero -->`, so a
+  project's namespace must never drift. `theme adopt` records one only when
+  told to:
+
+    --namespace acme     writes `namespace` into .wonderpressrc, keeping the
+                         rest of the file as it is.
+
+  Without the flag it reports where the namespace would come from:
+    rc      `namespace` in .wonderpressrc
+    blocks  this theme's existing blocks (manifests, else blocks/*/block.json)
+    none    nothing recorded yet; pass --namespace to settle it
+
+JSON
+  --format json prints one { ok, data, error } envelope. data:
+    { theme, manifestDir, created, namespace, namespaceSource, legacyPartials }
+  created is whether a directory had to be made; namespaceSource is
+  "rc" | "blocks" | "none"; namespace is null when the source is "none".
+
+EXAMPLES
+  wonderpress theme adopt
+  wonderpress theme adopt --theme wonderpress --namespace acme
+  wonderpress theme adopt --format json
