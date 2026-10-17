@@ -200,8 +200,9 @@ async function refreshAgents(themeDir) {
  *
  *   1. `namespace` in .wonderpressrc — an explicit decision, recorded at init.
  *   2. The namespace already used by this theme's blocks, read off the
- *      manifest index. A project that predates this setting self-describes,
- *      so upgrading the CLI cannot silently re-namespace its content.
+ *      manifest index, else off `blocks/<slug>/block.json`. A project that
+ *      predates this setting self-describes, so upgrading the CLI cannot
+ *      silently re-namespace its content.
  *   3. The theme slug — a project that has neither is naming itself.
  *
  * Only if all three are unavailable does it fall back to the tool's own name.
@@ -213,11 +214,9 @@ export function resolveNamespace(themeDir, root = process.cwd()) {
 		return recorded;
 	}
 
-	for (const manifest of readManifests(themeDir)) {
-		const existing = (manifest.block || '').split('/')[0];
-		if (isValidNamespace(existing)) {
-			return existing;
-		}
+	const fromBlocks = namespaceFromBlocks(themeDir);
+	if (fromBlocks) {
+		return fromBlocks;
 	}
 
 	const themeSlug = path.basename(themeDir || '');
@@ -226,6 +225,47 @@ export function resolveNamespace(themeDir, root = process.cwd()) {
 	}
 
 	return LEGACY_NAMESPACE;
+}
+
+/**
+ * The namespace this theme's blocks already use, or null.
+ *
+ * Manifests first, since they are the index. Then `blocks/<slug>/block.json`,
+ * for a theme built before manifests existed: its blocks are already on the
+ * client's pages under some namespace, and that namespace is the one that
+ * must not change, however the theme came to be.
+ **/
+export function namespaceFromBlocks(themeDir) {
+
+	for (const manifest of readManifests(themeDir)) {
+		const existing = (manifest.block || '').split('/')[0];
+		if (isValidNamespace(existing)) {
+			return existing;
+		}
+	}
+
+	const blocksDir = path.join(themeDir || '', 'blocks');
+	if (!fs.existsSync(blocksDir)) {
+		return null;
+	}
+
+	for (const entry of fs.readdirSync(blocksDir).sort()) {
+		const file = path.join(blocksDir, entry, 'block.json');
+		if (!fs.existsSync(file)) {
+			continue;
+		}
+		try {
+			const block = JSON.parse(fs.readFileSync(file, 'utf8'));
+			const existing = (typeof block.name === 'string' ? block.name : '').split('/')[0];
+			if (isValidNamespace(existing)) {
+				return existing;
+			}
+		} catch (e) {
+			// An unreadable block.json is not this function's problem to report.
+		}
+	}
+
+	return null;
 }
 
 /**

@@ -18,6 +18,7 @@ import * as readme from './readme.js';
 import * as server from './server.js';
 import * as staticAssets from './static.js';
 import * as template from './template.js';
+import * as theme from './theme.js';
 import { DEFAULT_WP_ENV_PORT, readWpEnvPort } from './env/probe.js';
 import pkg from '../package.json' with { type: 'json' };
 
@@ -273,6 +274,9 @@ export async function cli() {
       break;
     case 'template':
       await template.command(args._[1], args);
+      break;
+    case 'theme':
+      await theme.command(args._[1], args);
       break;
     case 'version':
       core.version(args, { cliVersionMismatch });

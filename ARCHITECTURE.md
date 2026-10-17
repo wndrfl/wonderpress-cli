@@ -139,6 +139,44 @@ Each file points at a JSON Schema in `schema/` via `$schema`. Those schema
 files are generated from the same constants the CLI validates with
 (`src/manifest-schema.js`), so editor completion matches the validator.
 
+### Adopting a theme that predates manifests
+
+`wonderpress theme adopt [--theme <name>] [--namespace <ns>] [--format json]`
+([`src/theme.js`](src/theme.js)) brings an existing theme under the manifest
+contract. The desktop app recognises a theme only by its `.wonderpress/manifest/`
+tree, and before this command nothing created that tree deliberately:
+`partial create` made it as a side effect, `partial install-manifest` copied a
+single primitive into it.
+
+Adopt creates `partials/` and `page-templates/` under `.wonderpress/manifest/`
+and touches no other theme file. It is idempotent: a second run reports
+`created: false`. It migrates nothing; directories under `<theme>/partials` are
+counted as `legacyPartials` and left alone. The theme comes from `--theme`, else
+the lone theme under `wp-content/themes` (a directory with a `style.css`), else
+an error that lists the candidates — the database is never consulted, so this
+runs on a project whose environment is not up.
+
+The namespace is recorded only with `--namespace`, into `.wonderpressrc`
+alongside whatever is already there. Without it, adopt reports where the
+namespace would come from, using the same resolution `partial create` uses
+(`resolveNamespace` in [`src/partial.js`](src/partial.js)): `rc` for
+`.wonderpressrc`, `blocks` for the theme's existing blocks (manifests first,
+then `blocks/<slug>/block.json`), `none` when nothing records one. It never
+invents a namespace, because the one it guessed would be written into content.
+
+Envelope `data`:
+
+```json
+{
+  "theme": "wonderpress",
+  "manifestDir": "/abs/path/wp-content/themes/wonderpress/.wonderpress/manifest",
+  "created": true,
+  "namespace": "acme",
+  "namespaceSource": "rc",
+  "legacyPartials": 3
+}
+```
+
 ### Partial manifests are the index
 
 `.wonderpress/manifest/partials/<slug>.json` is the CLI's record of what a component is
