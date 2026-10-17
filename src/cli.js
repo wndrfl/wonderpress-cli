@@ -53,6 +53,11 @@ export async function cli() {
     '--slug': String,
     '--format': String,
 
+    // theme migrate
+    '--list': Boolean,
+    '--apply': Boolean,
+    '--type': [String],
+
     // partial remove
     '--with-block': Boolean,
     '--confirm': Boolean,

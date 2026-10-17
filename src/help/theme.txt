@@ -2,8 +2,10 @@ wonderpress theme — bring an existing theme under manifests
 
 USAGE
   wonderpress theme adopt [--theme <name>] [--namespace <ns>] [--format json]
+  wonderpress theme migrate --list [--theme <name>] [--format json]
+  wonderpress theme migrate <slug> [--type <name>=<type> ...] [--apply] [--format json]
 
-WHAT IT DOES
+THEME ADOPT
   A theme is one the CLI (and the desktop app) can work with once it has a
   `.wonderpress/manifest/` tree. Themes built before manifests existed have
   none. `theme adopt` creates that tree and nothing else:
@@ -15,6 +17,48 @@ WHAT IT DOES
 
   Nothing is migrated. Existing partial directories under `<theme>/partials`
   are counted and left exactly as they are.
+
+THEME MIGRATE
+  The step after adopt: bring one class-based legacy partial (a hand-written
+  `src/partials/class-<slug>.php` with a `$_properties` array) under a
+  manifest, so `partial sync`, `check-drift` and the desktop app know it.
+
+  --list          the inventory. Each class under src/partials/ with its
+                  slug, class name, view path, property count and status:
+                    ready     every legacy format maps to a manifest type
+                    review    a property needs a decision (see below)
+                    migrated  a manifest already exists
+                  ACF blocks under partials/blocks/ are listed as
+                  "not migrated": they are out of scope and never touched.
+
+  <slug>          a dry run. Prints the manifest that would be written and a
+                  note per property; writes nothing.
+
+  --type a=b      decide a property's type (one flag per property). The type
+                  must be one of the manifest types (boolean, email, image,
+                  link, partial, post_object, repeater, select, string).
+
+  --apply         do it: write the manifest, regenerate the class with the
+                  <wonderpress:generated> markers `partial sync` maintains
+                  (custom methods are kept below the closing marker, the
+                  original is saved as class-<slug>.php.legacy until you
+                  delete it), leave the view untouched, create the style stub
+                  through the theme's static tree only if one is configured
+                  and the file is missing, and record the sync lock so
+                  check-drift reads clean. Refused while any property is
+                  still flagged for review. A second --apply is a no-op.
+
+  Legacy format -> manifest type:
+    string                 string
+    boolean, bool          boolean
+    object                 post_object   (review: confirm it is a post)
+    array, string|array,   string        (review: pass --type to decide)
+    anything else
+
+  description and required carry over; required is dropped with a note on
+  types that cannot be required (boolean, link, partial). A legacy default is
+  dropped with a note. The manifest records acf_compatible false and no
+  block; set either afterwards by hand and run partial sync.
 
 WHICH THEME
   --theme <name> names one. Without it, the one theme under
@@ -35,12 +79,27 @@ THE NAMESPACE
     none    nothing recorded yet; pass --namespace to settle it
 
 JSON
-  --format json prints one { ok, data, error } envelope. data:
+  --format json prints one { ok, data, error } envelope.
+  adopt data:
     { theme, manifestDir, created, namespace, namespaceSource, legacyPartials }
   created is whether a directory had to be made; namespaceSource is
   "rc" | "blocks" | "none"; namespace is null when the source is "none".
+  migrate --list data:
+    { theme, partials: [{ kind: "class", slug, className, classPath,
+      viewPath, properties, status }, { kind: "acf-block", slug, path,
+      status: "not migrated" }] }
+  migrate <slug> data (dry run and --apply):
+    { slug, manifestPath, manifest,
+      properties: [{ name, type, source: "format:<legacy>" | "override",
+                     review, note }],
+      notes: [...], review, applied, files: { written, preserved } }
+  A refused --apply fails with error.code "review" and the same data, so
+  the flags to pass are in the envelope.
 
 EXAMPLES
   wonderpress theme adopt
   wonderpress theme adopt --theme wonderpress --namespace acme
-  wonderpress theme adopt --format json
+  wonderpress theme migrate --list
+  wonderpress theme migrate theme-text-stack
+  wonderpress theme migrate project-card --type project=post_object --apply
+  wonderpress theme migrate --list --format json
