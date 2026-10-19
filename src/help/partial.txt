@@ -61,8 +61,8 @@ CREATE OPTIONS
                            generated output was edited by hand since the last
                            sync (a conflict), or its class lost its markers
   --theme <name>           Target a theme by name, skipping the active lookup
-  --format json            Machine-readable envelope (list, sync --dry-run,
-                           check-drift)
+  --format json            Machine-readable envelope (list, sync, check-drift,
+                           remove)
 
   --block --no-manifest and --acf --no-manifest are refused. --js --no-template
   emits no behavior class. --block and --acf may be combined: the block uses
@@ -80,6 +80,10 @@ SYNC OPTIONS
                            edits inside the fence and in block.json. Code
                            outside an intact fence is still kept. A class with
                            no or malformed markers is rewritten whole.
+  --format json            data.synced[] of { slug, drift }, where drift is
+                           the { state, changes } check-drift reports, taken
+                           after the write. --all adds data.skipped[]. A
+                           refused single sync is the conflict error.
 
 FENCES
   The partial class has one machine-owned region:
@@ -124,8 +128,15 @@ SYNC STATES
   change is { artifact, region, kind, state, message }.
 
 REMOVE OPTIONS
+  <slug|Class_Name>        The partial to remove, positionally (or --name)
   --with-block             Also remove the block wrapping this partial.
                            Without it, remove refuses when a block exists.
+  --yes                    Never prompt (scripts and CI)
+  --format json            data is { slug, removed[] }: every theme-relative
+                           path deleted (class, view, assets files, block
+                           directory, manifest, lock). Errors: has_block
+                           (pass --with-block), not_found (the hint lists the
+                           partials that exist), usage (no name given).
 
 EXAMPLES
   wonderpress partial create --name Testimonial --prop quote:string:required
@@ -136,5 +147,6 @@ EXAMPLES
   wonderpress partial sync --all
   wonderpress partial sync Hero --force
   wonderpress partial check-drift --all
+  wonderpress partial remove Hero --with-block --yes --format json
   wonderpress partial create
       No flags runs the interactive wizard, which asks the same questions.

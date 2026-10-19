@@ -488,7 +488,7 @@ test('CLI: sync refuses a conflict with a JSON error; --all skips it and syncs t
 		const all = run(['partial', 'sync', '--all', '--format', 'json']);
 		assert.equal(all.status, 0, all.stderr);
 		const summary = oneEnvelope(all);
-		assert.deepEqual(summary.data.synced, ['card']);
+		assert.deepEqual(summary.data.synced.map((e) => e.slug), ['card']);
 		assert.equal(summary.data.skipped.length, 1);
 		assert.equal(summary.data.skipped[0].slug, 'hero');
 		assert.match(all.stderr, /Skipped hero/);
@@ -671,7 +671,7 @@ test('CLI: sync --all skips unfenced and malformed conflicts and lock-less fence
 			const all = run(['partial', 'sync', '--all', '--format', 'json']);
 			assert.equal(all.status, 0, `${label}: ${all.stdout}${all.stderr}`);
 			const body = oneEnvelope(all);
-			assert.deepEqual(body.data.synced, ['alpha', 'zulu'], label);
+			assert.deepEqual(body.data.synced.map((e) => [e.slug, e.drift.state]), [['alpha', 'clean'], ['zulu', 'clean']], label);
 			assert.deepEqual(body.data.skipped.map((s) => [s.slug, s.code]), [['hero', code]], label);
 			assert.match(all.stderr, /Skipped hero/);
 

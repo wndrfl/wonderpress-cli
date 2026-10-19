@@ -45,7 +45,7 @@ import {
 	resolveCoreBundledPartialManifest,
 } from './partial-manifests.js';
 import { checkPartialDrift } from './partial-drift.js';
-import { readPartialLock, removePartialLock, writePartialLock } from './partial-lock.js';
+import { partialLockRelPath, readPartialLock, removePartialLock, writePartialLock } from './partial-lock.js';
 import {
 	FenceError,
 	FENCE_OPEN,
@@ -1325,7 +1325,7 @@ export async function sync(args) {
 			}
 		}
 		if (format.isJson()) {
-			return format.ok(dryRun ? { dryRun: true, plans } : { dryRun: false, synced, skipped });
+			return format.ok(dryRun ? { dryRun: true, plans } : { dryRun: false, synced: synced.map((slug) => syncedEntry(themeDir, slug)), skipped });
 		}
 		log.info(`Synced ${synced.length} partial${synced.length === 1 ? '' : 's'}.`);
 		if (skipped.length) {
@@ -1389,10 +1389,23 @@ export async function sync(args) {
 	}
 
 	if (format.isJson()) {
-		return format.ok(dryRun ? { dryRun: true, plans } : { dryRun: false, synced: [manifest.slug] });
+		return format.ok(dryRun ? { dryRun: true, plans } : { dryRun: false, synced: [syncedEntry(themeDir, manifest.slug)] });
 	}
 
 	return true;
+}
+
+/**
+ * One `synced[]` entry for sync's JSON: the slug and its drift as it stands
+ * after the write — the same `{ state, changes }` check-drift reports — so a
+ * caller needs no second call to learn where the partial landed.
+ **/
+function syncedEntry(themeDir, slug) {
+	const manifest = readManifest(themeDir, slug);
+	const { state, changes } = manifest
+		? checkPartialDrift(manifest, themeDir)
+		: { state: 'pending', changes: [] };
+	return { slug, drift: { state, changes } };
 }
 
 /**
@@ -1544,21 +1557,36 @@ export async function list(args) {
  * A block cannot exist without its partial, so removing a partial that is
  * wrapped by one is refused unless `withBlock` is set — that refusal is the
  * safety here (this is a flag-driven headless tool, so there are no prompts).
+ *
+ * Returns whether the partial was removed; `removePartialReport` has the
+ * detail (what was deleted, or why nothing was).
  **/
 export async function removePartial(themeDir, name, options = {}) {
+	return (await removePartialReport(themeDir, name, options)).ok;
+}
+
+/**
+ * `removePartial`, reporting `{ ok: true, slug, removed }` — `removed` is every
+ * theme-relative path deleted (the class, view, style, script, assets entries,
+ * block directory, manifest and lock) — or `{ ok: false, error }` in the
+ * envelope's error shape.
+ **/
+export async function removePartialReport(themeDir, name, options = {}) {
+
+	const refuse = (code, message, hint = null) => ({ ok: false, error: { code, message, hint } });
 
 	// The user's input only locates the manifest; a name that cannot be a
 	// filesystem-safe slug is refused outright rather than resolved.
 	const lookupSlug = nameToSlug(name);
 	if (!isSafeSlug(lookupSlug)) {
 		log.error(`Invalid partial name "${name}". A component name resolves to a slug of lowercase letters, numbers, and dashes.`);
-		return false;
+		return refuse('usage', `Invalid partial name "${name}"`, 'A component name resolves to a slug of lowercase letters, numbers, and dashes.');
 	}
 
 	const manifest = readManifest(themeDir, lookupSlug);
 	if (!manifest) {
 		log.error(`No partial named "${name}" is recorded in this theme. Run \`wonderpress partial list\` to see what exists.`);
-		return false;
+		return refuse('not_found', `No partial named "${name}" is recorded in this theme`, knownSlugsHint(themeDir));
 	}
 
 	// The manifest is authoritative about its own identity, so every derived
@@ -1566,13 +1594,21 @@ export async function removePartial(themeDir, name, options = {}) {
 	const slug = manifest.slug;
 	if (!isSafeSlug(slug)) {
 		log.error(`The manifest for "${name}" records an unusable slug "${slug}". Fix the manifest before removing this partial.`);
-		return false;
+		return refuse('manifest', `The manifest for "${name}" records an unusable slug "${slug}"`, 'Fix the manifest before removing this partial.');
 	}
 
 	if (manifest.block && !options.withBlock) {
 		log.error(`This partial is wrapped by block ${manifest.block}. Run \`wonderpress block remove ${manifest.name}\` first, or pass --with-block.`);
-		return false;
+		return refuse('has_block', `${manifest.name} is wrapped by block ${manifest.block}`, `Pass --with-block to remove the block too, or run \`wonderpress block remove ${manifest.name}\` first.`);
 	}
+
+	const removed = [];
+	const record = (abs) => {
+		const rel = themeRel(themeDir, abs);
+		if (!removed.includes(rel)) {
+			removed.push(rel);
+		}
+	};
 
 	// The manifest is the record of what was written, so it is also the
 	// deletion list — we never guess at paths. It is also just a file on disk,
@@ -1582,7 +1618,12 @@ export async function removePartial(themeDir, name, options = {}) {
 	if (artifacts.style || artifacts.script) {
 		const staticCli = await importStaticKit();
 		if (staticCli.component && typeof staticCli.component.remove === 'function') {
-			await staticCli.component.remove(`${themeDir}/static`, slug);
+			const result = await staticCli.component.remove(`${themeDir}/static`, slug);
+			for (const item of (result && result.ok && result.data && result.data.removed) || []) {
+				if (item && item.path) {
+					record(item.path);
+				}
+			}
 		}
 	}
 
@@ -1599,28 +1640,40 @@ export async function removePartial(themeDir, name, options = {}) {
 
 		if (fs.existsSync(file)) {
 			fs.removeSync(file);
+			record(file);
 			log.success(`Removed ${key}: ${file}`);
-		} else {
+		} else if (!removed.includes(themeRel(themeDir, file))) {
 			log.warn(`Nothing to remove for ${key}: ${file} does not exist.`);
 		}
 	}
 
-	if (manifest.block) {
-		removeBlockDir(themeDir, slug);
+	if (manifest.block && removeBlockDir(themeDir, slug)) {
+		removed.push(`blocks/${slug}`);
 	}
 
 	const file = resolveWithin(themeDir, `${PARTIAL_MANIFEST_DIR}/${slug}.json`);
 	if (!file) {
 		log.error(`Refusing to remove the manifest for "${slug}": that path escapes the theme directory.`);
-		return false;
+		return refuse('manifest', `Refusing to remove the manifest for "${slug}": that path escapes the theme directory`);
 	}
 
 	fs.removeSync(file);
+	record(file);
 	log.success(`Removed manifest: ${file}`);
 	// The lock describes artifacts that no longer exist; a stale one would
 	// make a later partial of the same name look edited.
-	removePartialLock(themeDir, slug);
-	return true;
+	if (removePartialLock(themeDir, slug)) {
+		removed.push(partialLockRelPath(slug));
+	}
+	return { ok: true, slug, removed };
+}
+
+/**
+ * The hint for a name that matches nothing: the slugs that do exist.
+ **/
+function knownSlugsHint(themeDir) {
+	const slugs = readManifests(themeDir).map((m) => m.slug);
+	return slugs.length ? `Known partials: ${slugs.join(', ')}` : 'This theme has no partials.';
 }
 
 /**
@@ -1664,17 +1717,32 @@ export async function installManifest(args) {
 
 /**
  * Remove a partial (`partial remove <Name>`).
+ *
+ * `--format json` returns `{ slug, removed }` and never prompts: with no name
+ * there is nothing to pick from, so it is a usage error naming the slugs.
  **/
 export async function remove(args) {
 
 	const themeDir = await resolveThemeDir(args);
 	if (!themeDir) {
-		return false;
+		return format.fail({
+			code: 'theme',
+			message: 'Could not resolve the theme directory',
+			hint: 'Pass --theme <name> and --dir <env-root>.',
+		});
 	}
 
 	let name = args._ && args._[2] ? args._[2] : args['--name'];
 
 	if (!name) {
+		if (format.isJson()) {
+			return format.fail({
+				code: 'usage',
+				message: 'Pass the partial to remove: wonderpress partial remove <slug|Class_Name> --yes --format json',
+				hint: knownSlugsHint(themeDir),
+			}, format.EXIT_USAGE);
+		}
+
 		// Every partial, blocks included. `remove` refuses a partial a block
 		// wraps unless --with-block is passed, so the label says which ones
 		// will ask for that rather than letting it be a surprise.
@@ -1694,7 +1762,16 @@ export async function remove(args) {
 		}
 	}
 
-	return removePartial(themeDir, name, { withBlock: !!args['--with-block'] });
+	const result = await removePartialReport(themeDir, name, { withBlock: !!args['--with-block'] });
+	if (!result.ok) {
+		// Human runs have always reported a refusal in prose and exited 0;
+		// only the envelope carries the code and exit status.
+		if (!format.isJson()) {
+			return false;
+		}
+		return format.fail(result.error, result.error.code === 'usage' ? format.EXIT_USAGE : format.EXIT_FAIL);
+	}
+	return format.ok({ slug: result.slug, removed: result.removed });
 }
 
 /**
