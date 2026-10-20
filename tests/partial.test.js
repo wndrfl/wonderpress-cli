@@ -532,6 +532,28 @@ test('paramsFromFlags + --sub and paramsFromJson agree on a repeater', () => {
 	assert.deepEqual(flags.properties, json.properties);
 });
 
+test('paramsFromFlags and paramsFromJson agree on partial embeds, top-level and inside a repeater', () => {
+	const flags = paramsFromFlags({
+		'--name': 'Document_Grid',
+		'--acf': true,
+		'--prop': ['cta:partial=link', 'items:repeater'],
+		'--sub': ['items:card:partial=document-grid-item'],
+	});
+	const json = paramsFromJson(JSON.stringify({
+		name: 'Document_Grid',
+		acf_compatible: true,
+		properties: [
+			{ name: 'cta', type: 'partial', partial: 'link' },
+			{
+				name: 'items',
+				type: 'repeater',
+				properties: [{ name: 'card', type: 'partial', partial: 'document-grid-item' }],
+			},
+		],
+	}));
+	assert.deepEqual(flags.properties, json.properties);
+});
+
 test('writePartial maps image/link/repeater formats for ACF-compatible partials', async () => {
 	const dir = tmpTheme();
 	try {

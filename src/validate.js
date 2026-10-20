@@ -129,47 +129,78 @@ export function isValidPropType(type) {
 }
 
 /**
+ * Parse the type segment of a --prop / --sub flag.
+ *
+ * Most types are a bare word (`string`, `image`). A `partial` embed also needs
+ * the slug of the manifest it references, which the colon-separated grammar
+ * has no slot for, so the type segment may carry it as `partial=<slug>`.
+ * Returns { type, partial } with `partial` only set for an embed.
+ **/
+export function parseTypeSegment(segment, { flag, raw, allowed }) {
+	const eq = String(segment).indexOf('=');
+	const type = eq === -1 ? String(segment) : String(segment).slice(0, eq);
+	const qualifier = eq === -1 ? null : String(segment).slice(eq + 1);
+
+	if (!allowed.includes(type)) {
+		const label = flag === '--sub' ? 'repeater sub-field type' : 'property type';
+		throw new Error(`Invalid ${label} "${type}" in ${flag} "${raw}". Valid types: ${allowed.join(', ')}.`);
+	}
+
+	if (type === 'partial') {
+		if (!qualifier || !isSafeSlug(qualifier)) {
+			throw new Error(
+				`Invalid ${flag} "${raw}". A partial embed needs the slug of the partial it embeds: partial=<slug> (e.g. partial=link).`,
+			);
+		}
+		return { type, partial: qualifier };
+	}
+
+	if (qualifier !== null) {
+		throw new Error(`Invalid ${flag} "${raw}". Only the partial type takes a =<slug> qualifier.`);
+	}
+
+	return { type };
+}
+
+/**
  * Parse a --prop flag value of the form `name:type[:required]`.
  * Returns { name, type, required, description }; throws on malformed input.
- * e.g. quote:string:required
+ * e.g. quote:string:required, cta:partial=link
  **/
 export function parsePropFlag(str) {
 	const parts = String(str).split(':');
 	const name = parts[0];
-	const type = parts[1];
+	const typeSegment = parts[1];
 	const required = parts[2] === 'required' || parts[2] === 'true';
 
-	if (!name || !type) {
+	if (!name || !typeSegment) {
 		throw new Error(`Invalid --prop "${str}". Expected format: name:type[:required] (e.g. quote:string:required).`);
 	}
 
-	if (!isValidPropType(type)) {
-		throw new Error(`Invalid property type "${type}" in --prop "${str}". Valid types: ${PROP_TYPES.join(', ')}.`);
-	}
+	const { type, partial } = parseTypeSegment(typeSegment, { flag: '--prop', raw: str, allowed: PROP_TYPES });
 
-	return { name, type, required, description: '' };
+	return { name, type, required, description: '', ...(partial ? { partial } : {}) };
 }
 
 /**
  * Parse a --sub flag: `parent:name:type[:required]`.
  * Attaches a sub-field to a repeater property named `parent`.
+ * e.g. items:quote:string:required, items:card:partial=document-grid-item
  **/
 export function parseSubFlag(str) {
 	const parts = String(str).split(':');
 	const parent = parts[0];
 	const name = parts[1];
-	const type = parts[2];
+	const typeSegment = parts[2];
 	const required = parts[3] === 'required' || parts[3] === 'true';
 
-	if (!parent || !name || !type) {
+	if (!parent || !name || !typeSegment) {
 		throw new Error(`Invalid --sub "${str}". Expected format: parent:name:type[:required] (e.g. items:quote:string:required).`);
 	}
 
-	if (!REPEATER_SUB_TYPES.includes(type)) {
-		throw new Error(`Invalid repeater sub-field type "${type}" in --sub "${str}". Valid types: ${REPEATER_SUB_TYPES.join(', ')}.`);
-	}
+	const { type, partial } = parseTypeSegment(typeSegment, { flag: '--sub', raw: str, allowed: REPEATER_SUB_TYPES });
 
-	return { parent, name, type, required, description: '' };
+	return { parent, name, type, required, description: '', ...(partial ? { partial } : {}) };
 }
 
 /**
