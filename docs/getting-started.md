@@ -219,6 +219,9 @@ link group. To embed the **rich** Link primitive inside another partial, use
 }
 ```
 
+From the command line the same property is `--prop cta:partial=link` (and
+`--sub items:cta:partial=link` inside a repeater).
+
 In PHP, render with `wonder_render_partial_ref( 'link', $this->cta )` or
 `new \Wonderpress_Core\Partials\Link( [ 'acf' => $this->cta ] )`.
 

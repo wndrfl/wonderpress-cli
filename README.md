@@ -177,8 +177,8 @@ Scaffolds a PHP class, view template, agent-readable manifest, and a delegated S
 | --- | --- |
 | `--name <Class_Name>` | PHP class name. Positional name works too (`partial create Hero`). Omit both for the wizard. |
 | `--json <@file\|string>` | Create from a JSON spec instead of flags. |
-| `--prop <name:type[:required]>` | Property (repeatable). Types: `string`, `boolean`, `image`, `link`, `repeater`, `array`, `object`. |
-| `--sub <parent:name:type[:required]>` | Repeater sub-field (repeatable). |
+| `--prop <name:type[:required]>` | Property (repeatable). Types: `string`, `boolean`, `email`, `select`, `image`, `link`, `post_object`, `repeater`, `partial`. A `partial` embed names the partial it embeds as `partial=<slug>`. |
+| `--sub <parent:name:type[:required]>` | Repeater sub-field (repeatable). Same grammar as `--prop`; `partial=<slug>` embeds a partial in each row. |
 | `--acf` | Mark ACF-compatible. Core registers a field group from the manifest when ACF is present. Cannot combine with `--no-manifest`. |
 | `--block` | Also emit a Gutenberg wrapper (`block.json` + a `render.php` that delegates to the partial). |
 | `--js` | Also scaffold a JS behavior class (delegated to Static Kit). Most partials have no behavior. |
@@ -194,7 +194,12 @@ wonderpress partial create --name Testimonial --prop quote:string:required
 wonderpress partial create --name Hero --block --js
 wonderpress partial create --name Testimonials --acf \
   --prop items:repeater --sub items:quote:string:required
+wonderpress partial create --name Hero --block --prop cta:partial=link
+wonderpress partial create --name Document_Grid --acf --block \
+  --prop items:repeater --sub items:card:partial=document-grid-item
 ```
+
+A `select` needs a choices map, which the flag grammar cannot carry; declare those properties with `--json` or edit the manifest and run `partial sync`.
 
 #### `wonderpress partial list`
 

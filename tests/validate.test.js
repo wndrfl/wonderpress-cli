@@ -176,6 +176,23 @@ test('parsePropFlag throws on malformed input', () => {
 	assert.throws(() => parsePropFlag('x:badtype'), /Invalid property type/);
 });
 
+test('parsePropFlag reads the embedded slug from partial=<slug>', () => {
+	assert.deepEqual(parsePropFlag('cta:partial=link'), {
+		name: 'cta', type: 'partial', required: false, description: '', partial: 'link',
+	});
+	assert.deepEqual(parsePropFlag('card:partial=document-grid-item'), {
+		name: 'card', type: 'partial', required: false, description: '', partial: 'document-grid-item',
+	});
+});
+
+test('parsePropFlag refuses a partial embed without a slug, a bad slug, or a qualifier on another type', () => {
+	assert.throws(() => parsePropFlag('cta:partial'), /partial=<slug>/);
+	assert.throws(() => parsePropFlag('cta:partial='), /partial=<slug>/);
+	assert.throws(() => parsePropFlag('cta:partial=Not_A_Slug'), /partial=<slug>/);
+	assert.throws(() => parsePropFlag('title:string=foo'), /Only the partial type/);
+	assert.throws(() => parsePropFlag('x:badtype=foo'), /Invalid property type "badtype"/);
+});
+
 test('parseSubFlag parses parent:name:type[:required]', () => {
 	assert.deepEqual(parseSubFlag('items:quote:string:required'), {
 		parent: 'items', name: 'quote', type: 'string', required: true, description: '',
@@ -189,6 +206,14 @@ test('parseSubFlag refuses nested-repeater types and malformed input', () => {
 	assert.throws(() => parseSubFlag('items:onlytwo'), /Expected format/);
 	assert.throws(() => parseSubFlag('items:rows:repeater'), /Invalid repeater sub-field type/);
 	assert.throws(() => parseSubFlag('items:meta:object'), /Invalid repeater sub-field type/);
+});
+
+test('parseSubFlag reads the embedded slug from partial=<slug>', () => {
+	assert.deepEqual(parseSubFlag('items:card:partial=document-grid-item'), {
+		parent: 'items', name: 'card', type: 'partial', required: false, description: '', partial: 'document-grid-item',
+	});
+	assert.throws(() => parseSubFlag('items:card:partial'), /partial=<slug>/);
+	assert.throws(() => parseSubFlag('items:quote:string=foo'), /Only the partial type/);
 });
 
 test('phpFormatForType maps media and repeaters to array', () => {

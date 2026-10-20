@@ -407,6 +407,7 @@ export function attachSubFields(properties, subs = []) {
 			type: parsed.type,
 			required: parsed.required,
 			description: parsed.description,
+			...(parsed.partial ? { partial: parsed.partial } : {}),
 		});
 	}
 
@@ -1867,6 +1868,18 @@ async function runWizard(themeDir, args = {}) {
 			},
 			{
 				type: 'input',
+				name: 'partial',
+				message: 'Which partial does it embed? (slug)',
+				suffix: '\nA manifest slug such as link, image, or one of this theme\'s partials:',
+				when: function (answers) {
+					return answers.add_another && answers.type === 'partial';
+				},
+				validate: function (value) {
+					return isSafeSlug(value) || 'Enter a lowercase slug (letters, numbers, dashes).';
+				}
+			},
+			{
+				type: 'input',
 				name: 'description',
 				message: 'Briefly describe the property',
 				suffix: '\nThis will help developers understand its purpose:',
@@ -1895,6 +1908,9 @@ async function runWizard(themeDir, args = {}) {
 				required: answers.required,
 				description: answers.description || '',
 			};
+			if (answers.type === 'partial') {
+				property.partial = answers.partial;
+			}
 			if (answers.type === 'repeater') {
 				property.properties = await promptRepeaterSubs(answers.name);
 			}
@@ -1943,6 +1959,13 @@ async function promptRepeaterSubs(parentName) {
 			},
 			{
 				type: 'input',
+				name: 'partial',
+				message: 'Which partial does it embed? (slug)',
+				when: (a) => a.add_another && a.type === 'partial',
+				validate: (value) => isSafeSlug(value) || 'Enter a lowercase slug (letters, numbers, dashes).',
+			},
+			{
+				type: 'input',
 				name: 'description',
 				message: 'Briefly describe the sub-field',
 				when: (a) => a.add_another,
@@ -1963,6 +1986,7 @@ async function promptRepeaterSubs(parentName) {
 				type: answers.type,
 				required: answers.required,
 				description: answers.description || '',
+				...(answers.type === 'partial' ? { partial: answers.partial } : {}),
 			});
 		}
 	}

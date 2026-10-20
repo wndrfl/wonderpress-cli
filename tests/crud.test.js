@@ -625,6 +625,18 @@ test('--sub attaches rows to a repeater; a bare --sub on a non-repeater is refus
 	);
 });
 
+test('--sub carries a partial embed slug into the repeater row', () => {
+	const p = paramsFromFlags({
+		'--name': 'Document_Grid',
+		'--prop': ['items:repeater'],
+		'--sub': ['items:card:partial=document-grid-item'],
+	});
+	assert.deepEqual(p.properties[0].properties, [
+		{ name: 'card', type: 'partial', required: false, description: '', partial: 'document-grid-item' },
+	]);
+	validateParams(p);
+});
+
 // --- blocks the CLI did not write ---
 //
 // WordPress registers every `blocks/<slug>/block.json` it finds, so a

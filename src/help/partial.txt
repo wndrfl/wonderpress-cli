@@ -42,9 +42,11 @@ CREATE OPTIONS
                            asked again.
   --prop <name:type[:required]>
                            A property, repeatable. Types: string, boolean,
-                           image, link, repeater, array, object
+                           email, select, image, link, post_object, repeater,
+                           partial. An embed names its partial: partial=<slug>
   --sub <parent:name:type[:required]>
-                           A sub-field of a repeater property (repeatable)
+                           A sub-field of a repeater property (repeatable).
+                           Same grammar; partial=<slug> embeds a partial per row
   --block                  Also expose it in the editor (off by default —
                            most partials are compositional, not blocks)
   --js                     Also scaffold a JS behavior class (off by default)
@@ -132,6 +134,8 @@ EXAMPLES
   wonderpress partial create --name Hero --block --js
   wonderpress partial add-js Hero
   wonderpress partial create --name Testimonials --acf --prop items:repeater --sub items:quote:string:required
+  wonderpress partial create --name Hero --block --prop cta:partial=link
+  wonderpress partial create --name Document_Grid --acf --block --prop items:repeater --sub items:card:partial=document-grid-item
   wonderpress partial sync Scalar_Demo
   wonderpress partial sync --all
   wonderpress partial sync Hero --force
