@@ -261,6 +261,10 @@ function validateManifestSharedPropertyKeys(p, errors, pathLabel) {
 		}
 	}
 
+	if (p.choices !== undefined && p.type !== 'select') {
+		errors.push(`${pathLabel}: property "${p.name}" choices is only allowed for type select.`);
+	}
+
 	if (p.post_type !== undefined) {
 		if (p.type !== 'post_object') {
 			errors.push(`${pathLabel}: property "${p.name}" post_type is only allowed for type post_object.`);
