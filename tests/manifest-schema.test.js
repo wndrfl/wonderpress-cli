@@ -69,11 +69,14 @@ test('default template manifest points at the page-template schema', () => {
 	assert.equal(data.$schema, PAGE_TEMPLATE_MANIFEST_SCHEMA_REF);
 });
 
+// Theme-relative with forward slashes on every OS, the way the tree is documented.
+const posixRel = (dir, file) => path.relative(dir, file).split(path.sep).join('/');
+
 test('ensureManifestSchemas writes both files and the README, and skips an unchanged rewrite', () => {
 	const dir = tmpTheme();
 	try {
 		const first = ensureManifestSchemas(dir);
-		assert.deepEqual(first.map((f) => path.relative(dir, f)), [
+		assert.deepEqual(first.map((f) => posixRel(dir, f)), [
 			'.wonderpress/manifest/schema/partial.schema.json',
 			'.wonderpress/manifest/schema/page-template.schema.json',
 			'.wonderpress/manifest/README.md',
@@ -103,7 +106,7 @@ test('the manifest README says who writes what, and the CLI keeps it current', (
 
 		// Hand edits do not survive: the README is the CLI's.
 		fs.writeFileSync(file, '# mine\n');
-		assert.deepEqual(ensureManifestSchemas(dir).map((f) => path.relative(dir, f)), ['.wonderpress/manifest/README.md']);
+		assert.deepEqual(ensureManifestSchemas(dir).map((f) => posixRel(dir, f)), ['.wonderpress/manifest/README.md']);
 		assert.equal(fs.readFileSync(file, 'utf8'), body);
 	} finally {
 		fs.removeSync(dir);
