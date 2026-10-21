@@ -187,7 +187,9 @@ That landing page hydrates from ACF and typically locks `'all'`:
 ( new \Wonderpress\Partials\Hero( wonder_partial_props( 'hero' ) ) )->render();
 ```
 
-`wonder_partial_props( 'hero' )` is `array( 'acf' => get_field( 'hero' ) )`.
+`wonder_partial_props( 'hero' )` is `array( 'acf' => get_field( 'hero' ) )`. The one
+argument is always the ACF group field name: the partial slug here, a composition
+row id on a composed page template (below).
 On a blog post you insert the Hero block instead; the group does not show.
 
 Property types `string`, `boolean`, `email`, `select`, `post_object`, `image`,
@@ -255,7 +257,7 @@ with `"schemaVersion": 1`. That file declares:
   manifest (editor mode, ACF, locks).
 - **`composition`** — ordered rows:
   - **partial** — `{ "id", "partial" }` is a reusable slice. Scaffolded PHP
-    calls `( new Class( wonder_partial_props( 'slug', 'id' ) ) )->render()`.
+    calls `( new Class( wonder_partial_props( 'id' ) ) )->render()`.
     It also maps to an ACF group (partial manifest properties).
   - **fields** — `{ "id", "label"?, "properties": [ … ] }` editor-only ACF group
     using the same property types as partial manifests (`string`, `boolean`, `image`,
@@ -283,7 +285,7 @@ from `wonderpress_template_fields` — which can look like fields “went global
 
 When `composition` lists ACF-compatible partials, core registers **one** field
 group on that page template; each instance id is an ACF group field name. Hydrate
-with `wonder_partial_props( 'landing-hero', 'hero-main' )` in the page PHP (the
+with `wonder_partial_props( 'hero-main' )` in the page PHP (the
 create scaffold emits those calls for `--section` rows). `wonder_render_template_sections()`
 still exists for a page that is only named partials; do not mix it with handwritten
 renders.

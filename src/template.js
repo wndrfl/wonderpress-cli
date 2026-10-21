@@ -386,11 +386,11 @@ export function pageTemplateBodyPhp(sections) {
   if (!sections.length) {
     body = `// Continue this page in the manifest (composition) and this file (markup), same order.
 // Reusable partial:
-// ( new Hero( wonder_partial_props( 'hero', 'hero-main' ) ) )->render();
+// ( new Hero( wonder_partial_props( 'hero-main' ) ) )->render();
 ${FIELDS_HINT}`;
   } else {
     const calls = sections.map((row) => (
-      `( new ${row.className}( wonder_partial_props( '${row.partial}', '${row.id}' ) ) )->render();`
+      `( new ${row.className}( wonder_partial_props( '${row.id}' ) ) )->render();`
     ));
     body = `${calls.join('\n')}\n\n${FIELDS_HINT}`;
   }

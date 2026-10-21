@@ -250,7 +250,7 @@ function propertyDefs() {
 function partialInstanceSchema() {
 	return {
 		title: 'Partial',
-		description: 'A reusable slice. Render it with wonder_partial_props( partial, id ). Its fields come from that partial\'s manifest.',
+		description: 'A reusable slice. Render it with wonder_partial_props( id ) wrapped in the partial class. Its fields come from that partial\'s manifest.',
 		type: 'object',
 		additionalProperties: false,
 		required: ['id', 'partial'],
