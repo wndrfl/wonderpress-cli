@@ -260,7 +260,7 @@ List templates under `.wonderpress/manifest/page-templates/`. Remove deletes the
 
 #### `wonderpress template validate [<Name>]`
 
-Check every page-template manifest (or one by name). Reports invalid composition — unknown partials, duplicate ids, bad property types — and rows the template PHP does not render. A partial row needs `wonder_partial_props( 'slug', 'id' )`. A fields row needs `wonder_template_composition_field( 'id' )`. `wonderpress lint` runs the same check. Commented-out examples in the scaffold are ignored.
+Check every page-template manifest (or one by name). Reports invalid composition — unknown partials, duplicate ids, bad property types — and rows the template PHP does not render. A partial row needs `wonder_partial_props( 'id' )` (the older `wonder_partial_props( 'slug', 'id' )` still counts). A fields row needs `wonder_template_composition_field( 'id' )`. `wonderpress lint` runs the same check. Commented-out examples in the scaffold are ignored.
 
 #### `wonderpress static compile`
 

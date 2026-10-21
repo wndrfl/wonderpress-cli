@@ -35,7 +35,9 @@ export function stripPhpComments(source) {
 /**
  * Render calls in a page template, after comments are removed.
  *
- * `wonder_partial_props( slug, id )` and `wonder_template_composition_field( id )`.
+ * `wonder_partial_props( id )` and `wonder_template_composition_field( id )`.
+ * The two-argument form `wonder_partial_props( slug, id )` (deprecated in core
+ * 2.3.0) is still read; its `partial` is the slug, otherwise `partial` is null.
  * `wonder_render_template_sections()` covers every partial row and no field row.
  *
  * @param {string} source
@@ -44,12 +46,16 @@ export function parseTemplateRenderCalls(source) {
 	const code = stripPhpComments(source);
 	const partials = [];
 	const fields = [];
-	const partialRe = /wonder_partial_props\s*\(\s*(['"])([a-z0-9-]+)\1\s*,\s*(['"])([a-z0-9-]+)\3/g;
+	const partialRe = /wonder_partial_props\s*\(\s*(['"])([a-z0-9-]+)\1(?:\s*,\s*(['"])([a-z0-9-]+)\3)?/g;
 	const fieldRe = /wonder_template_composition_field\s*\(\s*(['"])([a-z0-9-]+)\1/g;
 
 	let match;
 	while ((match = partialRe.exec(code)) !== null) {
-		partials.push({ partial: match[2], id: match[4] });
+		if (match[4] !== undefined) {
+			partials.push({ partial: match[2], id: match[4] });
+		} else {
+			partials.push({ partial: null, id: match[2] });
+		}
 	}
 	while ((match = fieldRe.exec(code)) !== null) {
 		fields.push({ id: match[2] });
@@ -139,13 +145,27 @@ function issueList() {
 	};
 }
 
+function partialCallText(call) {
+	return call.partial === null
+		? `wonder_partial_props( '${call.id}' )`
+		: `wonder_partial_props( '${call.partial}', '${call.id}' )`;
+}
+
+function callRendersRow(call, row) {
+	return call.id === row.id && (call.partial === null || call.partial === row.partial);
+}
+
 /**
  * Compare composition rows to render calls in the template PHP.
  *
+ * A one-argument call whose name is a partial slug rather than a row id is a
+ * location-placed partial (its own ACF group), not an undeclared row.
+ *
  * @param {string} themeDir
  * @param {object} data Parsed manifest.
+ * @param {string[]} [partialSlugs] Slugs of the theme's partials; read from the theme when omitted.
  */
-export function templateRenderDrift(themeDir, data) {
+export function templateRenderDrift(themeDir, data, partialSlugs = null) {
 	const found = issueList();
 	if (!data?.template || typeof data.template !== 'string') {
 		return found.issues;
@@ -168,15 +188,14 @@ export function templateRenderDrift(themeDir, data) {
 
 	const calls = parseTemplateRenderCalls(fs.readFileSync(phpPath, 'utf8'));
 	const phpName = data.template;
+	const knownSlugs = new Set(partialSlugs ?? readPartialSlugs(themeDir));
 
 	for (const row of declared.partials) {
-		const rendered = calls.rendersAllPartials || calls.partials.some((call) => (
-			call.id === row.id && call.partial === row.partial
-		));
+		const rendered = calls.rendersAllPartials || calls.partials.some((call) => callRendersRow(call, row));
 		if (!rendered) {
 			found.add(
 				'unrendered_partial',
-				`Composition row "${row.id}" (${row.partial}) is not rendered. In ${phpName}, call wonder_partial_props( '${row.partial}', '${row.id}' ).`,
+				`Composition row "${row.id}" (${row.partial}) is not rendered. In ${phpName}, call wonder_partial_props( '${row.id}' ).`,
 			);
 		}
 	}
@@ -191,12 +210,16 @@ export function templateRenderDrift(themeDir, data) {
 	}
 
 	for (const call of calls.partials) {
-		if (!declared.partials.some((row) => row.id === call.id && row.partial === call.partial)) {
-			found.add(
-				'undeclared_partial',
-				`wonder_partial_props( '${call.partial}', '${call.id}' ) in ${phpName} has no composition row.`,
-			);
+		if (declared.partials.some((row) => callRendersRow(call, row))) {
+			continue;
 		}
+		if (call.partial === null && knownSlugs.has(call.id)) {
+			continue;
+		}
+		found.add(
+			'undeclared_partial',
+			`${partialCallText(call)} in ${phpName} has no composition row.`,
+		);
 	}
 
 	for (const call of calls.fields) {
@@ -245,7 +268,7 @@ function checkOne(themeDir, file, partialSlugs) {
 		}
 	}
 	if (data && typeof data === 'object' && !Array.isArray(data)) {
-		for (const issue of templateRenderDrift(themeDir, data)) {
+		for (const issue of templateRenderDrift(themeDir, data, partialSlugs)) {
 			found.add(issue.code, issue.message);
 		}
 	}

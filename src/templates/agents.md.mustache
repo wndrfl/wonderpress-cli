@@ -33,7 +33,7 @@ After `wonderpress template create`, keep these two files in the same order:
 3. In the PHP, in that same place:
 
 ```php
-( new Hero( wonder_partial_props( 'hero', 'hero-main' ) ) )->render();
+( new Hero( wonder_partial_props( 'hero-main' ) ) )->render();
 ```
 
 **Page-only slice** (this template only — do not make a partial):

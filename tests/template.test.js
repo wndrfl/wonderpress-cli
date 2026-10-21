@@ -131,7 +131,7 @@ test('pageTemplateBodyPhp emits real partial calls and a fields comment', () => 
 	const withSection = pageTemplateBodyPhp([
 		{ className: 'Hero', partial: 'hero', id: 'hero-main' },
 	]);
-	assert.match(withSection, /\( new Hero\( wonder_partial_props\( 'hero', 'hero-main' \) \) \)->render\(\);/);
+	assert.match(withSection, /\( new Hero\( wonder_partial_props\( 'hero-main' \) \) \)->render\(\);/);
 	assert.match(withSection, /wonder_template_composition_field\( 'intro' \)/);
 	assert.doesNotMatch(withSection, /wonder_render_template_sections/);
 
@@ -151,6 +151,6 @@ test('page template scaffold emits use + render for --section rows', () => {
 	});
 	assert.match(php, /use Wonderpress\\Partials\\Hero;/);
 	assert.match(php, /the_post\(\);/);
-	assert.match(php, /\( new Hero\( wonder_partial_props\( 'hero', 'hero-main' \) \) \)->render\(\);/);
+	assert.match(php, /\( new Hero\( wonder_partial_props\( 'hero-main' \) \) \)->render\(\);/);
 	assert.doesNotMatch(php, /wonder_render_template_sections/);
 });
