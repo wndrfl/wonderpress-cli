@@ -102,10 +102,11 @@ FENCES
   artifacts.class; create, sync, and block create all keep it.
 
 SYNC STATES
-  Every sync (and create) records what it wrote in a lock beside the
-  manifest, .wonderpress/manifest/partials/<slug>.lock.json. Commit it,
-  and leave it alone: it is not a manifest. check-drift compares
-  the manifest, the generated files, and that lock:
+  Every sync (and create) records what it wrote in a lock,
+  .wonderpress/locks/<slug>.json. Commit it, and leave it alone: it is not
+  a manifest. (2.17.0 through 2.21.x kept it beside the manifest as
+  <slug>.lock.json; that file is still read, and the next sync moves it.)
+  check-drift compares the manifest, the generated files, and that lock:
 
     clean      nothing changed since the last sync (prints nothing)
     pending    the manifest changed, a generated file is missing, or there

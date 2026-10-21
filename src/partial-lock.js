@@ -2,8 +2,8 @@
  * Sync locks: what each partial's machine-owned artifacts looked like the last
  * time sync wrote them.
  *
- * One file per partial at `.wonderpress/manifest/partials/<slug>.lock.json`,
- * committed with the theme:
+ * One file per partial at `.wonderpress/locks/<slug>.json`, committed with
+ * the theme:
  *
  *   {
  *     "manifest":          sha256 of the manifest file as sync left them,
@@ -26,12 +26,20 @@
  * from. They are written every time and read as optional, so a lock from
  * before they existed still works everywhere.
  *
- * Per-partial files rather than one lock, and beside the manifest rather than
- * inside it: the lock is the manifest's sidecar (package-lock.json beside
- * package.json), so two branches touching different partials never conflict on
- * the lock, and the hand-edited manifest does not churn every time a hash
- * moves. Locks are never manifests — readers of the manifest directory skip
- * `*.lock.json` (`isPartialLockFilename`), and no manifest schema covers them.
+ * Per-partial files rather than one lock, so two branches touching different
+ * partials never conflict on the lock; outside the manifest rather than inside
+ * it, so the hand-edited manifest does not churn every time a hash moves; and
+ * in a tree of their own rather than beside the manifest, so `.wonderpress/
+ * manifest/` holds only what a person authors and no reader of it (the CLI,
+ * the app, core's runtime glob) has to know what a lock is. No manifest schema
+ * covers a lock.
+ *
+ * CLI 2.17.0 through 2.21.x wrote the lock beside its manifest as
+ * `.wonderpress/manifest/partials/<slug>.lock.json`. `readPartialLock()` falls
+ * back to that file when the new one is absent, so a theme last synced by one
+ * of those versions still reads clean | pending | conflict correctly, and the
+ * next `writePartialLock()` moves it: the new file is written and the legacy
+ * one deleted. `removePartialLock()` deletes both.
  *
  * Like partial-class.js, this imports nothing from partial.js (partial.js
  * imports partial-drift.js, which imports this).
@@ -41,6 +49,7 @@ import { createHash } from 'node:crypto';
 import fs from 'fs-extra';
 import path from 'path';
 import {
+	PARTIAL_LOCK_DIR,
 	PARTIAL_LOCK_SUFFIX,
 	PARTIAL_MANIFEST_DIR,
 	partialManifestPath,
@@ -82,7 +91,7 @@ export function contentHash(content) {
  * @returns {string}
  */
 export function partialLockRelPath(slug) {
-	return `${PARTIAL_MANIFEST_DIR}/${slug}${PARTIAL_LOCK_SUFFIX}`;
+	return `${PARTIAL_LOCK_DIR}/${slug}.json`;
 }
 
 /**
@@ -91,6 +100,17 @@ export function partialLockRelPath(slug) {
  * @returns {string}
  */
 export function partialLockPath(themeDir, slug) {
+	return path.join(themeDir, PARTIAL_LOCK_DIR, `${slug}.json`);
+}
+
+/**
+ * Where CLI 2.17.0 through 2.21.x put the lock: beside the manifest.
+ *
+ * @param {string} themeDir
+ * @param {string} slug
+ * @returns {string}
+ */
+export function legacyPartialLockPath(themeDir, slug) {
 	return path.join(themeDir, PARTIAL_MANIFEST_DIR, `${slug}${PARTIAL_LOCK_SUFFIX}`);
 }
 
@@ -115,7 +135,12 @@ export function blockRelPath(manifest) {
  * @returns {{ lock: object | null, error: string | null }}
  */
 export function readPartialLock(themeDir, slug) {
-	const file = partialLockPath(themeDir, slug);
+	let file = partialLockPath(themeDir, slug);
+	if (!fs.existsSync(file)) {
+		// A theme last synced by 2.17.0–2.21.x: the lock is still beside its
+		// manifest. Honoured as is; the next write moves it.
+		file = legacyPartialLockPath(themeDir, slug);
+	}
 	if (!fs.existsSync(file)) {
 		return { lock: null, error: null };
 	}
@@ -223,6 +248,9 @@ export function writePartialLock(manifest, themeDir) {
 	const file = partialLockPath(themeDir, manifest.slug);
 	fs.ensureDirSync(path.dirname(file));
 	fs.writeFileSync(file, JSON.stringify(lock, null, 2) + '\n');
+	// The new file now says everything the legacy sidecar said; leaving the
+	// sidecar would keep a stale copy in the manifest tree for good.
+	fs.removeSync(legacyPartialLockPath(themeDir, manifest.slug));
 	return { path: file, lock };
 }
 
@@ -234,10 +262,15 @@ export function writePartialLock(manifest, themeDir) {
  * @returns {boolean}
  */
 export function removePartialLock(themeDir, slug) {
-	const file = resolveWithin(themeDir, partialLockRelPath(slug));
-	if (!file || !fs.existsSync(file)) {
-		return false;
+	let removed = false;
+	for (const file of [
+		resolveWithin(themeDir, partialLockRelPath(slug)),
+		resolveWithin(themeDir, `${PARTIAL_MANIFEST_DIR}/${slug}${PARTIAL_LOCK_SUFFIX}`),
+	]) {
+		if (file && fs.existsSync(file)) {
+			fs.removeSync(file);
+			removed = true;
+		}
 	}
-	fs.removeSync(file);
-	return true;
+	return removed;
 }

@@ -207,7 +207,7 @@ List every partial (name, slug, wrapping block if any). Indexed from `.wonderpre
 
 #### `wonderpress partial sync [<Name>]`
 
-Regenerate class `$properties` and `block.json` from the manifest after editing properties in JSON.
+Regenerate class `$properties` and `block.json` from the manifest after editing properties in JSON. Every sync records what it wrote in `.wonderpress/locks/<slug>.json`; commit that file and leave it alone (the generated `.wonderpress/manifest/README.md` says which files are yours and which are the CLI's).
 
 | Flag | Description |
 | --- | --- |
