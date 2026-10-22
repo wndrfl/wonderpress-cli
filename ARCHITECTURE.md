@@ -105,6 +105,17 @@ The CLI names the package (`core.CORE_PACKAGE`) and deliberately does not
 restate a version, so the two cannot drift; `tests/init-orchestration.test.js`
 guards that.
 
+`init` records the version the lock resolved as `core` in `.wonderpressrc`,
+read back out of `composer.lock` rather than from a constant. `wonderpress
+core update` ([`src/core-command.js`](src/core-command.js)) is the only
+other thing that writes it: it runs `composer update <package>` (or
+`composer require <package>:<constraint>` when given one) in the theme and
+re-records from the lock. It pins nothing and does not edit `composer.json`
+itself, for the reason `init`'s override path does not — Composer validates
+the result and writes the lock that goes with it. A bare `composer update` in
+the theme is still legitimate; it just leaves the record behind, which
+`core status` and `doctor` (the `core-record` check) both name.
+
 ### A partial is not a block
 
 A **partial** is a Wonderpress rendering primitive — a button, a section, a
@@ -603,6 +614,28 @@ failing `host-platform` check pointing at wp-env, and every-backend mode skips
 the host there. `init`'s preflight treats that one check as a warning instead
 (see "Cross-platform support"). The wp-env port hint names the platform's own
 tool (`portOwnerCommand` in [`src/proc.js`](src/proc.js)).
+
+### `core status` / `core update`
+
+[`src/core-command.js`](src/core-command.js). The app has no other source for
+which core a project runs, and no other way to move it. `status` is
+disk-only: `{ theme, package, constraint, locked, installed, recorded,
+inSync }` from the theme's `composer.json`, `composer.lock`,
+`vendor/composer/installed.json` and `.wonderpressrc`. `update` runs Composer
+through `runAsync()` (cancellable, like `init`'s long steps) and returns
+`{ theme, package, command, dryRun, changed, recorded, before, after }`; a
+failed Composer run is `ok:false`, code `composer`, with `{ theme, before,
+command }` so the app can still show the state. Composer's own output goes to
+stderr in JSON mode (the `run()` rule), so stdout stays one envelope line.
+`WONDERPRESS_CORE_REPO` / `WONDERPRESS_CORE_REF` only warn here, as they do
+in `init`; the override is not re-applied, because a project built from one
+already carries it in `composer.json`.
+
+Inside a project, `doctor` adds a project-level `core-record` row comparing
+the lock with the record. cli.js passes the package name and themes
+directory in (`corePackage`, `themesDir`) rather than doctor importing
+core.js or wordpress.js, which would make a cycle (core → env → backends →
+doctor).
 
 ### `manifest schema`
 

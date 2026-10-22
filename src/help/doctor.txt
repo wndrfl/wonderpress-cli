@@ -17,6 +17,11 @@ on — it may work, but nothing tests it there.)
 A port conflict names the platform's own way to see what holds the port:
 lsof on macOS, ss on Linux, Get-NetTCPConnection or netstat on Windows.
 
+Inside a project, one project-level check joins the machine-level ones:
+`core-record`, whether the wonderpress-core version .wonderpressrc records
+is the one the theme's composer.lock resolves. It fails after a bare
+`composer update` in the theme; `wonderpress core update` repairs it.
+
 OPTIONS
   --env <host|wp-env>      Check one backend
   --dir <path>             Project root

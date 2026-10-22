@@ -159,6 +159,21 @@ This installs and activates the plugin but does not persist the PRO license for
 updates. Configure `ACF_PRO_LICENSE` in `wp-config.php` or activate it in the
 ACF admin.
 
+#### `wonderpress core status` / `wonderpress core update [<constraint>]`
+
+`wonderpress-core` is a Composer dependency of the theme; `composer update` in the theme directory has always been the upgrade lever. `core` wraps it and keeps the `core` record `init` writes into `.wonderpressrc` true, which a bare `composer update` does not.
+
+`core status` (or bare `core`) reads the constraint in the theme's `composer.json`, what `composer.lock` resolved, what `vendor/` holds, and what `.wonderpressrc` records, and says whether they agree. No Composer, no network.
+
+`core update` runs `composer update wndrfl/wonderpress-core` in the theme and records the resolved version. A caret constraint (`^2.0`) never crosses a major, so pass one to do that: `core update ^3.0` goes through `composer require`, which rewrites `composer.json` too. A run that changes nothing still re-records, which repairs a drifted record. Commit `composer.json`, `composer.lock`, `vendor/` and `.wonderpressrc` together.
+
+| Flag | Description |
+| --- | --- |
+| `--theme <name>` | The theme, when several require core. |
+| `--dry-run` | `update` only: pass `--dry-run` to Composer, record nothing. |
+
+`doctor` reports a record that drifted from the lock as a failing `core-record` check.
+
 #### `wonderpress version`
 
 Print the installed CLI version.
@@ -315,7 +330,7 @@ Wizard (or flags) to generate a project README.
 { "ok": true, "data": {}, "error": null }
 ```
 
-Supported on `version`, `lint`, `acf install`, `static compile` (not `--watch`), `partial list`, `partial check-drift`, `partial sync --dry-run`, and `agents write`. Human output remains the default.
+Supported on `version`, `lint`, `acf install`, `core status`, `core update`, `static compile` (not `--watch`), `partial list`, `partial check-drift`, `partial sync --dry-run`, and `agents write`. Human output remains the default.
 
 ---
 

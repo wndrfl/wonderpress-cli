@@ -1,10 +1,12 @@
 import './shell-exec-path.js';
 import arg from 'arg';
+import path from 'path';
 import * as acf from './acf.js';
 import * as agents from './agents.js';
 import * as block from './block.js';
 import * as config from './config.js';
 import * as core from './core.js';
+import * as coreCommand from './core-command.js';
 import * as doctor from './doctor.js';
 import * as env from './env/index.js';
 import * as format from './format.js';
@@ -19,6 +21,7 @@ import * as server from './server.js';
 import * as staticAssets from './static.js';
 import * as template from './template.js';
 import * as theme from './theme.js';
+import * as wordpress from './wordpress.js';
 import { DEFAULT_WP_ENV_PORT, readWpEnvPort } from './env/probe.js';
 import pkg from '../package.json' with { type: 'json' };
 
@@ -265,6 +268,9 @@ export async function cli() {
     case 'destroy':
       await core.destroy(args);
       break;
+    case 'core':
+      await coreCommand.command(args._[1], args);
+      break;
     case 'server':
       await server.command(args._[1] || 'start', args);
       break;
@@ -331,6 +337,13 @@ function doctorContext(resolution, projectRoot) {
 
   return {
     backend,
+    // Inside a project, doctor also compares the core version composer.lock
+    // resolved with the one .wonderpressrc records. The package name comes
+    // from core.js rather than doctor importing it, which would make a cycle
+    // (core → env → backends → doctor).
+    projectRoot: projectRoot || null,
+    corePackage: core.CORE_PACKAGE,
+    themesDir: projectRoot ? path.resolve(projectRoot, wordpress.pathToThemesDir) : null,
     port: projectRoot ? readWpEnvPort(projectRoot) : DEFAULT_WP_ENV_PORT,
     ownEnvironmentRunning: projectRoot
       ? async () => {

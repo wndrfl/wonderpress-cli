@@ -1,0 +1,85 @@
+wonderpress core — the wonderpress-core dependency: see it, update it
+
+USAGE
+  wonderpress core [status] [--theme <name>] [--format json]
+  wonderpress core update [<constraint>] [--theme <name>] [--dry-run] [--format json]
+
+wonderpress-core is a Composer dependency of the theme, declared in the
+theme's own composer.json and installed to its vendor/. `composer update` in
+the theme directory has always been the upgrade lever, and still is: this
+command wraps it, pins nothing, and adds the one thing Composer cannot do —
+keep the `core` record in .wonderpressrc (written by `init`) true.
+
+CORE STATUS
+  Reads four places and says whether they agree. Never runs Composer, never
+  touches the network.
+
+    constraint   what the theme's composer.json asks for (e.g. ^2.0)
+    lock         what composer.lock resolved
+    vendor       what vendor/ actually holds
+    recorded     what .wonderpressrc claims
+
+  A lock that differs from vendor/ means `composer install` has not run since
+  the lock changed. A lock that differs from the record means core was
+  updated outside this command; `core update` repairs the record.
+
+CORE UPDATE
+  Without a constraint, runs `composer update wndrfl/wonderpress-core` in the
+  theme. Composer resolves fresh inside the constraint the theme already
+  declares — a caret range such as ^2.0 takes any 2.x and never 3.0, which is
+  why crossing a major needs the argument.
+
+  With a constraint, runs `composer require wndrfl/wonderpress-core:<c>`,
+  which rewrites composer.json, re-resolves and installs in one step. The
+  CLI does not edit composer.json itself; Composer validates the result and
+  writes the lock that goes with it.
+
+  Either way the version the lock ends up with is recorded in .wonderpressrc.
+  A run that changes nothing still re-records, which is how a drifted record
+  gets repaired. On failure nothing is recorded.
+
+  Afterwards, commit composer.json, composer.lock, vendor/ and .wonderpressrc
+  together: the theme ships its vendor/ (see ARCHITECTURE.md).
+
+  WONDERPRESS_CORE_REPO / WONDERPRESS_CORE_REF warn here exactly as they do
+  during init, and nothing more. A project built from an override already
+  carries that repository and constraint in its composer.json, and Composer
+  resolves against those; the override is not re-applied.
+
+WHICH THEME
+  Only themes whose composer.json requires wndrfl/wonderpress-core are
+  candidates. One needs no flag; several need --theme, and the error names
+  them. The database is not consulted.
+
+OPTIONS
+  --theme <name>           The theme, when several require core
+  --dry-run                update only: pass --dry-run to Composer, record nothing
+  --dir <path>             Project root
+  --format json            One { ok, data, error } envelope.
+                           status data:
+                             { theme, package, constraint, locked, installed,
+                               recorded, inSync }
+                           update data:
+                             { theme, package, command, dryRun, changed,
+                               recorded, before, after }
+                           `before`/`after` are status data minus `theme`.
+                           A failed Composer run is ok:false, code "composer",
+                           with { theme, before, command } as data.
+
+ERRORS (error.code)
+  env               not inside a project
+  no_core           no theme requires the package
+  ambiguous_theme   several do; pass --theme
+  theme_not_found   --theme names a theme that is not on disk
+  core_not_declared --theme names a theme that does not require the package
+  composer_missing  Composer is not on PATH (update only)
+  composer          Composer exited non-zero (update only)
+  usage             the constraint argument is not one
+
+EXAMPLES
+  wonderpress core
+  wonderpress core status --format json
+  wonderpress core update
+  wonderpress core update --dry-run
+  wonderpress core update ^3.0
+  wonderpress core update --theme wonderpress --format json

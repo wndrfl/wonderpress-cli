@@ -218,24 +218,14 @@ function applyCoreOverride(themeDir, override) {
  **/
 function readCoreVersion() {
 
+  // composer.lockedVersion() warns about a malformed lock file and returns
+  // null: worth saying out loud, not worth failing an otherwise successful
+  // init over. `wonderpress core status` reads the same way.
   for (const themeDir of themeDirsWithManifest()) {
-    const lockPath = path.join(themeDir, 'composer.lock');
+    const version = composer.lockedVersion(themeDir, CORE_PACKAGE);
 
-    if (!fs.existsSync(lockPath)) {
-      continue;
-    }
-
-    try {
-      const lock = JSON.parse(fs.readFileSync(lockPath, 'utf8'));
-      const pkg = (lock.packages || []).find((p) => p.name === CORE_PACKAGE);
-
-      if (pkg) {
-        return pkg.version;
-      }
-    } catch (e) {
-      // A malformed lock file is worth saying out loud, but it is not worth
-      // failing an otherwise successful init over.
-      log.warn(`Could not read ${lockPath}: ${e.message}`);
+    if (version) {
+      return version;
     }
   }
 
