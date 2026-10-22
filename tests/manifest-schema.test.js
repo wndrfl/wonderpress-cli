@@ -69,16 +69,45 @@ test('default template manifest points at the page-template schema', () => {
 	assert.equal(data.$schema, PAGE_TEMPLATE_MANIFEST_SCHEMA_REF);
 });
 
-test('ensureManifestSchemas writes both files and skips an unchanged rewrite', () => {
+// Theme-relative with forward slashes on every OS, the way the tree is documented.
+const posixRel = (dir, file) => path.relative(dir, file).split(path.sep).join('/');
+
+test('ensureManifestSchemas writes both files and the README, and skips an unchanged rewrite', () => {
 	const dir = tmpTheme();
 	try {
 		const first = ensureManifestSchemas(dir);
-		assert.equal(first.length, 2);
+		assert.deepEqual(first.map((f) => posixRel(dir, f)), [
+			'.wonderpress/manifest/schema/partial.schema.json',
+			'.wonderpress/manifest/schema/page-template.schema.json',
+			'.wonderpress/manifest/README.md',
+		]);
 		const partial = JSON.parse(fs.readFileSync(path.join(dir, '.wonderpress/manifest/schema/partial.schema.json'), 'utf8'));
 		const page = JSON.parse(fs.readFileSync(path.join(dir, '.wonderpress/manifest/schema/page-template.schema.json'), 'utf8'));
 		assert.equal(partial.title, 'Wonderpress partial manifest');
 		assert.equal(page.title, 'Wonderpress page template manifest');
 		assert.deepEqual(ensureManifestSchemas(dir), []);
+	} finally {
+		fs.removeSync(dir);
+	}
+});
+
+test('the manifest README says who writes what, and the CLI keeps it current', () => {
+	const dir = tmpTheme();
+	try {
+		ensureManifestSchemas(dir);
+		const file = path.join(dir, '.wonderpress/manifest/README.md');
+		const body = fs.readFileSync(file, 'utf8');
+		// One row per kind of file under .wonderpress/, each saying whose it is.
+		for (const row of ['manifest/partials/<slug>.json', 'manifest/page-templates/<name>.json', 'manifest/schema/*.schema.json', 'locks/<slug>.json']) {
+			assert.match(body, new RegExp(`^\\| \`${row.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\``, 'm'), `a row for ${row}`);
+		}
+		assert.match(body, /\| Edit it\? \| Commit it\? \|/);
+		assert.match(body, /written by the Wonderpress CLI/);
+
+		// Hand edits do not survive: the README is the CLI's.
+		fs.writeFileSync(file, '# mine\n');
+		assert.deepEqual(ensureManifestSchemas(dir).map((f) => posixRel(dir, f)), ['.wonderpress/manifest/README.md']);
+		assert.equal(fs.readFileSync(file, 'utf8'), body);
 	} finally {
 		fs.removeSync(dir);
 	}

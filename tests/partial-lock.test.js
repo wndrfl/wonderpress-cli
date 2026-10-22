@@ -16,7 +16,7 @@ import {
 import { addBlock } from '../src/block.js';
 import { checkPartialDrift } from '../src/partial-drift.js';
 import { FENCE_CLOSE, FENCE_OPEN, extractFencedRegion } from '../src/partial-class.js';
-import { contentHash, partialLockPath, sha256 } from '../src/partial-lock.js';
+import { contentHash, legacyPartialLockPath, partialLockPath, readPartialLock, sha256 } from '../src/partial-lock.js';
 import { stampManifestSchemas } from '../src/manifest-schema.js';
 import { command as lintCommand, inspectTheme } from '../src/lint.js';
 import { handlers } from '../src/mcp.js';
@@ -28,7 +28,9 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const BIN = path.join(__dirname, '..', 'bin', 'wonderpress.js');
 
 const MANIFEST = '.wonderpress/manifest/partials/hero.json';
-const LOCK = '.wonderpress/manifest/partials/hero.lock.json';
+const LOCK = '.wonderpress/locks/hero.json';
+// Where 2.17.0–2.21.x wrote it: beside the manifest.
+const LEGACY_LOCK = '.wonderpress/manifest/partials/hero.lock.json';
 const CLASS = 'src/partials/class-hero.php';
 const BLOCK = 'blocks/hero/block.json';
 
@@ -94,7 +96,9 @@ test('create writes a per-partial lock of the manifest, fenced region, and block
 	assert.equal(lock.block, sha256(fs.readFileSync(path.join(dir, BLOCK))));
 	assert.equal(lock.cliVersion, pkg.version);
 	assert.equal(partialLockPath(dir, 'hero'), path.join(dir, LOCK));
-	// The lock lives beside its manifest, never inside one.
+	assert.equal(legacyPartialLockPath(dir, 'hero'), path.join(dir, LEGACY_LOCK));
+	assert.equal(fs.existsSync(path.join(dir, LEGACY_LOCK)), false, 'nothing is written beside the manifest');
+	// The lock lives in its own tree, never inside a manifest.
 	assert.equal(readManifest(dir).lock, undefined);
 	assert.equal(JSON.stringify(readManifest(dir)).includes(lock.classFence), false);
 }));
@@ -297,24 +301,70 @@ test('partial remove deletes the lock', withTheme(async (dir) => {
 	assert.equal(fs.existsSync(path.join(dir, LOCK)), false);
 }));
 
-// --- the lock is a sidecar, not a manifest ------------------------------
+// --- the lock has a tree of its own; a legacy sidecar still counts ---------
 
-test('a lock is never enumerated as a partial', withTheme(async (dir) => {
+// A theme last synced by 2.17.0–2.21.x: the lock sits beside its manifest.
+function moveLockBesideManifest(dir) {
+	fs.moveSync(path.join(dir, LOCK), path.join(dir, LEGACY_LOCK));
+}
+
+test('a legacy sidecar lock is read until the next sync moves it', withTheme(async (dir) => {
+	let manifest = await createHero(dir, { '--block': true });
+	const written = readLock(dir);
+	moveLockBesideManifest(dir);
+
+	// Read through the fallback, byte for byte the lock sync wrote.
+	assert.deepEqual(readPartialLock(dir, 'hero'), { lock: written, error: null });
+	assert.equal(checkPartialDrift(manifest, dir).state, 'clean', 'the sidecar is the last sync, not a missing lock');
+	manifest = addProp(dir, manifest, 'dek');
+	assert.equal(checkPartialDrift(manifest, dir).state, 'pending');
+	editBlock(dir);
+	assert.equal(checkPartialDrift(manifest, dir).state, 'conflict', 'a conflict against the sidecar still blocks');
+
+	// The next sync writes the lock where it now lives and removes the sidecar.
+	syncPartialFromManifest(manifest, dir, { force: true });
+	assert.ok(fs.existsSync(path.join(dir, LOCK)), 'lock in .wonderpress/locks/');
+	assert.equal(fs.existsSync(path.join(dir, LEGACY_LOCK)), false, 'sidecar gone');
+	assert.equal(checkPartialDrift(readManifest(dir), dir).state, 'clean');
+}));
+
+test('the new lock wins over a stale legacy sidecar', withTheme(async (dir) => {
+	let manifest = await createHero(dir);
+	// A sidecar from an older sync, then a newer sync that wrote the new path
+	// (a checkout where the sidecar came back through a merge, say).
+	const stale = { ...readLock(dir), manifest: 'stale' };
+	write(dir, LEGACY_LOCK, JSON.stringify(stale, null, 2) + '\n');
+	assert.equal(checkPartialDrift(manifest, dir).state, 'clean', 'the new lock is read, not the sidecar');
+
+	manifest = addProp(dir, manifest, 'dek');
+	syncPartialFromManifest(manifest, dir);
+	assert.equal(fs.existsSync(path.join(dir, LEGACY_LOCK)), false, 'sync clears the sidecar either way');
+}));
+
+test('partial remove deletes a legacy sidecar lock too', withTheme(async (dir) => {
+	await createHero(dir);
+	moveLockBesideManifest(dir);
+	assert.equal(await removePartial(dir, 'Hero'), true);
+	assert.equal(fs.existsSync(path.join(dir, LEGACY_LOCK)), false);
+	assert.equal(fs.existsSync(path.join(dir, LOCK)), false);
+}));
+
+test('a legacy sidecar lock is never enumerated as a partial', withTheme(async (dir) => {
 	await createHero(dir, { '--block': true });
+	moveLockBesideManifest(dir);
 	// `<slug>.lock.json` ends in .json and sits in the manifest directory, so
 	// the naive filter would read it as a partial named "hero.lock".
-	assert.ok(fs.existsSync(path.join(dir, LOCK)), 'the lock is in the manifest directory');
 	assert.deepEqual(readManifests(dir).map((m) => m.slug), ['hero']);
 }));
 
-test('a lock is never $schema-stamped as a manifest', withTheme(async (dir) => {
+test('a legacy sidecar lock is never $schema-stamped as a manifest', withTheme(async (dir) => {
 	await createHero(dir, { '--block': true });
-	const before = read(dir, LOCK);
+	moveLockBesideManifest(dir);
+	const before = read(dir, LEGACY_LOCK);
 
 	const stamped = stampManifestSchemas(dir);
 	assert.deepEqual(stamped, [], 'create already stamped the manifest; nothing left to stamp');
-	assert.equal(read(dir, LOCK), before, 'the lock is untouched');
-	assert.equal(readLock(dir).$schema, undefined);
+	assert.equal(read(dir, LEGACY_LOCK), before, 'the lock is untouched');
 
 	// And from the state a pre-schema theme is in: a manifest that still needs
 	// the stamp, with its lock beside it.
@@ -326,16 +376,18 @@ test('a lock is never $schema-stamped as a manifest', withTheme(async (dir) => {
 		['hero.json'],
 		'only the manifest is stamped',
 	);
-	assert.equal(read(dir, LOCK), before, 'the lock is still untouched');
-	assert.equal(readLock(dir).$schema, undefined);
+	assert.equal(read(dir, LEGACY_LOCK), before, 'the lock is still untouched');
+	assert.equal(JSON.parse(before).$schema, undefined);
 }));
 
 test('CLI: partial list and remove see the partial, not its lock', () => {
 	const { root, themeDir, run } = cliEnv();
 	try {
 		run(['partial', 'create', '--name', 'Hero', '--prop', 'title:string:required', '--no-style']);
-		const lock = path.join(themeDir, '.wonderpress/manifest/partials/hero.lock.json');
+		const lock = path.join(themeDir, '.wonderpress/locks/hero.json');
 		assert.ok(fs.existsSync(lock));
+		// And with the lock where 2.17.0–2.21.x left it.
+		fs.moveSync(lock, path.join(themeDir, '.wonderpress/manifest/partials/hero.lock.json'));
 
 		const listed = run(['partial', 'list', '--format', 'json']);
 		assert.equal(listed.status, 0, listed.stderr);
@@ -344,7 +396,8 @@ test('CLI: partial list and remove see the partial, not its lock', () => {
 
 		const removed = run(['partial', 'remove', 'Hero', '--yes', '--format', 'json']);
 		assert.equal(removed.status, 0, removed.stderr);
-		assert.equal(fs.existsSync(lock), false, 'remove deletes the lock at its new path');
+		assert.equal(fs.existsSync(lock), false, 'remove deletes the lock');
+		assert.equal(fs.existsSync(path.join(themeDir, '.wonderpress/manifest/partials/hero.lock.json')), false, 'and the legacy sidecar');
 		assert.deepEqual(oneEnvelope(run(['partial', 'list', '--format', 'json'])).data.partials, []);
 	} finally {
 		fs.removeSync(root);

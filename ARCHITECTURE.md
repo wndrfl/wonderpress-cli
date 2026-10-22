@@ -139,6 +139,13 @@ Each file points at a JSON Schema in `schema/` via `$schema`. Those schema
 files are generated from the same constants the CLI validates with
 (`src/manifest-schema.js`), so editor completion matches the validator.
 
+The manifest tree holds what a person authors (plus the schemas their
+`$schema` points at). What only the CLI reads lives beside it, not in it:
+sync locks are `.wonderpress/locks/<slug>.json` (see "Sync lock and drift
+states"). A generated `README.md` at the root of the manifest tree says which
+file is whose, who writes it, and whether to edit or commit it
+(`src/manifest-readme.js`); it is refreshed wherever the schemas are.
+
 ### Adopting a theme that predates manifests
 
 `wonderpress theme adopt [--theme <name>] [--namespace <ns>] [--format json]`
@@ -422,7 +429,7 @@ build on this contract separately.
 what it wrote in a per-partial lock, committed with the theme:
 
 ```
-.wonderpress/manifest/partials/<slug>.lock.json
+.wonderpress/locks/<slug>.json
 {
   "manifest":          "<sha256 of the manifest file as sync left it>",
   "classFence":        "<sha256 of the class's fenced region as written>",
@@ -433,15 +440,24 @@ what it wrote in a per-partial lock, committed with the theme:
 }
 ```
 
-- **One file per partial, beside its manifest**, as `package-lock.json` sits
-  beside `package.json`: the lock is the manifest's sidecar, not a parallel
-  tree. Two branches that touch different partials never conflict on a lock,
-  and the hand-edited manifest does not churn when a hash moves. Commit the
-  locks; they are the "last sync" leg of the three-way comparison, and a
-  teammate without them sees `pending`.
+- **One file per partial, in a tree of its own.** Per partial, so two
+  branches that touch different partials never conflict on a lock; outside
+  the manifest, so the hand-edited manifest does not churn when a hash moves;
+  and in `.wonderpress/locks/` rather than beside the manifest, so
+  `.wonderpress/manifest/` holds only what a person authors and no reader of
+  it has to know what a lock is (core globs `manifest/partials/*.json` at
+  runtime and never hears of locks). Commit the locks; they are the "last
+  sync" leg of the three-way comparison, and a teammate without them sees
+  `pending`.
 - **A lock is not a manifest.** No manifest schema describes one, and nothing
-  validates or `$schema`-stamps it. Every reader that enumerates
-  `.wonderpress/manifest/partials/` filters `*.json` and so must skip
+  validates or `$schema`-stamps it.
+- **Legacy sidecars.** CLI 2.17.0 through 2.21.x wrote the lock beside its
+  manifest as `.wonderpress/manifest/partials/<slug>.lock.json`.
+  `readPartialLock()` falls back to that file when the new one is absent, so
+  a theme last synced by one of those versions still reads its true state;
+  the next `writePartialLock()` writes the new file and deletes the sidecar,
+  and `removePartialLock()` deletes both. Readers that enumerate
+  `.wonderpress/manifest/partials/` filter `*.json` and so still skip
   `*.lock.json` — `isPartialLockFilename()` in
   [`src/validate.js`](src/validate.js) is that test, used by `readManifests()`,
   `stampManifestSchemas()`, and the two page-template slug readers.

@@ -113,7 +113,7 @@ function readPartialSlugs(themeDir) {
 	}
 	const slugs = [];
 	for (const file of fs.readdirSync(dir)) {
-		// `<slug>.lock.json` is a sync lock, not a manifest.
+		// `<slug>.lock.json` is a legacy (2.17.0–2.21.x) sync lock, not a manifest.
 		if (!file.endsWith('.json') || isPartialLockFilename(file)) {
 			continue;
 		}

@@ -135,7 +135,7 @@ test('partial help documents the fence contract and sync --force', () => {
 	assert.match(out, /below the closing marker/);
 	assert.match(out, /--force\s+Sync even a partial in conflict/);
 	assert.match(out, /SYNC STATES/);
-	assert.match(out, /\.wonderpress\/manifest\/partials\/<slug>\.lock\.json/);
+	assert.match(out, /\.wonderpress\/locks\/<slug>\.json/);
 	for (const state of ['clean', 'pending', 'conflict']) {
 		assert.match(out, new RegExp(`^    ${state} `, 'm'));
 	}

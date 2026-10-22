@@ -1077,9 +1077,9 @@ export function readManifests(themeDir) {
 	}
 
 	return fs.readdirSync(dir)
-		// Sync locks live beside their manifest as `<slug>.lock.json`; without
-		// this they read as a partial named "<slug>.lock" and warn their way
-		// through every list and remove.
+		// CLI 2.17.0–2.21.x wrote sync locks beside their manifest as
+		// `<slug>.lock.json`; without this they read as a partial named
+		// "<slug>.lock" and warn their way through every list and remove.
 		.filter((file) => file.endsWith('.json') && !isPartialLockFilename(file))
 		.sort()
 		.map((file) => {

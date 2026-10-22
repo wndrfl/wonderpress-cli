@@ -327,7 +327,7 @@ test('--apply writes the manifest, fences the class, keeps the rest, and is idem
 		written: [
 			classRel,
 			'.wonderpress/manifest/partials/theme-article-grid-item.json',
-			'.wonderpress/manifest/partials/theme-article-grid-item.lock.json',
+			'.wonderpress/locks/theme-article-grid-item.json',
 		],
 		preserved: [`${classRel}.legacy`],
 	});
@@ -367,14 +367,16 @@ test('--apply writes the manifest, fences the class, keeps the rest, and is idem
 	const after = snapshot(theme);
 	const touched = [...new Set([...before.keys(), ...after.keys()])].filter((k) => before.get(k) !== after.get(k));
 	assert.deepEqual(touched.sort(), [
+		'.wonderpress/locks',
+		'.wonderpress/locks/theme-article-grid-item.json',
+		'.wonderpress/manifest/README.md',
 		'.wonderpress/manifest/partials/theme-article-grid-item.json',
-		'.wonderpress/manifest/partials/theme-article-grid-item.lock.json',
 		'.wonderpress/manifest/schema',
 		'.wonderpress/manifest/schema/page-template.schema.json',
 		'.wonderpress/manifest/schema/partial.schema.json',
 		classRel,
 		`${classRel}.legacy`,
-	], 'only the partial\'s own files (and the manifest schemas every writer stamps) change');
+	], 'only the partial\'s own files (and the manifest schemas and README every writer refreshes) change');
 
 	// Idempotent: a second apply is a no-op that says so.
 	const again = migrateJson(root, ['theme-article-grid-item', '--apply', '--type', 'post_obj=post_object', '--type', 'attributes=string', '--type', 'classes=string']);

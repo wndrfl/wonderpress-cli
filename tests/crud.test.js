@@ -731,12 +731,12 @@ test('manifests and locks written on any OS carry forward-slash paths only', asy
 				.flatMap(([, v]) => strings(v));
 		};
 
-		// The lock is the manifest's sidecar: `<slug>.lock.json` beside
-		// `<slug>.json`, not a parallel tree.
+		// The lock lives in its own tree, `.wonderpress/locks/<slug>.json`,
+		// not in the manifest tree.
 		const files = [
 			path.join(dir, '.wonderpress/manifest/partials/call-to-action.json'),
 			path.join(dir, 'blocks/call-to-action/block.json'),
-			path.join(dir, '.wonderpress/manifest/partials/call-to-action.lock.json'),
+			path.join(dir, '.wonderpress/locks/call-to-action.json'),
 		];
 		for (const file of files) {
 			assert.ok(fs.existsSync(file), `expected ${file} to exist`);

@@ -547,17 +547,26 @@ export const PAGE_TEMPLATE_MANIFEST_SCHEMA_REF = '../schema/page-template.schema
 export const TEMPLATE_MANIFEST_SCHEMA_VERSION = 1;
 
 /**
- * Partial sync locks live beside their manifest, the way package-lock.json
- * sits beside package.json: `<slug>.lock.json` next to `<slug>.json`. The
- * suffix lives here, with the manifest directory, because every reader that
- * enumerates that directory has to skip locks — they are not manifests, carry
- * no `$schema`, and are never validated as one. Writers are in
- * `src/partial-lock.js`.
+ * Partial sync locks live in their own tree, `.wonderpress/locks/<slug>.json`,
+ * beside the manifest tree rather than inside it. `.wonderpress/manifest/` is
+ * then the files a person authors (plus the schemas their `$schema` points
+ * at), and nothing that enumerates it has to know what a lock is: core globs
+ * `manifest/partials/*.json` at runtime without ever hearing of locks.
+ * Writers are in `src/partial-lock.js`.
+ */
+export const PARTIAL_LOCK_DIR = '.wonderpress/locks';
+
+/**
+ * Where CLI 2.17.0 through 2.21.x wrote the lock: beside its manifest as
+ * `<slug>.lock.json`. `readPartialLock()` still falls back to it, and the
+ * next sync moves it. Readers that enumerate the manifest directory keep
+ * skipping the suffix so a theme last synced by one of those versions lists
+ * cleanly.
  */
 export const PARTIAL_LOCK_SUFFIX = '.lock.json';
 
 /**
- * Is this manifest-directory entry a sync lock rather than a manifest?
+ * Is this manifest-directory entry a legacy sync lock rather than a manifest?
  * `<slug>.lock.json` ends with `.json`, so the usual filter sweeps it up and
  * reads it as a partial named "<slug>.lock".
  *

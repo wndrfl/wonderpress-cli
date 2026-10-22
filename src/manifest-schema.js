@@ -10,6 +10,7 @@
 
 import fs from 'fs-extra';
 import path from 'path';
+import { ensureManifestReadme } from './manifest-readme.js';
 import {
 	MANIFEST_ACF_PASSTHROUGH_KEYS,
 	MANIFEST_SCHEMA_DIR,
@@ -455,8 +456,9 @@ function writeIfChanged(file, body) {
 }
 
 /**
- * Write both schema files under the theme. Rewrites a file only when its
- * contents differ, so a later CLI release can refresh them.
+ * Write both schema files under the theme, and the README that explains the
+ * tree (`src/manifest-readme.js`). Rewrites a file only when its contents
+ * differ, so a later CLI release can refresh them.
  *
  * @param {string} themeDir Theme root.
  * @returns {string[]} Paths written or refreshed.
@@ -474,6 +476,7 @@ export function ensureManifestSchemas(themeDir) {
 			written.push(file);
 		}
 	}
+	written.push(...ensureManifestReadme(themeDir));
 	return written;
 }
 
@@ -512,8 +515,9 @@ function stampDir(dir, ref) {
 	}
 	const stamped = [];
 	for (const name of fs.readdirSync(dir)) {
-		// A sync lock sits beside its manifest and is not one: no manifest
-		// schema describes it, so it must never be stamped with a `$schema`.
+		// A legacy sync lock (2.17.0–2.21.x) sits beside its manifest and is
+		// not one: no manifest schema describes it, so it must never be
+		// stamped with a `$schema`.
 		if (!name.endsWith('.json') || isPartialLockFilename(name)) {
 			continue;
 		}
