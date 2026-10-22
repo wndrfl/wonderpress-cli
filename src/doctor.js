@@ -1,4 +1,8 @@
+import fs from 'fs-extra';
+import path from 'path';
 import sh from 'shelljs';
+import * as composer from './composer.js';
+import * as config from './config.js';
 import * as format from './format.js';
 import * as log from './log.js';
 import { isPortFree } from './env/probe.js';
@@ -233,6 +237,61 @@ async function wpEnvChecks(deps, opts) {
 }
 
 /**
+ * Does .wonderpressrc still say which core the theme runs?
+ *
+ * `init` records the version composer.lock resolved for wonderpress-core;
+ * `wonderpress core update` re-records it. A bare `composer update` in the
+ * theme does not, and that is the drift this check exists to name: a project
+ * whose record claims one version while its lock resolves another.
+ *
+ * Project-level, so it only runs inside a project (`root`). The package name
+ * and the themes directory arrive as arguments rather than through imports of
+ * core.js and wordpress.js, both of which would make a cycle (core → env →
+ * backends → doctor). cli.js supplies them from those modules. Every theme on disk that requires
+ * the package is compared; a theme without it is not core's concern.
+ **/
+export function coreRecordCheck(root, name, themesDir) {
+	const recorded = (() => {
+		const value = config.read(root).data.core;
+		return typeof value === 'string' && value ? value : null;
+	})();
+
+	const themes = fs.existsSync(themesDir)
+		? fs.readdirSync(themesDir).filter((entry) => fs.existsSync(path.join(themesDir, entry, 'style.css')))
+		: [];
+	const declaring = themes
+		.map((theme) => ({ theme, dir: path.join(themesDir, theme) }))
+		.filter(({ dir }) => composer.declaredConstraint(dir, name));
+
+	const row = (fields) => check({ check: 'core-record', label: `${name} record matches composer.lock`, backend: 'any', ...fields });
+
+	if (!declaring.length) {
+		return row({ ok: true, detail: `No theme requires ${name}; nothing to compare.` });
+	}
+
+	const unlocked = declaring.filter(({ dir }) => !composer.lockedVersion(dir, name));
+	if (unlocked.length) {
+		return row({
+			ok: false,
+			hint: `composer.lock does not resolve ${name} in ${unlocked.map((t) => t.theme).join(', ')}.\nRun \`composer install\` in the theme, or \`wonderpress core update\`.`,
+			detail: `${unlocked.map((t) => t.theme).join(', ')}: composer.lock has no entry for ${name}.`,
+		});
+	}
+
+	const locked = declaring.map(({ theme, dir }) => ({ theme, version: composer.lockedVersion(dir, name) }));
+	const drifted = locked.filter(({ version }) => version !== recorded);
+	if (drifted.length) {
+		return row({
+			ok: false,
+			hint: `.wonderpressrc records ${recorded ?? 'no core version'}, but composer.lock resolves ${drifted.map((t) => `${t.version} (${t.theme})`).join(', ')}.\nRun \`wonderpress core update\` to bring the lock and the record current together.`,
+			detail: `recorded ${recorded ?? 'nothing'}; locked ${locked.map((t) => `${t.version} (${t.theme})`).join(', ')}.`,
+		});
+	}
+
+	return row({ ok: true, detail: `${recorded} in ${locked.map((t) => t.theme).join(', ')}.` });
+}
+
+/**
  * Run the checks for one backend, or for every backend when `backend` is null.
  *
  * Every-backend mode is for outside a project, where nothing has decided yet.
@@ -240,7 +299,8 @@ async function wpEnvChecks(deps, opts) {
  * that fails by design: there, the only real choice is wp-env.
  *
  * @param {'host'|'wp-env'|null} backend
- * @param {{ platform?: string, port?: number|null, ownEnvironmentRunning?: Function, deps?: object }} [opts]
+ * @param {{ platform?: string, port?: number|null, ownEnvironmentRunning?: Function, deps?: object, projectRoot?: string|null, corePackage?: string }} [opts]
+ *   `projectRoot` + `corePackage` add the core-record check (see coreRecordCheck).
  * @returns {Promise<{ backend: string|null, platform: string, ok: boolean, checks: object[] }>}
  **/
 export async function run(backend, opts = {}) {
@@ -261,6 +321,12 @@ export async function run(backend, opts = {}) {
 				checks.push(c);
 			}
 		}
+	}
+
+	// Project-level, after the machine-level rows: only meaningful inside a
+	// project, and only when the caller said which package and themes directory.
+	if (opts.projectRoot && opts.corePackage && opts.themesDir) {
+		checks.push(coreRecordCheck(opts.projectRoot, opts.corePackage, opts.themesDir));
 	}
 
 	return {

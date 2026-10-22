@@ -66,3 +66,96 @@ export async function installComposer(dir = process.cwd()) {
 
 	return true;
 }
+
+/**
+ * Read a directory's composer.json, or null when there is none or it is not
+ * JSON. A manifest that cannot be parsed is reported by Composer itself the
+ * moment anything runs; here it only means "nothing to read".
+ *
+ * @param {String} dir The directory holding composer.json.
+ * @returns {Object|null}
+ **/
+export function readManifest(dir) {
+	const file = path.join(dir, 'composer.json');
+	if (!fs.existsSync(file)) {
+		return null;
+	}
+	try {
+		const data = JSON.parse(fs.readFileSync(file, 'utf8'));
+		return (data && typeof data === 'object') ? data : null;
+	} catch (e) {
+		return null;
+	}
+}
+
+/**
+ * The version constraint a directory's composer.json declares for a package,
+ * or null when it does not require it. `require` only: a dev requirement of
+ * wonderpress-core would be a mistake, not a configuration.
+ *
+ * @param {String} dir The directory holding composer.json.
+ * @param {String} name The package, as vendor/name.
+ * @returns {String|null}
+ **/
+export function declaredConstraint(dir, name) {
+	const manifest = readManifest(dir);
+	const require = manifest && manifest.require;
+	const constraint = require && typeof require === 'object' ? require[name] : undefined;
+	return typeof constraint === 'string' && constraint ? constraint : null;
+}
+
+/**
+ * The version composer.lock resolved for a package, or null when there is no
+ * lock file, it is not JSON, or it does not carry the package.
+ *
+ * Read from the lock rather than restated from a constant, so a record built
+ * from it (.wonderpressrc's `core`) cannot drift from what Composer decided.
+ *
+ * @param {String} dir The directory holding composer.lock.
+ * @param {String} name The package, as vendor/name.
+ * @returns {String|null}
+ **/
+export function lockedVersion(dir, name) {
+	const file = path.join(dir, 'composer.lock');
+	if (!fs.existsSync(file)) {
+		return null;
+	}
+	try {
+		const lock = JSON.parse(fs.readFileSync(file, 'utf8'));
+		const pkg = (lock.packages || []).find((p) => p && p.name === name);
+		return pkg && typeof pkg.version === 'string' ? pkg.version : null;
+	} catch (e) {
+		log.warn(`Could not read ${file}: ${e.message}`);
+		return null;
+	}
+}
+
+/**
+ * The version actually present under vendor/, from Composer's own
+ * vendor/composer/installed.json, or null when the package is not installed.
+ *
+ * Distinct from the lock: a lock file pulled from version control with a
+ * vendor/ that was not updated alongside it says one version and ships
+ * another. The theme commits both, so normally they agree, which is exactly
+ * why the case where they do not is worth a line.
+ *
+ * @param {String} dir The directory holding vendor/.
+ * @param {String} name The package, as vendor/name.
+ * @returns {String|null}
+ **/
+export function installedVersion(dir, name) {
+	const file = path.join(dir, 'vendor', 'composer', 'installed.json');
+	if (!fs.existsSync(file)) {
+		return null;
+	}
+	try {
+		const data = JSON.parse(fs.readFileSync(file, 'utf8'));
+		// Composer 2 wraps the list in { packages: [...] }; Composer 1 wrote the
+		// bare array.
+		const packages = Array.isArray(data) ? data : (data && Array.isArray(data.packages) ? data.packages : []);
+		const pkg = packages.find((p) => p && p.name === name);
+		return pkg && typeof pkg.version === 'string' ? pkg.version : null;
+	} catch (e) {
+		return null;
+	}
+}
