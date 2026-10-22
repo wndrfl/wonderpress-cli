@@ -21,7 +21,7 @@ After `wonderpress template create`, keep these two files in the same order:
 
 1. `.wonderpress/manifest/page-templates/template-<name>.json` — fields (strict
    JSON, no comments). `$schema` points at
-   `.wonderpress/manifest/schema/page-template.schema.json`, which completes
+   `.wonderpress/schema/page-template.schema.json`, which completes
    composition rows in the editor. A row is a partial (`id` + `partial`),
    page-only fields (`id` + `properties`), or a tab (`id` + `items`).
 2. `template-<name>.php` — what prints. Unique HTML lives here.

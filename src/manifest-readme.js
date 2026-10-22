@@ -1,11 +1,10 @@
 /**
  * The README the CLI keeps at `.wonderpress/manifest/README.md`.
  *
- * The folder a person opens to edit a manifest also holds files the CLI
- * writes for them (the schemas `$schema` points at) and sits beside the ones
- * only the CLI reads (the sync locks). The README says, in the folder itself,
- * which is which, who writes each, and whether to edit or commit it, so
- * nobody has to remember. It is regenerated wherever the schemas are
+ * The folder a person opens to edit a manifest sits beside folders only the
+ * CLI writes (the schemas `$schema` points at, the sync locks). The README
+ * says, in the folder itself, which is which, who writes each, and whether
+ * to edit or commit it, so nobody has to remember. It is regenerated wherever the schemas are
  * (`ensureManifestSchemas()`: partial and template create, sync, agents
  * init), rewritten only when its text changes, and carries no version
  * number so a CLI release does not touch every theme's copy.
@@ -49,9 +48,8 @@ you write, and the ones the CLI writes for you.
 | \`${schema}/*.schema.json\` | The JSON Schema each manifest's \`$schema\` key points at, for editor completion and inline errors | The CLI, refreshed on create and sync | No | Yes, so \`$schema\` resolves on every checkout |
 | \`${locks}/<slug>.json\` | Sync lock: hashes of what \`partial sync\` last wrote, so \`check-drift\` can tell a changed contract (pending) from hand-edited output (conflict) | \`partial sync\` and \`partial create\` | No | Yes |
 
-Rule of thumb: a plain \`.json\` under \`${partials}/\` or
-\`${templates}/\` is yours. Everything else under \`.wonderpress/\` belongs
-to the CLI.
+Rule of thumb: everything under \`manifest/\` is yours. Everything else under
+\`.wonderpress/\` belongs to the CLI.
 
 After editing a partial manifest, run \`wonderpress partial sync <Name>\` to
 regenerate the class and \`block.json\` from it. After editing a page-template

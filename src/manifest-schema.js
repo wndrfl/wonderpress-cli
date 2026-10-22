@@ -12,6 +12,9 @@ import fs from 'fs-extra';
 import path from 'path';
 import { ensureManifestReadme } from './manifest-readme.js';
 import {
+	LEGACY_MANIFEST_SCHEMA_DIR,
+	LEGACY_PAGE_TEMPLATE_MANIFEST_SCHEMA_REF,
+	LEGACY_PARTIAL_MANIFEST_SCHEMA_REF,
 	MANIFEST_ACF_PASSTHROUGH_KEYS,
 	MANIFEST_SCHEMA_DIR,
 	MANIFEST_WHEN_OPERATORS,
@@ -325,8 +328,8 @@ export function buildPartialManifestSchema() {
 		required: ['name', 'slug'],
 		properties: {
 			$schema: {
-				const: PARTIAL_MANIFEST_SCHEMA_REF,
-				description: 'Points the editor at this schema. Leave this as-is.',
+				enum: [PARTIAL_MANIFEST_SCHEMA_REF, LEGACY_PARTIAL_MANIFEST_SCHEMA_REF],
+				description: 'Points the editor at this schema. Leave this as-is. (The ../schema/ form is what CLI releases up to 2.22 wrote; the next sync rewrites it.)',
 			},
 			name: {
 				type: 'string',
@@ -385,8 +388,8 @@ export function buildPageTemplateManifestSchema() {
 		required: ['schemaVersion', 'template'],
 		properties: {
 			$schema: {
-				const: PAGE_TEMPLATE_MANIFEST_SCHEMA_REF,
-				description: 'Points the editor at this schema. Leave this as-is.',
+				enum: [PAGE_TEMPLATE_MANIFEST_SCHEMA_REF, LEGACY_PAGE_TEMPLATE_MANIFEST_SCHEMA_REF],
+				description: 'Points the editor at this schema. Leave this as-is. (The ../schema/ form is what CLI releases up to 2.22 wrote; the next sync rewrites it.)',
 			},
 			schemaVersion: {
 				const: TEMPLATE_MANIFEST_SCHEMA_VERSION,
@@ -455,10 +458,15 @@ function writeIfChanged(file, body) {
 	return true;
 }
 
+const SCHEMA_FILES = ['partial.schema.json', 'page-template.schema.json'];
+
 /**
  * Write both schema files under the theme, and the README that explains the
  * tree (`src/manifest-readme.js`). Rewrites a file only when its contents
- * differ, so a later CLI release can refresh them.
+ * differ, so a later CLI release can refresh them. The copies CLI releases up
+ * to 2.22.x left at `.wonderpress/manifest/schema/` are removed once the new
+ * ones exist: nothing points at them after the next stamp, and leaving them
+ * would keep CLI-written files in the tree a person authors.
  *
  * @param {string} themeDir Theme root.
  * @returns {string[]} Paths written or refreshed.
@@ -466,8 +474,8 @@ function writeIfChanged(file, body) {
 export function ensureManifestSchemas(themeDir) {
 	const dir = path.join(themeDir, MANIFEST_SCHEMA_DIR);
 	const files = [
-		[path.join(dir, 'partial.schema.json'), buildPartialManifestSchema()],
-		[path.join(dir, 'page-template.schema.json'), buildPageTemplateManifestSchema()],
+		[path.join(dir, SCHEMA_FILES[0]), buildPartialManifestSchema()],
+		[path.join(dir, SCHEMA_FILES[1]), buildPageTemplateManifestSchema()],
 	];
 	const written = [];
 	for (const [file, doc] of files) {
@@ -476,8 +484,37 @@ export function ensureManifestSchemas(themeDir) {
 			written.push(file);
 		}
 	}
+	removeLegacySchemaDir(themeDir);
 	written.push(...ensureManifestReadme(themeDir));
 	return written;
+}
+
+/**
+ * Delete the two schema files a CLI up to 2.22.x wrote inside the manifest
+ * tree, and the directory when that leaves it empty. Only those two names:
+ * anything else a person put there is not ours to remove.
+ *
+ * @param {string} themeDir Theme root.
+ * @returns {boolean} Whether anything was removed.
+ */
+export function removeLegacySchemaDir(themeDir) {
+	const dir = path.join(themeDir, LEGACY_MANIFEST_SCHEMA_DIR);
+	if (!fs.existsSync(dir)) {
+		return false;
+	}
+	let removed = false;
+	for (const name of SCHEMA_FILES) {
+		const file = path.join(dir, name);
+		if (fs.existsSync(file)) {
+			fs.removeSync(file);
+			removed = true;
+		}
+	}
+	if (fs.readdirSync(dir).length === 0) {
+		fs.removeSync(dir);
+		removed = true;
+	}
+	return removed;
 }
 
 /**

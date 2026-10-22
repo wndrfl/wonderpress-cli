@@ -8,12 +8,15 @@ import {
 	buildPageTemplateManifestSchema,
 	buildPartialManifestSchema,
 	ensureManifestSchemas,
+	removeLegacySchemaDir,
 	stampManifestSchemas,
 	withManifestSchema,
 } from '../src/manifest-schema.js';
 import {
 	MANIFEST_ACF_PASSTHROUGH_KEYS,
 	MANIFEST_WHEN_OPERATORS,
+	LEGACY_PAGE_TEMPLATE_MANIFEST_SCHEMA_REF,
+	LEGACY_PARTIAL_MANIFEST_SCHEMA_REF,
 	PAGE_TEMPLATE_MANIFEST_SCHEMA_REF,
 	PARTIAL_MANIFEST_SCHEMA_REF,
 	PROP_TYPES,
@@ -42,13 +45,14 @@ test('partial schema enums match the CLI validator', () => {
 		Object.keys(property.properties.acf.properties),
 		[...MANIFEST_ACF_PASSTHROUGH_KEYS],
 	);
-	assert.equal(schema.properties.$schema.const, PARTIAL_MANIFEST_SCHEMA_REF);
+	// The current ref first; the pre-2.23 ref stays valid until sync rewrites it.
+	assert.deepEqual(schema.properties.$schema.enum, [PARTIAL_MANIFEST_SCHEMA_REF, LEGACY_PARTIAL_MANIFEST_SCHEMA_REF]);
 });
 
 test('page template schema enums match the CLI validator', () => {
 	const schema = buildPageTemplateManifestSchema();
 	assert.equal(schema.properties.schemaVersion.const, TEMPLATE_MANIFEST_SCHEMA_VERSION);
-	assert.equal(schema.properties.$schema.const, PAGE_TEMPLATE_MANIFEST_SCHEMA_REF);
+	assert.deepEqual(schema.properties.$schema.enum, [PAGE_TEMPLATE_MANIFEST_SCHEMA_REF, LEGACY_PAGE_TEMPLATE_MANIFEST_SCHEMA_REF]);
 	assert.deepEqual(schema.properties.editor.properties.lock.enum, [...TEMPLATE_LOCK_LEVELS]);
 	assert.deepEqual(
 		schema.properties.editor.properties.acf.properties.tabPlacement.enum,
@@ -77,15 +81,61 @@ test('ensureManifestSchemas writes both files and the README, and skips an uncha
 	try {
 		const first = ensureManifestSchemas(dir);
 		assert.deepEqual(first.map((f) => posixRel(dir, f)), [
-			'.wonderpress/manifest/schema/partial.schema.json',
-			'.wonderpress/manifest/schema/page-template.schema.json',
+			'.wonderpress/schema/partial.schema.json',
+			'.wonderpress/schema/page-template.schema.json',
 			'.wonderpress/manifest/README.md',
 		]);
-		const partial = JSON.parse(fs.readFileSync(path.join(dir, '.wonderpress/manifest/schema/partial.schema.json'), 'utf8'));
-		const page = JSON.parse(fs.readFileSync(path.join(dir, '.wonderpress/manifest/schema/page-template.schema.json'), 'utf8'));
+		const partial = JSON.parse(fs.readFileSync(path.join(dir, '.wonderpress/schema/partial.schema.json'), 'utf8'));
+		const page = JSON.parse(fs.readFileSync(path.join(dir, '.wonderpress/schema/page-template.schema.json'), 'utf8'));
 		assert.equal(partial.title, 'Wonderpress partial manifest');
 		assert.equal(page.title, 'Wonderpress page template manifest');
 		assert.deepEqual(ensureManifestSchemas(dir), []);
+	} finally {
+		fs.removeSync(dir);
+	}
+});
+
+test('ensureManifestSchemas removes the schema files a CLI up to 2.22.x left in the manifest tree', () => {
+	const dir = tmpTheme();
+	try {
+		const legacy = path.join(dir, '.wonderpress/manifest/schema');
+		fs.ensureDirSync(legacy);
+		fs.writeFileSync(path.join(legacy, 'partial.schema.json'), '{}\n');
+		fs.writeFileSync(path.join(legacy, 'page-template.schema.json'), '{}\n');
+
+		ensureManifestSchemas(dir);
+		assert.equal(fs.existsSync(legacy), false, 'the legacy directory is gone once empty');
+		assert.ok(fs.existsSync(path.join(dir, '.wonderpress/schema/partial.schema.json')));
+		assert.equal(removeLegacySchemaDir(dir), false, 'nothing left to remove');
+
+		// A file of the person's own in there is not ours: the two schema
+		// files go, the directory and that file stay.
+		fs.ensureDirSync(legacy);
+		fs.writeFileSync(path.join(legacy, 'partial.schema.json'), '{}\n');
+		fs.writeFileSync(path.join(legacy, 'notes.md'), 'mine\n');
+		ensureManifestSchemas(dir);
+		assert.deepEqual(fs.readdirSync(legacy), ['notes.md']);
+	} finally {
+		fs.removeSync(dir);
+	}
+});
+
+test('stampManifestSchemas rewrites the pre-2.23 $schema ref to the current one', () => {
+	const dir = tmpTheme();
+	try {
+		const partials = path.join(dir, '.wonderpress/manifest/partials');
+		const pages = path.join(dir, '.wonderpress/manifest/page-templates');
+		fs.ensureDirSync(partials);
+		fs.ensureDirSync(pages);
+		fs.writeFileSync(path.join(partials, 'hero.json'), `${JSON.stringify({ $schema: LEGACY_PARTIAL_MANIFEST_SCHEMA_REF, name: 'Hero', slug: 'hero' }, null, 2)}\n`);
+		fs.writeFileSync(path.join(pages, 'template-home.json'), `${JSON.stringify({ $schema: LEGACY_PAGE_TEMPLATE_MANIFEST_SCHEMA_REF, schemaVersion: 1, template: 'template-home.php', composition: [] }, null, 2)}\n`);
+
+		assert.deepEqual(stampManifestSchemas(dir).map((f) => path.basename(f)).sort(), ['hero.json', 'template-home.json']);
+		const hero = JSON.parse(fs.readFileSync(path.join(partials, 'hero.json'), 'utf8'));
+		assert.equal(hero.$schema, PARTIAL_MANIFEST_SCHEMA_REF);
+		assert.deepEqual(Object.keys(hero), ['$schema', 'name', 'slug'], 'only the ref changed, and it stays first');
+		assert.equal(JSON.parse(fs.readFileSync(path.join(pages, 'template-home.json'), 'utf8')).$schema, PAGE_TEMPLATE_MANIFEST_SCHEMA_REF);
+		assert.deepEqual(stampManifestSchemas(dir), []);
 	} finally {
 		fs.removeSync(dir);
 	}
@@ -98,7 +148,7 @@ test('the manifest README says who writes what, and the CLI keeps it current', (
 		const file = path.join(dir, '.wonderpress/manifest/README.md');
 		const body = fs.readFileSync(file, 'utf8');
 		// One row per kind of file under .wonderpress/, each saying whose it is.
-		for (const row of ['manifest/partials/<slug>.json', 'manifest/page-templates/<name>.json', 'manifest/schema/*.schema.json', 'locks/<slug>.json']) {
+		for (const row of ['manifest/partials/<slug>.json', 'manifest/page-templates/<name>.json', 'schema/*.schema.json', 'locks/<slug>.json']) {
 			assert.match(body, new RegExp(`^\\| \`${row.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\``, 'm'), `a row for ${row}`);
 		}
 		assert.match(body, /\| Edit it\? \| Commit it\? \|/);
@@ -170,8 +220,8 @@ test('writeManifest records $schema and writes the schema files', () => {
 		const manifest = JSON.parse(fs.readFileSync(path.join(dir, '.wonderpress/manifest/partials/headline-stack.json'), 'utf8'));
 		assert.equal(manifest.$schema, PARTIAL_MANIFEST_SCHEMA_REF);
 		assert.equal(Object.keys(manifest)[0], '$schema');
-		assert.ok(fs.existsSync(path.join(dir, '.wonderpress/manifest/schema/partial.schema.json')));
-		assert.ok(fs.existsSync(path.join(dir, '.wonderpress/manifest/schema/page-template.schema.json')));
+		assert.ok(fs.existsSync(path.join(dir, '.wonderpress/schema/partial.schema.json')));
+		assert.ok(fs.existsSync(path.join(dir, '.wonderpress/schema/page-template.schema.json')));
 	} finally {
 		fs.removeSync(dir);
 	}

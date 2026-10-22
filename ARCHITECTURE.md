@@ -135,16 +135,24 @@ per-block JSX and no editor bundler. See
 
 All Wonderpress manifests live under `.wonderpress/manifest/`, typed by path:
 `partials/` for components, `page-templates/` for page-template contracts.
-Each file points at a JSON Schema in `schema/` via `$schema`. Those schema
-files are generated from the same constants the CLI validates with
-(`src/manifest-schema.js`), so editor completion matches the validator.
+Each file points at a JSON Schema in `.wonderpress/schema/` via `$schema`
+(`../../schema/<kind>.schema.json`). Those schema files are generated from the
+same constants the CLI validates with (`src/manifest-schema.js`), so editor
+completion matches the validator.
 
-The manifest tree holds what a person authors (plus the schemas their
-`$schema` points at). What only the CLI reads lives beside it, not in it:
-sync locks are `.wonderpress/locks/<slug>.json` (see "Sync lock and drift
+The manifest tree holds only what a person authors. What the CLI writes
+lives beside it, not in it: the schema files in `.wonderpress/schema/` and
+the sync locks in `.wonderpress/locks/<slug>.json` (see "Sync lock and drift
 states"). A generated `README.md` at the root of the manifest tree says which
 file is whose, who writes it, and whether to edit or commit it
 (`src/manifest-readme.js`); it is refreshed wherever the schemas are.
+
+CLI releases up to 2.22.x wrote the schemas at `.wonderpress/manifest/schema/`
+and the ref as `../schema/<kind>.schema.json`. The schemas still accept that
+ref, so a manifest reads valid between upgrading and its first sync;
+`stampManifestSchemas()` (run by create, sync, and `agents write`) rewrites the
+key, and `ensureManifestSchemas()` deletes the two legacy files and their
+directory once empty.
 
 ### Adopting a theme that predates manifests
 

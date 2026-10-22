@@ -533,15 +533,32 @@ export function assertDualAuthorable(subject, options = {}) {
 export const MANIFEST_ROOT = '.wonderpress/manifest';
 export const PARTIAL_MANIFEST_DIR = `${MANIFEST_ROOT}/partials`;
 export const PAGE_TEMPLATE_MANIFEST_DIR = `${MANIFEST_ROOT}/page-templates`;
-export const MANIFEST_SCHEMA_DIR = `${MANIFEST_ROOT}/schema`;
+
+/**
+ * The JSON Schema files the CLI writes for editors. Beside the manifest tree,
+ * not inside it, like the locks: `.wonderpress/manifest/` holds only what a
+ * person authors, and everything else under `.wonderpress/` is the CLI's.
+ */
+export const MANIFEST_SCHEMA_DIR = '.wonderpress/schema';
+
+/** Where CLI releases up to 2.22.x wrote the schema files. */
+export const LEGACY_MANIFEST_SCHEMA_DIR = `${MANIFEST_ROOT}/schema`;
 
 /**
  * `$schema` values written into manifests. Relative to the manifest file, so
- * the editor resolves `.wonderpress/manifest/schema/*.schema.json`.
+ * the editor resolves `.wonderpress/schema/*.schema.json`.
  * `src/manifest-schema.js` emits those files from the constants in this module.
  */
-export const PARTIAL_MANIFEST_SCHEMA_REF = '../schema/partial.schema.json';
-export const PAGE_TEMPLATE_MANIFEST_SCHEMA_REF = '../schema/page-template.schema.json';
+export const PARTIAL_MANIFEST_SCHEMA_REF = '../../schema/partial.schema.json';
+export const PAGE_TEMPLATE_MANIFEST_SCHEMA_REF = '../../schema/page-template.schema.json';
+
+/**
+ * The refs CLI releases up to 2.22.x wrote. The schemas still accept them so
+ * a manifest reads valid between upgrading the CLI and its first sync, which
+ * rewrites the key (`stampManifestSchemas()`).
+ */
+export const LEGACY_PARTIAL_MANIFEST_SCHEMA_REF = '../schema/partial.schema.json';
+export const LEGACY_PAGE_TEMPLATE_MANIFEST_SCHEMA_REF = '../schema/page-template.schema.json';
 
 /** Supported page-template manifest schema version. */
 export const TEMPLATE_MANIFEST_SCHEMA_VERSION = 1;
