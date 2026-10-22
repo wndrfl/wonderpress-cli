@@ -269,7 +269,7 @@ with `"schemaVersion": 1`. That file declares:
   Save manifests under `.wonderpress/manifest/page-templates/` (strict JSON).
 
 Each manifest starts with `$schema`, a relative path to
-`.wonderpress/manifest/schema/page-template.schema.json` (partials use
+`.wonderpress/schema/page-template.schema.json` (partials use
 `partial.schema.json`). The editor reads that file and completes keys, property
 types, lock values, and tab placement while you edit, and underlines a row that
 mixes `partial`, `properties`, and `items`. `template create`, `partial create`,

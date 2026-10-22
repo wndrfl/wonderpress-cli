@@ -56,7 +56,7 @@ function project({ adopt = true, migratedRibbon = true } = {}) {
 		// Stamped with $schema already, as every manifest writer leaves them,
 		// so an apply of another partial has no reason to touch this file.
 		fs.writeJsonSync(path.join(theme, '.wonderpress/manifest/partials/ribbon.json'), {
-			$schema: '../schema/partial.schema.json',
+			$schema: '../../schema/partial.schema.json',
 			name: 'Ribbon',
 			slug: 'ribbon',
 			acf_compatible: false,
@@ -371,9 +371,9 @@ test('--apply writes the manifest, fences the class, keeps the rest, and is idem
 		'.wonderpress/locks/theme-article-grid-item.json',
 		'.wonderpress/manifest/README.md',
 		'.wonderpress/manifest/partials/theme-article-grid-item.json',
-		'.wonderpress/manifest/schema',
-		'.wonderpress/manifest/schema/page-template.schema.json',
-		'.wonderpress/manifest/schema/partial.schema.json',
+		'.wonderpress/schema',
+		'.wonderpress/schema/page-template.schema.json',
+		'.wonderpress/schema/partial.schema.json',
 		classRel,
 		`${classRel}.legacy`,
 	], 'only the partial\'s own files (and the manifest schemas and README every writer refreshes) change');
