@@ -197,6 +197,7 @@ function propertySchema({ types, repeaterRef }) {
 				},
 			},
 		},
+		forbidUnless('choices', 'select'),
 		forbidUnless('format', 'string'),
 		forbidUnless('rows', 'string'),
 		forbidUnless('post_type', 'post_object'),

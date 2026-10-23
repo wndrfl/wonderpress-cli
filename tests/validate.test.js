@@ -482,6 +482,16 @@ test('validateManifestProperty rejects required on booleans and ACF groups', () 
 	}));
 });
 
+test('validateManifestProperty allows choices only on a select', () => {
+	assert.throws(
+		() => validateManifestProperty({ name: 'headline', type: 'string', choices: { a: 'A' } }),
+		/choices is only allowed for type select/,
+	);
+	assert.doesNotThrow(() => validateManifestProperty(
+		{ name: 'size', type: 'select', choices: { sm: 'Small' } },
+	));
+});
+
 test('validateManifestProperty accepts partial refs', () => {
 	assert.doesNotThrow(() => validateManifestProperty(
 		{ name: 'cta', type: 'partial', partial: 'link' },
