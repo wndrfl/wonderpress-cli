@@ -295,6 +295,15 @@ and what was written for it. `partial list`, `partial remove`, `block create`,
 at) source files — so the manifest is authoritative, and the deletion list for a
 removal is exactly what creation recorded.
 
+`partial remove <slug|Class_Name> [--with-block] --yes --format json` returns
+`{ slug, removed }`: every theme-relative path it deleted — class, view, the
+assets files `component.remove` and the manifest's `style`/`script` entries
+name, `blocks/<slug>` with `--with-block`, the manifest, and its lock. It never
+prompts under `--yes` or `--format json`. Errors: `has_block` (a block wraps
+the partial and `--with-block` is absent; the hint says to pass it),
+`not_found` (the hint lists the slugs that exist), `usage` (no name to remove,
+or one that cannot be a slug). Human output is unchanged.
+
 wonderpress-core reads manifests at runtime in `inc/manifests.php`
 (`wonder_load_theme_manifests()`). ACF is one consumer: `inc/acf.php` registers
 a field group on `acf/init` for every `acf_compatible` manifest that is located
@@ -541,6 +550,12 @@ Where it surfaces:
   refused partial (conflicts and lock-less fence refusals) with a warning and
   reports it in `data.skipped[]` (`{ slug, code, ... }`) rather than aborting
   the run.
+- A real `partial sync --format json` (one partial or `--all`) returns
+  `{ dryRun: false, synced: [{ slug, drift }], skipped? }`, where `drift` is
+  the `{ state, changes }` `check-drift` reports for that slug, computed after
+  the write — so the app learns where a save landed in one call. A single
+  sync refused by a conflict is still the `conflict` error envelope; dry runs
+  are unchanged.
 - **Every writer of generated output honours a conflict, not just sync.**
   Re-running `partial create` for an existing partial regenerates its class
   region and block.json and re-records the lock, and `block create` on a
