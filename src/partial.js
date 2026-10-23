@@ -102,6 +102,68 @@ export class SyncConflictError extends Error {
 }
 
 /**
+ * `partial create` refused because the partial already exists. A re-run
+ * would rewrite the manifest from the flags (dropping labels, descriptions,
+ * and choices), regenerate the class region and block.json, and rewrite the
+ * view. Shaped like FenceError (code + hint) so callers report it the same way.
+ */
+export class PartialExistsError extends Error {
+	/**
+	 * @param {{ class_name: string }} params
+	 * @param {{ files: string[], manifest: boolean }} existing what findExistingPartial found
+	 */
+	constructor(params, existing) {
+		const slug = classNameToSlug(params.class_name);
+		super(`Partial "${slug}" already exists (${existing.files.join(', ')}). Re-running create would rewrite ${existing.manifest ? 'its manifest, class, and view' : 'those files'} from the flags.`);
+		this.name = 'PartialExistsError';
+		this.code = 'exists';
+		const name = params.class_name;
+		this.hint = existing.manifest
+			? `Regenerate it with: wonderpress partial create ${name} --force. To apply manifest edits instead: wonderpress partial sync ${name}.`
+			: `Regenerate it with: wonderpress partial create ${name} --force. To bring a legacy class under the manifest instead: wonderpress theme migrate ${slug}.`;
+		this.slug = slug;
+		this.files = existing.files;
+	}
+}
+
+/**
+ * What of a partial already exists on disk, as theme-relative paths: its
+ * manifest, or (without one) a class at the recorded/default class path or a
+ * view at the view path create would write. Empty when nothing is there.
+ *
+ * @param {{ class_name: string, partial_template_name?: string }} params
+ * @param {string} themeDir
+ * @returns {{ files: string[], manifest: boolean }}
+ */
+export function findExistingPartial(params, themeDir) {
+	const slug = classNameToSlug(params.class_name);
+	const candidates = [];
+	const manifestFile = manifestPath(themeDir, slug);
+	const hasManifest = fs.existsSync(manifestFile);
+	if (hasManifest) {
+		candidates.push(toPosixPath(path.relative(themeDir, manifestFile)));
+	}
+	candidates.push(recordedClassRelPath(themeDir, params.class_name) || defaultClassRelPath(params.class_name));
+	// The view create would write (and a recorded one that sits elsewhere).
+	// --no-template writes no view, so a stray one is not in its way.
+	if (params.has_partial_template !== false) {
+		const manifest = readManifest(themeDir, slug);
+		const recordedView = manifest && manifest.artifacts && typeof manifest.artifacts.view === 'string' ? manifest.artifacts.view : null;
+		const viewRel = `partials/${params.partial_template_name || defaultTemplateName(params.class_name)}`;
+		for (const rel of [recordedView, viewRel]) {
+			if (rel && !candidates.includes(rel)) {
+				candidates.push(rel);
+			}
+		}
+	}
+	const files = candidates.filter((rel) => {
+		const abs = resolveWithin(themeDir, rel);
+		return !!abs && fs.existsSync(abs);
+	});
+	return { files, manifest: hasManifest };
+}
+
+/**
  * Accept and route a command.
  **/
 export async function command(subcommand, args) {
@@ -306,6 +368,7 @@ export async function create(args) {
 
 	// Gather params: --json, then a name (flags), else the interactive wizard.
 	let params;
+	let force = args['--force'] === true;
 	try {
 		if (args['--json']) {
 			params = paramsFromJson(args['--json']);
@@ -320,20 +383,43 @@ export async function create(args) {
 					hint: 'wonderpress partial create --name Hero --prop title:string',
 				}, format.EXIT_USAGE);
 			}
-			params = await runWizard(themeDir, args);
+			const wizard = await runWizard(themeDir, args);
+			params = wizard.params;
+			// The wizard asked before overwriting; "yes" is this run's --force.
+			force = force || wizard.overwrite === true;
 		}
 		validateParams(params, themeDir);
 	} catch (err) {
 		log.error(err.message);
+		if (err instanceof PartialExistsError) {
+			log.info(err.hint);
+			return format.fail({ code: err.code, message: err.message, hint: err.hint });
+		}
 		return format.fail({ code: 'validation', message: err.message });
+	}
+
+	// An existing partial is refused unless forced: a re-run rewrites the
+	// manifest from the flags (dropping labels, descriptions, and choices),
+	// regenerates the class region and block.json, and rewrites the view.
+	// Checked before writePartial so nothing is touched. `block create` and
+	// `add-js` are retrofits onto an existing partial and do not come here.
+	if (!force) {
+		const existing = findExistingPartial(params, themeDir);
+		if (existing.files.length) {
+			const err = new PartialExistsError(params, existing);
+			log.error(err.message);
+			log.info(err.hint);
+			return format.fail({ code: err.code, message: err.message, hint: err.hint });
+		}
 	}
 
 	// The namespace is a property of the project, not of this invocation, so it
 	// is resolved from the project rather than gathered with the other params.
 	params.namespace = resolveNamespace(themeDir);
 
+	let written;
 	try {
-		await writePartial(params, themeDir, { force: args['--force'] === true });
+		written = await writePartial(params, themeDir, { force });
 	} catch (err) {
 		if (!(err instanceof FenceError) && !(err instanceof SyncConflictError)) {
 			throw err;
@@ -350,6 +436,9 @@ export async function create(args) {
 			name: params.class_name,
 			slug: classNameToSlug(params.class_name),
 			block: params.emit.block ? `${params.namespace}/${classNameToSlug(params.class_name)}` : null,
+			// Halves the human run only warned about (a style or JS stub Static
+			// Kit could not write); absent when every requested half landed.
+			...(written.warnings.length ? { warnings: written.warnings } : {}),
 		});
 	}
 	return true;
@@ -593,7 +682,23 @@ export function writePartialClass(params, themeDir, options = {}) {
 	return { path: classFilePath, rel, mode: plan.mode };
 }
 
+/**
+ * @param {object} params
+ * @param {string} themeDir
+ * @param {{ force?: boolean }} [options]
+ * @returns {Promise<{ class: { path: string, rel: string, mode: string }, warnings: string[] }>}
+ *   warnings are the skipped-half messages also logged with log.warn (a style
+ *   or JS stub Static Kit could not write), so a JSON caller sees them too.
+ */
 export async function writePartial(params, themeDir, options = {}) {
+
+	// Warned on stderr for a human, and returned so `--format json` (which
+	// keeps stderr to itself) can carry them in the envelope.
+	const warnings = [];
+	const warn = (message) => {
+		warnings.push(message);
+		log.warn(message);
+	};
 
 	// Re-running create on an existing partial regenerates its class region
 	// and block.json and then re-records the lock, which would erase hand
@@ -636,7 +741,7 @@ export async function writePartial(params, themeDir, options = {}) {
 	// Neither delegated half is meaningful for a partial that renders no view,
 	// so `--js --no-template` gets nothing. Say so rather than swallowing it.
 	if (emit.script === true && !params.has_partial_template) {
-		log.warn(`Skipped the JS behavior class for "${slug}": a behavior stub is only emitted for partials that render a view template. Drop --no-template if this partial needs client-side JS.`);
+		warn(`Skipped the JS behavior class for "${slug}": a behavior stub is only emitted for partials that render a view template. Drop --no-template if this partial needs client-side JS.`);
 	}
 
 	// The style/behavior halves are delegated to Static Kit's `component.create`.
@@ -668,7 +773,7 @@ export async function writePartial(params, themeDir, options = {}) {
 
 	const skipped = [!wroteStyle && wantsStyle ? 'style stub' : null, !wroteScript && wantsScript ? 'JS behavior class' : null].filter(Boolean).join(' and ');
 	if (skipped) {
-		log.warn(`Skipped the ${skipped} for "${slug}": ${staticSkipReason(componentApiAvailable)}. It is not recorded in the manifest; the partial, block, and manifest were still written.`);
+		warn(`Skipped the ${skipped} for "${slug}": ${staticSkipReason(componentApiAvailable)}. It is not recorded in the manifest; the partial, block, and manifest were still written.`);
 	}
 
 	// block.json (opt-in editor wrapper) — a partial is NOT a block, so this is
@@ -686,6 +791,8 @@ export async function writePartial(params, themeDir, options = {}) {
 		// contract to be pending or in conflict with.
 		writePartialLock(readManifest(themeDir, slug), themeDir);
 	}
+
+	return { class: classResult, warnings };
 }
 
 /**
@@ -774,8 +881,21 @@ function staticSkipReason(apiAvailable) {
  * manifest is the index, and the result is identical to having passed `--js`
  * at creation time. Unlike `block create`, this never overwrites author-owned
  * JS — Static Kit's create always writeFileSyncs.
+ *
+ * @param {string} themeDir
+ * @param {string} name
+ * @param {{ warnings?: string[] }} [options] warnings collects the skipped-half
+ *   messages also logged with log.warn, for the JSON envelope.
+ * @returns {Promise<boolean>}
  **/
-export async function addScript(themeDir, name) {
+export async function addScript(themeDir, name, options = {}) {
+
+	const warn = (message) => {
+		if (Array.isArray(options.warnings)) {
+			options.warnings.push(message);
+		}
+		log.warn(message);
+	};
 
 	const lookupSlug = nameToSlug(name);
 	if (!isSafeSlug(lookupSlug)) {
@@ -792,7 +912,7 @@ export async function addScript(themeDir, name) {
 	const artifacts = manifest.artifacts || {};
 	const slug = manifest.slug;
 	if (!artifacts.view) {
-		log.warn(`Skipped the JS behavior class for "${slug}": a behavior stub is only emitted for partials that render a view template.`);
+		warn(`Skipped the JS behavior class for "${slug}": a behavior stub is only emitted for partials that render a view template.`);
 		return false;
 	}
 
@@ -824,7 +944,7 @@ export async function addScript(themeDir, name) {
 
 	const wroteScript = wroteRel(themeDir, created, 'script');
 	if (!wroteScript) {
-		log.warn(`Skipped the JS behavior class for "${slug}": ${staticSkipReason(componentApiAvailable)}. It is not recorded in the manifest.`);
+		warn(`Skipped the JS behavior class for "${slug}": ${staticSkipReason(componentApiAvailable)}. It is not recorded in the manifest.`);
 		return false;
 	}
 
@@ -875,11 +995,14 @@ export async function addJs(args) {
 		}
 	}
 
-	const ok = await addScript(themeDir, name);
+	const warnings = [];
+	const ok = await addScript(themeDir, name, { warnings });
 	if (!ok) {
+		// A skipped half is why add-js failed, so the reason the human run
+		// warned about is the error, not a line JSON mode swallowed.
 		return format.fail({
 			code: 'partial',
-			message: `Could not add JS to "${name}"`,
+			message: warnings.length ? `Could not add JS to "${name}": ${warnings.join(' ')}` : `Could not add JS to "${name}"`,
 		});
 	}
 
@@ -892,6 +1015,7 @@ export async function addJs(args) {
 			name: manifest?.name || name,
 			slug: manifest?.slug || slug,
 			script: manifest?.artifacts?.script || null,
+			...(warnings.length ? { warnings } : {}),
 		});
 	}
 
@@ -1827,10 +1951,16 @@ export function mergeWizardAnswers(step1, args = {}, properties = []) {
 	};
 }
 
+/**
+ * @returns {Promise<{ params: object, overwrite: boolean }>} overwrite is true
+ *   when the partial already existed and the user chose to regenerate it.
+ * @throws {PartialExistsError} When the partial exists and the user declined.
+ */
 async function runWizard(themeDir, args = {}) {
 
 	const flagged = seedFromFlags(args);
 	const asked = (key) => flagged[key] === undefined;
+	const existingFor = (answers) => findExistingPartial({ class_name: answers.class_name, partial_template_name: flagged.partial_template_name }, themeDir);
 
 	log.info('Starting partial creation wizard...');
 	log.instructions('In Wonderpress, a "partial" is a PHP class that helps render a reusable view. Here we will create the PHP class (and optionally the PHP template for the view). Please answer the following questions:');
@@ -1850,6 +1980,14 @@ async function runWizard(themeDir, args = {}) {
 				}
 				return valid;
 			}
+		},
+		{
+			type: 'confirm',
+			name: 'overwrite_existing',
+			message: 'This partial already exists. Regenerate it from your answers?',
+			suffix: '\nIts manifest, class region, block.json, and view would be rewritten (labels, descriptions, and choices in the manifest are lost). Say "N" to keep it; edit the manifest and run `wonderpress partial sync` instead:',
+			default: false,
+			when: (answers) => args['--force'] !== true && existingFor(answers).files.length > 0,
 		},
 		{
 			type: 'confirm',
@@ -1906,6 +2044,10 @@ async function runWizard(themeDir, args = {}) {
 			when: () => asked('emit_block'),
 		}
 	]);
+
+	if (step1.overwrite_existing === false) {
+		throw new PartialExistsError({ class_name: step1.class_name }, existingFor(step1));
+	}
 
 	const properties = [];
 	let addAnother = true;
@@ -1995,7 +2137,7 @@ async function runWizard(themeDir, args = {}) {
 		}
 	}
 
-	return mergeWizardAnswers(step1, args, properties);
+	return { params: mergeWizardAnswers(step1, args, properties), overwrite: step1.overwrite_existing === true };
 }
 
 /**

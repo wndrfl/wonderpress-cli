@@ -818,7 +818,7 @@ test('re-running partial create refuses a partial in conflict; --force regenerat
 	assert.equal(checkPartialDrift(readManifest(dir), dir).state, 'clean');
 }));
 
-test('CLI: block create and a partial create re-run refuse a block.json conflict with one JSON envelope', () => {
+test('CLI: block create refuses a block.json conflict and a partial create re-run refuses the existing partial, each with one JSON envelope', () => {
 	const { root, themeDir, run } = cliEnv();
 	try {
 		run(['partial', 'create', '--name', 'Card', '--prop', 'title:string', '--no-style', '--block']);
@@ -833,14 +833,17 @@ test('CLI: block create and a partial create re-run refuse a block.json conflict
 		const state = () => oneEnvelope(run(['partial', 'check-drift', 'Card', '--format', 'json'])).data.partials[0].state;
 
 		const edited = handEdit();
-		for (const argv of [
-			['block', 'create', '--name', 'Card'],
-			['partial', 'create', '--name', 'Card', '--prop', 'title:string', '--no-style', '--block'],
+		// A re-run of create is refused before the conflict is even looked at:
+		// the partial exists (code `exists`); block create retrofits an existing
+		// partial, so for it the block.json conflict is the refusal.
+		for (const [argv, code] of [
+			[['block', 'create', '--name', 'Card'], 'conflict'],
+			[['partial', 'create', '--name', 'Card', '--prop', 'title:string', '--no-style', '--block'], 'exists'],
 		]) {
 			const refused = run([...argv, '--format', 'json']);
 			assert.equal(refused.status, 1, `${argv.join(' ')}: ${refused.stdout}`);
 			const body = oneEnvelope(refused);
-			assert.equal(body.error.code, 'conflict');
+			assert.equal(body.error.code, code);
 			assert.match(body.error.message, /card/);
 			assert.match(body.error.hint, /--force/);
 			assert.equal(fs.readFileSync(blockFile, 'utf8'), edited, 'hand edits kept');

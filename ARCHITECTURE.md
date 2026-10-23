@@ -373,7 +373,15 @@ format:
 This keeps a single source of truth for anything under `static/`: if the Static
 Kit layout changes, Wonderpress inherits it for free instead of drifting.
 
-`partial create` records the paths `component.create` returns. `partial remove`
+`partial create` records the paths `component.create` returns. When a half was
+asked for and not written (the installed kit has no `component.create`, or the
+theme has no `static/.staticrc` tree), the human run warns on stderr, and the
+same messages ride in the JSON envelope as `data.warnings: string[]` on
+`partial create --format json`, MCP `partial_create`, and `partial add-js
+--format json` (absent when every requested half landed), so the app never
+reports a JS half that does not exist. `add-js` with nothing written is still
+a failure (`error.code` `partial`) and its message now carries the reason.
+`partial remove`
 calls `component.remove`, then deletes the `style` and `script` paths the
 manifest recorded — so a 3.0-era `lib/partials` tree is not orphaned when the
 installed kit only knows about `components/`. `installKit` keys off a config
@@ -556,15 +564,32 @@ Where it surfaces:
   the write — so the app learns where a save landed in one call. A single
   sync refused by a conflict is still the `conflict` error envelope; dry runs
   are unchanged.
+- **`partial create` refuses a partial that already exists.** A re-run
+  rewrites the manifest from the flags (labels, descriptions, and choices are
+  gone), regenerates the class region and block.json, rewrites the view, and
+  re-records the lock, so the CLI command refuses when the theme already has
+  the partial's manifest at `.wonderpress/manifest/partials/<slug>.json`, or
+  (without one) a class at the recorded/default class path or a view at the
+  view path it would write: error code `exists`, the message naming the slug
+  and the files found, the hint naming `partial create <Name> --force` to
+  regenerate, `partial sync <Name>` to apply manifest edits, or
+  `theme migrate <slug>` for a legacy class. `--force` keeps the regenerate
+  behaviour. The wizard asks before overwriting instead (declining is the
+  same `exists` error). The check is `findExistingPartial()` in
+  [`src/partial.js`](src/partial.js), run in `create()` before anything is
+  written; `block create` and `partial add-js` are retrofits onto an existing
+  partial and are untouched, and MCP `partial_create` keeps the conflict rule
+  below (its `force` is the same override).
 - **Every writer of generated output honours a conflict, not just sync.**
-  Re-running `partial create` for an existing partial regenerates its class
-  region and block.json and re-records the lock, and `block create` on a
+  Re-running `partial create --force` for an existing partial regenerates its
+  class region and block.json and re-records the lock, and `block create` on a
   partial that is already a block regenerates block.json; either would erase a
-  hand edit and leave the partial reading `clean`. Both refuse a conflict the
-  same way (code `conflict`, hint naming their own `--force`); `block create`
-  only checks block.json, the one file it rewrites. MCP `partial_create` and
-  `block_create` take `force` for the same override. The shared check is
-  `assertNoConflict()` in [`src/partial.js`](src/partial.js).
+  hand edit and leave the partial reading `clean`. `writePartial()` (the MCP
+  path, and the CLI once `--force` is given) and `block create` refuse a
+  conflict the same way (code `conflict`, hint naming their own `--force`);
+  `block create` only checks block.json, the one file it rewrites. MCP
+  `partial_create` and `block_create` take `force` for the same override. The
+  shared check is `assertNoConflict()` in [`src/partial.js`](src/partial.js).
 - **`--force` overrides refusals; it does not widen the write.** Forcing past a
   conflict on an intact fence still replaces only the region and keeps every
   byte outside it. Only a class with no or malformed markers is rewritten
