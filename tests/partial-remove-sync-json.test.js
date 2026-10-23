@@ -58,7 +58,7 @@ test('CLI: partial remove --yes --format json lists every path it deleted', () =
 		assert.equal(body.data.slug, 'hero');
 		assert.deepEqual([...body.data.removed].sort(), [
 			'.wonderpress/manifest/partials/hero.json',
-			'.wonderpress/manifest/partials/hero.lock.json',
+			'.wonderpress/locks/hero.json',
 			'partials/hero.php',
 			script,
 			'src/partials/class-hero.php',
