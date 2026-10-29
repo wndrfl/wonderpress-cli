@@ -129,13 +129,16 @@ export const handlers = {
 			const params = partial.paramsFromJson(spec);
 			partial.validateParams(params, themeDir);
 			params.namespace = partial.resolveNamespace(themeDir);
-			await partial.writePartial(params, themeDir, { force: input.force === true });
+			const written = await partial.writePartial(params, themeDir, { force: input.force === true });
 			const { writeAgentFiles } = await import('./agents.js');
 			writeAgentFiles({ root: process.cwd(), themeDir });
 			return jsonResult({
 				ok: true,
 				name: params.class_name,
 				slug: classNameToSlug(params.class_name),
+				// Same field as `partial create --format json`: halves Static
+				// Kit could not write, absent when every requested half landed.
+				...(written.warnings.length ? { warnings: written.warnings } : {}),
 			});
 		} catch (err) {
 			// A re-create refused over a conflict (or a fence refusal) keeps its
@@ -241,8 +244,9 @@ export const handlers = {
 		if (!input.name) {
 			return jsonError('name is required');
 		}
-		if (!await partial.addScript(themeDir, input.name)) {
-			return jsonError(`Could not add JS to "${input.name}"`);
+		const warnings = [];
+		if (!await partial.addScript(themeDir, input.name, { warnings })) {
+			return jsonError(warnings.length ? `Could not add JS to "${input.name}": ${warnings.join(' ')}` : `Could not add JS to "${input.name}"`);
 		}
 		const { writeAgentFiles } = await import('./agents.js');
 		writeAgentFiles({ root: process.cwd(), themeDir });
